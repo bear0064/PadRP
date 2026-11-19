@@ -1,8 +1,8 @@
 ## Interface: 11508, 16001, 20504, 30403, 40402, 110007, 120105
-## Title: PadRP |cff8ab4f8(Material Dark Controller RP)|r
-## Notes: Controller-friendly Material 3 Roleplay Sheet, Native LibMSP/Chomp Engine, Nameplate RP Tags & Gratitude
+## Title: PadRP |cff8ab4f8(Controller RP)|r
+## Notes: Controller-friendly Roleplay Sheet, Native LibMSP/Chomp Engine, Nameplate RP Tags & Gratitude
 ## Author: PadRP
-## Version: 5.8
+## Version: 1.1
 ## SavedVariables: PadRPDB
 ## OptionalDeps: totalRP3, ConsolePort
 
