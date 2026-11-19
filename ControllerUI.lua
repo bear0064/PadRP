@@ -24,6 +24,14 @@ local confirmClearCacheUntil = 0
 
 local nativeIconPool = nil
 
+local RP_EXPERIENCE_LIST = {
+    { code = "1", label = "Normal" },
+    { code = "2", label = "Casual" },
+    { code = "3", label = "Experienced" },
+    { code = "4", label = "Roleplay-Focused / Veteran" },
+    { code = "5", label = "New" },
+}
+
 local MODE_LIST = {
     { key = "SMART",        label = "Smart Auto (IC Emote Nearby / Whisper Far)" },
     { key = "AUTO_EMOTE",   label = "Auto Custom Emote (/e)" },
@@ -94,6 +102,43 @@ local function SetIconTextureSafe(tex, icon, fallback)
     else
         tex:SetTexture("Interface\\Icons\\" .. tostring(icon or fallback or "INV_Misc_Book_09"))
     end
+end
+
+local function AttachWheelScroller(frame, onWheelStep)
+    if not frame or not frame.EnableMouseWheel then return end
+    frame:EnableMouseWheel(true)
+    frame:SetScript("OnMouseWheel", function(_, delta)
+        if delta and delta ~= 0 and onWheelStep then
+            onWheelStep(delta > 0 and -1 or 1)
+        end
+    end)
+end
+
+local function GetRPExperienceLabelText(code)
+    local c = tostring(code or (ns.profile and ns.profile.rpStyle) or "1")
+    for _, item in ipairs(RP_EXPERIENCE_LIST) do
+        if item.code == c then
+            return item.label
+        end
+    end
+    if ns.GetRPStyleLabel then
+        return ns:GetRPStyleLabel(c)
+    end
+    return "Normal"
+end
+
+local function ApplyRPExperienceSelection(code)
+    if not ns.profile then return end
+    ns.profile.rpStyle = tostring(code or "1")
+    if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+    if ns.SyncMSP then ns:SyncMSP() end
+    if mainFrame and mainFrame.bannerExpBtn then
+        mainFrame.bannerExpBtn:SetText("|cff8ab4f8RP:|r " .. GetRPExperienceLabelText(ns.profile.rpStyle) .. " [v]")
+    end
+    if tabPanels[1] and tabPanels[1].styleBtn and ns.GetRPStyleLabel then
+        tabPanels[1].styleBtn:SetText("RP Style: |cff8ab4f8" .. ns:GetRPStyleLabel(ns.profile.rpStyle) .. "|r")
+    end
+    ns:ShowStatusToast("RP Experience: " .. GetRPExperienceLabelText(ns.profile.rpStyle))
 end
 
 -- Proportional horizontal row layout helper (supports mixed fixed + flex columns)
@@ -669,6 +714,11 @@ end
 -- =========================================================
 local function CloseAnyOpenPopup()
     if not mainFrame then return false end
+    if mainFrame.expDropdown and mainFrame.expDropdown:IsShown() then
+        mainFrame.expDropdown:Hide()
+        if mainFrame.bannerExpBtn then ns:SetControllerFocus(mainFrame.bannerExpBtn) end
+        return true
+    end
     if mainFrame.presetDropdown and mainFrame.presetDropdown:IsShown() then
         mainFrame.presetDropdown:Hide()
         if tabPanels[1] and tabPanels[1].presetBtn then ns:SetControllerFocus(tabPanels[1].presetBtn) end
@@ -956,6 +1006,10 @@ local function RefreshHeaderBanner()
     local housePart = (p.houseName and p.houseName ~= "") and ("  |cff8ab4f8-  " .. p.houseName .. "|r") or ""
     mainFrame.bannerTitle:SetText(titlePart .. housePart)
     mainFrame.profChip:SetText(p.profileName or "Default")
+
+    if mainFrame.bannerExpBtn then
+        mainFrame.bannerExpBtn:SetText("|cff8ab4f8RP:|r " .. GetRPExperienceLabelText(p.rpStyle) .. " [v]")
+    end
 
     local wuBtn = mainFrame.walkUpBtn
     if wuBtn then
@@ -1467,6 +1521,7 @@ function ns:InitControllerUI()
         self.page = math.max(1, math.min(totalPages, self.page + (delta or 1)))
         self:RefreshGrid()
     end
+    AttachWheelScroller(picker, function(step) picker:StepPage(step) end)
 
     picker.RebuildFilter = function(self)
         wipe(self.filteredIcons)
@@ -1579,12 +1634,12 @@ function ns:InitControllerUI()
     closeBtn:SetPoint("RIGHT", banner, "RIGHT", -8, 0)
 
     local icSwitch = CreateFrame("Button", nil, banner, "BackdropTemplate")
-    icSwitch:SetSize(144, 32)
+    icSwitch:SetSize(136, 32)
     icSwitch:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
     ns:ApplySurface(icSwitch, M3.mintTonal, M3.mint)
     icSwitch.bgLabel = icSwitch:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     icSwitch.thumb = CreateFrame("Frame", nil, icSwitch, "BackdropTemplate")
-    icSwitch.thumb:SetSize(96, 26)
+    icSwitch.thumb:SetSize(92, 26)
     ns:ApplySurface(icSwitch.thumb, M3.mint, M3.outline)
     icSwitch.thumb.label = icSwitch.thumb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     icSwitch.thumb.label:SetPoint("CENTER")
@@ -1598,7 +1653,7 @@ function ns:InitControllerUI()
     ns:RegisterFocusable(icSwitch, function() icSwitch:Click("LeftButton") end)
     mainFrame.icSwitch = icSwitch
 
-    local walkUpBtn = ns:CreateMaterialButton(banner, "WALK-UPS: OPEN", 120, 32, 0, -12, "MINT", function()
+    local walkUpBtn = ns:CreateMaterialButton(banner, "WALK-UPS: OPEN", 112, 32, 0, -12, "MINT", function()
         local code = ns:CycleWalkUpStatus()
         RefreshHeaderBanner()
         if ns.RefreshMinimapButton then ns:RefreshMinimapButton() end
@@ -1608,12 +1663,64 @@ function ns:InitControllerUI()
     walkUpBtn:SetPoint("RIGHT", icSwitch, "LEFT", -6, 0)
     mainFrame.walkUpBtn = walkUpBtn
 
+    local expDropdown = CreateFrame("Frame", "PadRP_TopExpDropdown", mainFrame, "BackdropTemplate")
+    expDropdown:SetSize(196, 134)
+    expDropdown:SetFrameStrata("DIALOG")
+    expDropdown:SetFrameLevel(mainFrame:GetFrameLevel() + 40)
+    ns:ApplySurface(expDropdown, M3.surfaceDim, M3.primary)
+    ns:EnableClipping(expDropdown)
+    expDropdown:EnableMouse(true)
+    expDropdown:Hide()
+    expDropdown.rows = {}
+
+    for i, item in ipairs(RP_EXPERIENCE_LIST) do
+        local optBtn = ns:CreateMaterialButton(expDropdown, "", 182, 26, 7, -8 - (i - 1) * 30, nil, function()
+            ApplyRPExperienceSelection(item.code)
+            expDropdown:Hide()
+            if mainFrame.bannerExpBtn then ns:SetControllerFocus(mainFrame.bannerExpBtn) end
+        end)
+        optBtn.label:SetJustifyH("LEFT")
+        expDropdown.rows[i] = optBtn
+    end
+
+    expDropdown.Rebuild = function(self)
+        local curCode = tostring((ns.profile and ns.profile.rpStyle) or "1")
+        for i, item in ipairs(RP_EXPERIENCE_LIST) do
+            local r = self.rows[i]
+            local isSel = (item.code == curCode)
+            r:SetText((isSel and "|cff81c995> |r" or "  ") .. item.label)
+            r:SetTone(isSel and "PRIMARY" or nil)
+        end
+    end
+    mainFrame.expDropdown = expDropdown
+
+    local bannerExpBtn = ns:CreateMaterialButton(banner, "|cff8ab4f8RP:|r Normal [v]", 104, 32, 0, -12, nil, function(self)
+        if mainFrame.presetDropdown then mainFrame.presetDropdown:Hide() end
+        if mainFrame.modeDropdown then mainFrame.modeDropdown:Hide() end
+        if mainFrame.poolDropdown then mainFrame.poolDropdown:Hide() end
+        if expDropdown:IsShown() then
+            expDropdown:Hide()
+            ns:SetControllerFocus(self)
+        else
+            expDropdown:ClearAllPoints()
+            expDropdown:SetPoint("TOPRIGHT", self, "BOTTOMRIGHT", 0, -2)
+            expDropdown:Rebuild()
+            expDropdown:Show()
+            ns:FocusFirstInScope()
+        end
+    end)
+    bannerExpBtn:ClearAllPoints()
+    bannerExpBtn:SetPoint("RIGHT", walkUpBtn, "LEFT", -6, 0)
+    mainFrame.bannerExpBtn = bannerExpBtn
+
     local profNextBtn = ns:CreateMaterialButton(banner, ">", 20, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
     profNextBtn:ClearAllPoints()
-    profNextBtn:SetPoint("RIGHT", walkUpBtn, "LEFT", -8, 0)
+    profNextBtn:SetPoint("RIGHT", bannerExpBtn, "LEFT", -8, 0)
 
-    mainFrame.profChip = ns:CreateMaterialButton(banner, "Profile", 84, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
+    mainFrame.profChip = ns:CreateMaterialButton(banner, "Profile", 76, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
     mainFrame.profChip:ClearAllPoints()
+    profNextBtn:ClearAllPoints()
+    profNextBtn:SetPoint("RIGHT", bannerExpBtn, "LEFT", -8, 0)
     mainFrame.profChip:SetPoint("RIGHT", profNextBtn, "LEFT", -2, 0)
 
     local profPrevBtn = ns:CreateMaterialButton(banner, "<", 20, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(-1) end)
@@ -1675,6 +1782,7 @@ function ns:InitControllerUI()
     p1.coreSubBtn = ns:CreateMaterialButton(p1, "1. Core Identity & Status", 308, 26, 16, -10, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
         if mainFrame.presetDropdown then mainFrame.presetDropdown:Hide() end
+        if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
         activeIdentityPage = 1
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
@@ -1682,6 +1790,7 @@ function ns:InitControllerUI()
     p1.detailSubBtn = ns:CreateMaterialButton(p1, "2. Vitals, Background & Profiles", 308, 26, 332, -10, nil, function()
         CommitModifiedBoxesToProfile(false)
         if mainFrame.presetDropdown then mainFrame.presetDropdown:Hide() end
+        if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
         activeIdentityPage = 2
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
@@ -1709,6 +1818,7 @@ function ns:InitControllerUI()
     p1.cuBox = ns:CreateMaterialEditBox(pageCore, "Currently (Select Preset, Cycle, or Type Custom)", "What is your character doing right now?", 16, -162, 336, 28, AutoCommitTab1)
 
     p1.presetBtn = ns:CreateMaterialButton(pageCore, "Presets [v]", 82, 28, 358, -177, "AMBER", function()
+        if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
         if mainFrame.presetDropdown:IsShown() then
             mainFrame.presetDropdown:Hide()
             ns:SetControllerFocus(p1.presetBtn)
@@ -1801,6 +1911,10 @@ function ns:InitControllerUI()
             r.delBtn:Show()
         end
     end
+    AttachWheelScroller(dropdown, function(step)
+        dropdown.page = dropdown.page + step
+        dropdown:Rebuild()
+    end)
     mainFrame.presetDropdown = dropdown
 
     local pageDetails = CreateFrame("Frame", nil, p1)
@@ -1823,6 +1937,7 @@ function ns:InitControllerUI()
     end)
     p1.styleBtn = ns:CreateMaterialButton(pageDetails, "RP Style: Normal", 306, 30, 334, -118, "PRIMARY", function()
         local code = ns:CycleRPStyle()
+        RefreshHeaderBanner()
         ns:RefreshControllerUI()
         ns:ShowStatusToast("RP Style: " .. ns:GetRPStyleLabel(code))
     end)
@@ -2034,6 +2149,11 @@ function ns:InitControllerUI()
         ns:RefreshTargetCard()
     end)
 
+    AttachWheelScroller(p4, function(step)
+        knownListPage = knownListPage + step
+        ns:RefreshTargetCard()
+    end)
+
     p4.knownRows = {}
     for i = 1, 8 do
         local rowY = -74 - (i - 1) * 34
@@ -2050,12 +2170,18 @@ function ns:InitControllerUI()
         rowBtn.seenLabel:SetPoint("RIGHT", -10, 0)
         rowBtn.seenLabel:SetJustifyH("RIGHT")
 
+        AttachWheelScroller(rowBtn, function(step)
+            knownListPage = knownListPage + step
+            ns:RefreshTargetCard()
+        end)
+
         p4.knownRows[i] = rowBtn
     end
 
     -- TAB 5: GRATITUDE STUDIO
     local p5 = tabPanels[5]
     p5.modeBtn = ns:CreateMaterialButton(p5, "Gratitude Mode [v]", 624, 30, 16, -10, "PRIMARY", function()
+        if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
         if mainFrame.poolDropdown then mainFrame.poolDropdown:Hide() end
         if mainFrame.modeDropdown:IsShown() then
             mainFrame.modeDropdown:Hide()
@@ -2115,6 +2241,7 @@ function ns:InitControllerUI()
     p5.healPlusBtn = ns:CreateMaterialButton(p5, "+5%", 52, 24, 520, -78, nil, function() ns.db.gratitude.minHealPercent = math.min(80, (ns.db.gratitude.minHealPercent or 15) + 5); RefreshGratitudeStudio() end)
 
     p5.poolToggleBtn = ns:CreateMaterialButton(p5, "Phrase Pool [v]", 336, 26, 16, -110, "AMBER", function()
+        if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
         if mainFrame.modeDropdown then mainFrame.modeDropdown:Hide() end
         if mainFrame.poolDropdown:IsShown() then
             mainFrame.poolDropdown:Hide()
@@ -2190,6 +2317,13 @@ function ns:InitControllerUI()
         end)
         r.selectBtn:SetPoint("RIGHT", r.delBtn, "LEFT", -6, 0)
         r.selectBtn.label:SetJustifyH("LEFT")
+
+        AttachWheelScroller(r.selectBtn, function(step)
+            local pool = GetActiveGratitudePool()
+            editPhraseIdx = math.max(1, math.min(#pool, editPhraseIdx + (step * 3)))
+            RefreshGratitudeStudio()
+        end)
+
         p5.phraseRows[i] = r
     end
 

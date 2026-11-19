@@ -13,6 +13,7 @@ Libs\LibMSP\LibMSP.xml
 Core.lua
 MSPBridge.lua
 MSPWire.lua
+RPChatTools.lua
 Nameplates.lua
 Gratitude.lua
 TargetHUD.lua

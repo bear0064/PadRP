@@ -6,6 +6,10 @@ local announcedRPUsers = {}
 local dirtyReceivers = {}
 local flushScheduled = false
 
+local passiveQueue = {}
+local passiveQueuedSet = {}
+local passiveTickerActive = false
+
 ns.netLogs = ns.netLogs or {}
 ns.mspEchoChat = false
 
@@ -19,7 +23,10 @@ function ns:ResetWireThrottles()
     wipe(pendingScans)
     wipe(announcedRPUsers)
     wipe(dirtyReceivers)
+    wipe(passiveQueue)
+    wipe(passiveQueuedSet)
     flushScheduled = false
+    passiveTickerActive = false
 end
 
 function ns:LogNet(tag, colorHex, msg)
@@ -89,7 +96,6 @@ local function FlushDirtyReceivers()
     end
 end
 
--- LibMSP fires once per field (15-25x per profile); batch into one debounced refresh
 local function OnLibMSPReceived(senderUnitID)
     if not senderUnitID or senderUnitID == "" then return end
     dirtyReceivers[senderUnitID] = true
@@ -103,7 +109,7 @@ local function OnLibMSPReceived(senderUnitID)
     end
 end
 
-function ns:RequestUnitMSP(unitOrName, includeFullBio, forceBypassThrottle)
+function ns:RequestUnitMSP(unitOrName, includeFullBio, forceBypassThrottle, isPassive)
     if UnitExists(unitOrName) and not UnitIsPlayer(unitOrName) then return false end
 
     local mspID = ns:GetMSPUnitID(unitOrName)
@@ -111,7 +117,7 @@ function ns:RequestUnitMSP(unitOrName, includeFullBio, forceBypassThrottle)
     if not mspID or not shortKey then return false end
 
     local myKey = ns:GetUnitKey("player")
-    if shortKey ~= myKey then
+    if not isPassive and shortKey ~= myKey then
         ns.lastInspectedKey = shortKey
         ns.lastInspectedTime = GetTime()
     end
@@ -133,9 +139,9 @@ function ns:RequestUnitMSP(unitOrName, includeFullBio, forceBypassThrottle)
 
     local existing = ns:GetCachedMSP(shortKey)
     local wasUncached = (not existing or not existing.NA or existing.NA == "")
-    if wasUncached then
+    if wasUncached and not isPassive then
         pendingScans[shortKey] = now
-    else
+    elseif not wasUncached then
         pendingScans[shortKey] = nil
     end
 
@@ -144,10 +150,14 @@ function ns:RequestUnitMSP(unitOrName, includeFullBio, forceBypassThrottle)
     ns.mspStats.sent = (ns.mspStats.sent or 0) + 1
 
     if ns.mspDebug or ns.mspSniff then
-        ns:LogNet("MSP REQ", "ff8ab4f8", string.format("msp:Request(%s, %s) -> %s", mspID, includeFullBio and "FULL" or "TT", ok and "SENT" or tostring(err)))
+        ns:LogNet(
+            isPassive and "RADAR REQ" or "MSP REQ",
+            "ff8ab4f8",
+            string.format("msp:Request(%s, %s) -> %s", mspID, includeFullBio and "FULL" or "TT", ok and "SENT" or tostring(err))
+        )
     end
 
-    if wasUncached and C_Timer and C_Timer.After then
+    if wasUncached and not isPassive and C_Timer and C_Timer.After then
         C_Timer.After(4.1, function()
             if pendingScans[shortKey] then
                 pendingScans[shortKey] = nil
@@ -159,23 +169,102 @@ function ns:RequestUnitMSP(unitOrName, includeFullBio, forceBypassThrottle)
     return true
 end
 
+-- Staggered passive queue prevents hub burst-throttling when 20+ nameplates load at once
+local function DrainPassiveQueue()
+    if #passiveQueue == 0 then
+        passiveTickerActive = false
+        return
+    end
+
+    if InCombatLockdown() then
+        if C_Timer and C_Timer.After then
+            C_Timer.After(1.5, DrainPassiveQueue)
+        else
+            passiveTickerActive = false
+        end
+        return
+    end
+
+    local item = table.remove(passiveQueue, 1)
+    if item then
+        passiveQueuedSet[item.key] = nil
+        ns:RequestUnitMSP(item.target, false, item.force, true)
+    end
+
+    if #passiveQueue > 0 and C_Timer and C_Timer.After then
+        C_Timer.After(0.25, DrainPassiveQueue)
+    else
+        passiveTickerActive = false
+    end
+end
+
+local function EnqueuePassiveScan(unitOrName, forceBypassThrottle)
+    if InCombatLockdown() then return false end
+    if UnitExists(unitOrName) then
+        if not UnitIsPlayer(unitOrName) or not UnitIsFriend("player", unitOrName) or UnitIsUnit(unitOrName, "player") then
+            return false
+        end
+    end
+
+    local mspID = ns:GetMSPUnitID(unitOrName)
+    local shortKey = ns:GetUnitKey(unitOrName)
+    if not mspID or not shortKey then return false end
+
+    local myKey = ns:GetUnitKey("player")
+    if shortKey == myKey then return false end
+
+    local throttleKey = shortKey .. "_TT"
+    if not forceBypassThrottle and lastRequested[throttleKey] and (GetTime() - lastRequested[throttleKey]) < 90 then
+        return false
+    end
+
+    if passiveQueuedSet[shortKey] then return true end
+    if #passiveQueue >= 40 then return false end
+
+    passiveQueuedSet[shortKey] = true
+    table.insert(passiveQueue, { target = mspID, key = shortKey, force = forceBypassThrottle })
+
+    if not passiveTickerActive then
+        passiveTickerActive = true
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.10, DrainPassiveQueue)
+        else
+            DrainPassiveQueue()
+        end
+    end
+    return true
+end
+
 function ns:BackgroundSweepNearby(forceAll)
     if InCombatLockdown() then return 0 end
     local units = { "target", "mouseover" }
     for i = 1, 4 do table.insert(units, "party" .. i) end
     for i = 1, 40 do table.insert(units, "raid" .. i) end
 
+    if C_NamePlate and C_NamePlate.GetNamePlates then
+        local plates = C_NamePlate.GetNamePlates()
+        if type(plates) == "table" then
+            for _, plate in ipairs(plates) do
+                local unitToken = plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit)
+                if unitToken and UnitExists(unitToken) then
+                    table.insert(units, unitToken)
+                end
+            end
+        end
+    end
+
     local scanned = {}
     local count = 0
     local myKey = ns:GetUnitKey("player")
 
     for _, u in ipairs(units) do
-        if UnitExists(u) and UnitIsPlayer(u) and UnitIsFriend("player", u) then
+        if UnitExists(u) and UnitIsPlayer(u) and UnitIsFriend("player", u) and not UnitIsUnit(u, "player") then
             local k = ns:GetUnitKey(u)
             if k and k ~= myKey and not scanned[k] then
                 scanned[k] = true
-                count = count + 1
-                ns:RequestUnitMSP(u, false, forceAll)
+                if EnqueuePassiveScan(u, forceAll) then
+                    count = count + 1
+                end
             end
         end
     end
@@ -185,7 +274,7 @@ end
 function ns:ScanNearbyPlayers()
     local harvested, totalCached = ns:ImportAllKnownFromTRP3AndMSP()
     local count = ns:BackgroundSweepNearby(true)
-    ns:LogNet("RADAR", "ff81c995", string.format("Synced %d profile(s) (%d total cached); queried %d target/group player(s).", harvested, totalCached, count))
+    ns:LogNet("RADAR", "ff81c995", string.format("Synced %d profile(s) (%d total cached); queued %d nearby/nameplate player(s).", harvested, totalCached, count))
     if C_Timer and C_Timer.After then
         C_Timer.After(2.0, function()
             ns:ImportAllKnownFromTRP3AndMSP()
@@ -244,11 +333,14 @@ function ns:InitMSPProtocol()
     end
 
     local commFrame = CreateFrame("Frame")
+    commFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    commFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     commFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
     commFrame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
     commFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
     commFrame:RegisterEvent("CHAT_MSG_SAY")
     commFrame:RegisterEvent("CHAT_MSG_EMOTE")
+    commFrame:RegisterEvent("CHAT_MSG_TEXT_EMOTE")
     commFrame:RegisterEvent("CHAT_MSG_YELL")
     commFrame:RegisterEvent("CHAT_MSG_ADDON")
     commFrame:RegisterEvent("CHAT_MSG_ADDON_LOGGED")
@@ -259,6 +351,16 @@ function ns:InitMSPProtocol()
                 local preview = string.gsub(string.sub(tostring(arg2 or ""), 1, 64), "[\000-\031]", "|")
                 ns:LogNet(event == "CHAT_MSG_ADDON_LOGGED" and "WIRE LOG" or "WIRE STD", "fffdd663", string.format("[%s] %s: %s", arg1, tostring(arg4 or "?"), preview))
             end
+        elseif event == "PLAYER_ENTERING_WORLD" then
+            if C_Timer and C_Timer.After then
+                C_Timer.After(2.5, function()
+                    ns:BackgroundSweepNearby(false)
+                end)
+            end
+        elseif event == "NAME_PLATE_UNIT_ADDED" then
+            if arg1 and UnitExists(arg1) and UnitIsPlayer(arg1) and UnitIsFriend("player", arg1) and not UnitIsUnit(arg1, "player") then
+                EnqueuePassiveScan(arg1, false)
+            end
         elseif event == "PLAYER_TARGET_CHANGED" then
             if UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
                 ns:RequestUnitMSP("target", true, false)
@@ -267,16 +369,13 @@ function ns:InitMSPProtocol()
             if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
         elseif event == "UPDATE_MOUSEOVER_UNIT" then
             if not InCombatLockdown() and UnitExists("mouseover") and UnitIsPlayer("mouseover") and UnitIsFriend("player", "mouseover") and not UnitIsUnit("mouseover", "player") then
-                ns:RequestUnitMSP("mouseover", false, false)
+                ns:RequestUnitMSP("mouseover", false, false, true)
             end
         elseif event == "GROUP_ROSTER_UPDATE" then
             ns:BackgroundSweepNearby(false)
-        elseif event == "CHAT_MSG_SAY" or event == "CHAT_MSG_EMOTE" or event == "CHAT_MSG_YELL" then
+        elseif event == "CHAT_MSG_SAY" or event == "CHAT_MSG_EMOTE" or event == "CHAT_MSG_TEXT_EMOTE" or event == "CHAT_MSG_YELL" then
             if arg2 and arg2 ~= "" and not InCombatLockdown() then
-                local senderKey = ns:GetUnitKey(arg2)
-                if senderKey and senderKey ~= ns:GetUnitKey("player") then
-                    ns:RequestUnitMSP(arg2, false, false)
-                end
+                EnqueuePassiveScan(arg2, false)
             end
         end
     end)
