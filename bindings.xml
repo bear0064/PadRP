@@ -1,0 +1,20 @@
+<Bindings>
+    <Binding name="CLICK PadRP_ToggleUIButton:LeftButton" category="PadRP (Controller)">
+        Open / Close PadRP Menu
+    </Binding>
+    <Binding name="CLICK PadRP_QuickThankButton:LeftButton" category="PadRP (Controller)">
+        Quick Thank Target or Last Helper
+    </Binding>
+    <Binding name="CLICK PadRP_InspectTargetButton:LeftButton" category="PadRP (Controller)">
+        Inspect Target RP & Action Deck
+    </Binding>
+    <Binding name="CLICK PadRP_ToggleICButton:LeftButton" category="PadRP (Controller)">
+        Toggle In-Character / Out-of-Character
+    </Binding>
+    <Binding name="CLICK PadRP_CycleWalkUpButton:LeftButton" category="PadRP (Controller)">
+        Cycle Walk-Up RP Flag (Open / Ask / Closed)
+    </Binding>
+    <Binding name="CLICK PadRP_ToggleWalkButton:LeftButton" category="PadRP (Controller)">
+        Toggle RP Walk / Run Speed
+    </Binding>
+</Bindings>
