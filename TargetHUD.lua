@@ -5,7 +5,6 @@ local ldbObject
 local LDBIcon
 local fallbackMinimapBtn
 
--- Weak table keeps custom tracking state off Blizzard's global GameTooltip object (prevents taint)
 local tooltipState = setmetatable({}, { __mode = "k" })
 local isDecoratingTooltip = false
 
@@ -82,9 +81,6 @@ local function PopulateMinimapTooltip(tooltip)
     tooltip:AddLine("|cff8ab4f8Drag:|r Move Around Minimap", 0.75, 0.8, 0.88)
 end
 
--- =========================================================
--- TRP3-STYLE BRIEF PROFILE TOOLTIP (READS FROM BACKGROUND CACHE)
--- =========================================================
 local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
     if not tooltip or (tooltip.IsForbidden and tooltip:IsForbidden()) then return end
     if not ns.db or not ns.db.ui or not ns.db.ui.rpTooltip then return end
@@ -253,9 +249,6 @@ local function InitTooltipHook()
     end
 end
 
--- =========================================================
--- MINIMAP BUTTON & TARGET HUD (ONLY FOR HARD TARGETS)
--- =========================================================
 function ns:RefreshMinimapButton()
     if not ns.db or not ns.db.ui then return end
     ns.db.ui.minimapIcon = ns.db.ui.minimapIcon or { hide = false, minimapPos = 215 }
@@ -393,14 +386,14 @@ function ns:RefreshTargetHUD()
         local icDot = isIC and "|cff81c995[IC]|r" or "|cfff28b82[OOC]|r"
         local wuBadge = ns:GetTargetWalkUpInfo(data)
         local prefixBadges = wuBadge and (icDot .. " " .. wuBadge) or icDot
-        local cuStr = (data.CU and data.CU ~= "") and data.CU or "|cff9aa0a6Click to open Dossier|r"
+        local cuStr = (data.CU and data.CU ~= "") and data.CU or "|cff9aa0a6Focus / Click to open Dossier|r"
         hudFrame.subText:SetText(prefixBadges .. "  |cffe8eaed" .. cuStr .. "|r")
-        hudFrame.hintText:SetText("|cff81c995Click to Open Dossier Window|r")
+        hudFrame.hintText:SetText("|cff81c995Focus / Click to Open Dossier|r")
         hudFrame.accentBar:SetColorTexture(isIC and 0.51 or 0.95, isIC and 0.79 or 0.55, isIC and 0.58 or 0.51, 1)
     else
         hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. rawName .. "|r" .. noteTag)
         hudFrame.subText:SetText("|cff9aa0a6Standard Player (No RP Profile Cached)|r")
-        hudFrame.hintText:SetText("Click to Open Dossier / Add Note")
+        hudFrame.hintText:SetText("Focus / Click to Open Dossier")
         hudFrame.accentBar:SetColorTexture(0.35, 0.39, 0.46, 0.65)
     end
 

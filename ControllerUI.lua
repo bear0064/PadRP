@@ -47,12 +47,12 @@ local TOPIC_CONSENT_OPTIONS = {
 }
 
 local RP_STYLE_TOPICS = {
-    { key = "injury",        label = "Injury",           defaultVal = "With player permission" },
-    { key = "death",         label = "Death",            defaultVal = "No" },
-    { key = "romance",       label = "Romance",          defaultVal = "Do not show" },
-    { key = "criminal",      label = "Criminal",         defaultVal = "Yes" },
-    { key = "lossOfControl", label = "Loss of Control",  defaultVal = "No" },
-    { key = "guild",         label = "Guild Visibility", defaultVal = "Do not show" },
+    { key = "injury",        label = "Accept character injury",   defaultVal = "With player permission" },
+    { key = "death",         label = "Accept character death",    defaultVal = "No" },
+    { key = "romance",       label = "Accept character romance",  defaultVal = "Do not show" },
+    { key = "criminal",      label = "Accept criminal activity",  defaultVal = "Yes" },
+    { key = "lossOfControl", label = "Accept loss of control",    defaultVal = "No" },
+    { key = "guild",         label = "Guild membership",          defaultVal = "Do not show" },
 }
 
 local MODE_LIST = {
@@ -162,6 +162,8 @@ local function EnsureTopicConsentTable()
             ns.profile.rpStyleTopics[t.key] = t.defaultVal
         end
     end
+    if ns.profile.lgbtqFriendly == nil then ns.profile.lgbtqFriendly = true end
+    if ns.profile.erpFriendly == nil then ns.profile.erpFriendly = false end
     return ns.profile.rpStyleTopics
 end
 
@@ -304,9 +306,15 @@ local function SyncSelfProfileToLocalCache()
     ns.mspCache = ns.mspCache or {}
     local p = ns.profile
     local custom = NormalizeHex6(p.classColorHex or p.nameColorHex)
+    local eyeHex = NormalizeHex6(p.eyeColorHex)
     local cuText = tostring(p.currently or "")
     local fullName = BuildSelfFullName()
     local matchedAny = false
+
+    local eyeFormatted = p.eyeColor or ""
+    if strtrim(StripColorCodes(eyeFormatted)) ~= "" and eyeHex then
+        eyeFormatted = "|cff" .. eyeHex .. strtrim(StripColorCodes(eyeFormatted)) .. "|r"
+    end
 
     for k, rec in pairs(ns.mspCache) do
         if type(rec) == "table" and IsPlayerSelfKey(k) then
@@ -315,6 +323,8 @@ local function SyncSelfProfileToLocalCache()
             if p.title and p.title ~= "" then rec.NT = p.title end
             if p.houseName and p.houseName ~= "" then rec.NH = p.houseName end
             if p.race and p.race ~= "" then rec.RA = p.race end
+            if p.gender and p.gender ~= "" then rec.GN = p.gender end
+            if eyeFormatted ~= "" then rec.AE = eyeFormatted end
             rec.FC = p.isIC and "2" or "1"
             if rec.RC and strtrim(StripColorCodes(rec.RC)) ~= "" then
                 local plainRC = StripColorCodes(rec.RC)
@@ -336,6 +346,8 @@ local function SyncSelfProfileToLocalCache()
             NT = p.title or "",
             NH = p.houseName or "",
             RA = p.race or "",
+            GN = p.gender or "",
+            AE = eyeFormatted,
             RC = (p.class and strtrim(p.class) ~= "") and (custom and ("|cff" .. custom .. strtrim(p.class) .. "|r") or strtrim(p.class)) or "",
             CU = cuText,
             FC = p.isIC and "2" or "1",
@@ -380,6 +392,14 @@ local function RefreshEyeSwatchBox()
     local eyeHex = NormalizeHex6((ns.profile and ns.profile.eyeColorHex) or (ns.profile and ns.profile.eyeColor))
     swatch.activeHex6 = eyeHex
     ApplySwatchVisual(swatch, eyeHex, ns.currentFocus == swatch)
+    if p1.eyBox and p1.eyBox.SetTextColor then
+        if eyeHex then
+            local r, g, b = HexToRGB(eyeHex)
+            p1.eyBox:SetTextColor(r, g, b, 1)
+        else
+            p1.eyBox:SetTextColor(0.91, 0.92, 0.93, 1)
+        end
+    end
 end
 
 local function RefreshClassSwatchBox()
@@ -485,8 +505,72 @@ local function LayoutRow(parent, y, items, padLeft, padRight, gap)
     end
 end
 
+local function UpdateControlStripLayout()
+    if not mainFrame or not mainFrame.controlBar then return end
+    local bar = mainFrame.controlBar
+    local barW = bar:GetWidth()
+    if not barW or barW < 200 then return end
+
+    local pad = 8
+    local gap = 6
+    local closeW = 28
+    local icW = 126
+    local wuW = 128
+    local expW = 104
+    local arrowW = 20
+
+    local closeBtn = mainFrame.closeBtn
+    local icSwitch = mainFrame.icSwitch
+    local walkUpBtn = mainFrame.walkUpBtn
+    local bannerExpBtn = mainFrame.bannerExpBtn
+    local profNextBtn = mainFrame.profNextBtn
+    local profChip = mainFrame.profChip
+    local profPrevBtn = mainFrame.profPrevBtn
+
+    if closeBtn then
+        closeBtn:ClearAllPoints()
+        closeBtn:SetSize(closeW, 26)
+        closeBtn:SetPoint("RIGHT", bar, "RIGHT", -pad, 0)
+    end
+    if icSwitch then
+        icSwitch:ClearAllPoints()
+        icSwitch:SetSize(icW, 26)
+        icSwitch:SetPoint("RIGHT", closeBtn, "LEFT", -gap, 0)
+    end
+    if walkUpBtn then
+        walkUpBtn:ClearAllPoints()
+        walkUpBtn:SetSize(wuW, 26)
+        walkUpBtn:SetPoint("RIGHT", icSwitch, "LEFT", -gap, 0)
+    end
+    if bannerExpBtn then
+        bannerExpBtn:ClearAllPoints()
+        bannerExpBtn:SetSize(expW, 26)
+        bannerExpBtn:SetPoint("RIGHT", walkUpBtn, "LEFT", -gap, 0)
+    end
+
+    local rightUsed = pad + closeW + gap + icW + gap + wuW + gap + expW + gap + pad
+    local chipW = math.max(64, math.min(120, barW - rightUsed - (arrowW * 2) - 4))
+
+    if profPrevBtn then
+        profPrevBtn:ClearAllPoints()
+        profPrevBtn:SetSize(arrowW, 24)
+        profPrevBtn:SetPoint("LEFT", bar, "LEFT", pad, 0)
+    end
+    if profChip then
+        profChip:ClearAllPoints()
+        profChip:SetSize(chipW, 24)
+        profChip:SetPoint("LEFT", profPrevBtn, "RIGHT", 2, 0)
+    end
+    if profNextBtn then
+        profNextBtn:ClearAllPoints()
+        profNextBtn:SetSize(arrowW, 24)
+        profNextBtn:SetPoint("LEFT", profChip, "RIGHT", 2, 0)
+    end
+end
+
 local function UpdateResponsiveLayouts()
     if not mainFrame or not tabPanels[1] then return end
+    UpdateControlStripLayout()
 
     local p1 = tabPanels[1]
     if p1 and p1.coreSubBtn then
@@ -505,10 +589,11 @@ local function UpdateResponsiveLayouts()
             }, 16, 16, 10)
 
             LayoutRow(pc, -73, {
-                { w = p1.raBox,          weight = 0.33 },
-                { w = p1.clBox,          weight = 0.37 },
+                { w = p1.raBox,          weight = 0.30 },
+                { w = p1.clBox,          weight = 0.34 },
                 { w = p1.classSwatchBtn, fixed = 28 },
-                { w = p1.prBox,          weight = 0.30 },
+                { w = p1.gnBox,          weight = 0.18 },
+                { w = p1.prBox,          weight = 0.18 },
             }, 16, 16, 8)
 
             LayoutRow(pc, -125, {
@@ -571,7 +656,12 @@ local function UpdateResponsiveLayouts()
                 }, 16, 16, 8)
             end
 
-            LayoutRow(pd, -246, {
+            LayoutRow(pd, -236, {
+                { w = p1.lgbtqBtn, weight = 1 },
+                { w = p1.erpBtn,   weight = 1 },
+            }, 16, 16, 8)
+
+            LayoutRow(pd, -268, {
                 { w = p1.profNameBox, weight = 1 },
                 { w = p1.newProfBtn,  fixed = 148 },
                 { w = p1.delProfBtn,  fixed = 166 },
@@ -868,7 +958,7 @@ local function UpdateTabBarLayout()
             else
                 tb:SetWidth(btnW)
                 tb:ClearAllPoints()
-                tb:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 12 + (i - 1) * (btnW + gap), -73)
+                tb:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 12 + (i - 1) * (btnW + gap), -108)
                 tb:Show()
             end
         end
@@ -931,7 +1021,7 @@ local function InitNetInspectorWindow()
     title:SetPoint("TOPLEFT", 12, -10)
     title:SetText("|cff8ab4f8PADRP NETWORK & WIRE INSPECTOR|r  |cff9aa0a6(Noise-Free Console)|r")
 
-    local closeBtn = ns:CreateMaterialButton(inspectorFrame, "X", 26, 22, 504, -6, "CORAL", function()
+    local closeBtn = ns:CreateMaterialButton(inspectorFrame, "X", 28, 24, 504, -6, "CORAL", function()
         inspectorFrame:Hide()
     end)
     closeBtn:ClearAllPoints()
@@ -1208,6 +1298,7 @@ function ns:LoadProfileIntoUI()
         p1.tiBox:SetCleanText(p.title)
         p1.raBox:SetCleanText(p.race)
         p1.clBox:SetCleanText(p.class)
+        p1.gnBox:SetCleanText(p.gender)
         p1.prBox:SetCleanText(p.pronouns)
         p1.agBox:SetCleanText(p.age)
         p1.htBox:SetCleanText(p.height)
@@ -1255,6 +1346,7 @@ local function CommitModifiedBoxesToProfile(forceAll)
         CheckBox(p1.tiBox, "title")
         CheckBox(p1.raBox, "race")
         CheckBox(p1.clBox, "class")
+        CheckBox(p1.gnBox, "gender")
         CheckBox(p1.prBox, "pronouns")
         CheckBox(p1.agBox, "age")
         CheckBox(p1.htBox, "height")
@@ -1359,22 +1451,28 @@ local function RefreshHeaderBanner()
     mainFrame.bannerName:SetText("|c" .. activeHex .. fullName .. "|r")
 
     local guildVis = GetTopicConsentValue("guild", "Do not show")
-    local showHouse = (guildVis ~= "Do not show") and p.houseName and strtrim(p.houseName) ~= ""
-    local titlePart = (p.title and strtrim(p.title) ~= "") and ("|cfffdd663<" .. strtrim(p.title) .. ">|r") or ""
-    local housePart = showHouse and ("  |cff8ab4f8-  " .. strtrim(p.houseName) .. "|r") or ""
-    local curClean = p.currently and strtrim(StripColorCodes(p.currently)) or ""
-    local curPart = ""
-    if curClean ~= "" then
-        local shortCur = string.sub(curClean, 1, 34)
-        if #curClean > 34 then shortCur = shortCur .. "..." end
-        local joiner = (titlePart ~= "" or housePart ~= "") and "  |cff5f6368•|r  " or ""
-        curPart = joiner .. "|cff81c995\"" .. shortCur .. "\"|r"
+    local wowGuild = (guildVis == "Yes" and GetGuildInfo and GetGuildInfo("player")) or ""
+    local houseClean = (p.houseName and strtrim(p.houseName)) or ""
+    local guildPart = ""
+    if wowGuild ~= "" and string.lower(wowGuild) ~= string.lower(houseClean) then
+        guildPart = "  |cff81c995<" .. wowGuild .. ">|r"
     end
-    local subtitleText = titlePart .. housePart .. curPart
-    if subtitleText == "" then
-        subtitleText = "|cff9aa0a6No RP Title|r"
+
+    local titlePart = (p.title and p.title ~= "") and ("|cfffdd663<" .. p.title .. ">|r") or "|cff9aa0a6No RP Title|r"
+    local housePart = (houseClean ~= "") and ("  |cff8ab4f8-  " .. houseClean .. "|r") or ""
+    mainFrame.bannerTitle:SetText(titlePart .. housePart .. guildPart)
+
+    if mainFrame.bannerCurrently then
+        local curClean = p.currently and strtrim(StripColorCodes(p.currently)) or ""
+        if curClean ~= "" then
+            local shortCur = string.sub(curClean, 1, 56)
+            if #curClean > 56 then shortCur = shortCur .. "..." end
+            mainFrame.bannerCurrently:SetText("|cff9aa0a6Currently:|r |cffe8eaed" .. shortCur .. "|r")
+        else
+            mainFrame.bannerCurrently:SetText("")
+        end
     end
-    mainFrame.bannerTitle:SetText(subtitleText)
+
     mainFrame.profChip:SetText(p.profileName or "Default")
 
     if mainFrame.bannerExpBtn then
@@ -1614,6 +1712,7 @@ function ns:RefreshControllerUI()
     SyncBox(p1.tiBox, p.title)
     SyncBox(p1.raBox, p.race)
     SyncBox(p1.clBox, p.class)
+    SyncBox(p1.gnBox, p.gender)
     SyncBox(p1.prBox, p.pronouns)
     SyncBox(p1.agBox, p.age)
     SyncBox(p1.htBox, p.height)
@@ -1650,6 +1749,15 @@ function ns:RefreshControllerUI()
                 btn:SetText(FormatTopicButtonText(t.label, curVal))
             end
         end
+    end
+
+    if p1.lgbtqBtn then
+        p1.lgbtqBtn:SetText(FormatCheckbox("LGBTQIA2S+ Friendly", p.lgbtqFriendly ~= false, "ff81c995"))
+        p1.lgbtqBtn:SetTone(p.lgbtqFriendly ~= false and "MINT" or nil)
+    end
+    if p1.erpBtn then
+        p1.erpBtn:SetText(FormatCheckbox("ERP Friendly", p.erpFriendly and true or false, "fffdd663"))
+        p1.erpBtn:SetTone(p.erpFriendly and "AMBER" or nil)
     end
 
     local p2 = tabPanels[2]
@@ -1764,11 +1872,11 @@ local function PersistColorSelection(mode, hex6, returnWidget)
         ns.profile.nameColorHex = hex6
         RefreshClassSwatchBox()
         RefreshHeaderBanner()
-        SyncSelfProfileToLocalCache()
         ns:RefreshTargetCard()
     end
     if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
     if ns.SyncMSP then ns:SyncMSP() end
+    SyncSelfProfileToLocalCache()
     local label = (mode == "EYE") and "Eye color" or "Class & Name color"
     ns:ShowStatusToast(label .. " set to #" .. string.upper(hex6))
     if returnWidget and returnWidget:IsVisible() then
@@ -1810,9 +1918,9 @@ local function OpenNativeColorPicker(mode, returnWidget)
             ns.profile.nameColorHex = liveHex6
             RefreshClassSwatchBox()
             RefreshHeaderBanner()
-            SyncSelfProfileToLocalCache()
             ns:RefreshTargetCard()
         end
+        SyncSelfProfileToLocalCache()
     end
 
     local function CancelRGB()
@@ -1827,7 +1935,6 @@ local function OpenNativeColorPicker(mode, returnWidget)
             ns.profile.nameColorHex = prevHex
             RefreshClassSwatchBox()
             RefreshHeaderBanner()
-            SyncSelfProfileToLocalCache()
             ns:RefreshTargetCard()
         end
         if prevHex and ColorPickerFrame.SetColorRGB then
@@ -1836,6 +1943,7 @@ local function OpenNativeColorPicker(mode, returnWidget)
         end
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
         if ns.SyncMSP then ns:SyncMSP() end
+        SyncSelfProfileToLocalCache()
         ns:RefreshControllerUI()
         ns:ShowStatusToast("Color change cancelled")
         if returnWidget and returnWidget:IsVisible() then
@@ -2097,7 +2205,7 @@ function ns:InitControllerUI()
     picker.title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     picker.title:SetPoint("TOPLEFT", 16, -12)
 
-    ns:CreateMaterialButton(picker, "X", 26, 22, 476, -8, "CORAL", function()
+    ns:CreateMaterialButton(picker, "X", 28, 24, 476, -8, "CORAL", function()
         picker:Hide()
         if picker.returnFocusWidget and picker.returnFocusWidget:IsVisible() then
             ns:SetControllerFocus(picker.returnFocusWidget)
@@ -2309,37 +2417,76 @@ function ns:InitControllerUI()
     end
     mainFrame.iconPicker = picker
 
+    -- =========================================================
+    -- 1. TOP PROFILE BANNER (CHARACTER INFO + GREEN GUILD + CURRENTLY)
+    -- =========================================================
     local banner = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
-    banner:SetHeight(56)
-    banner:SetPoint("TOPLEFT", 12, -12)
-    banner:SetPoint("TOPRIGHT", -12, -12)
+    banner:SetHeight(50)
+    banner:SetPoint("TOPLEFT", 12, -10)
+    banner:SetPoint("TOPRIGHT", -12, -10)
     ns:ApplySurface(banner, M3.surfaceLow, M3.outline)
     ns:EnableClipping(banner)
 
     local portraitBtn = CreateFrame("Button", nil, banner, "BackdropTemplate")
-    portraitBtn:SetSize(40, 40)
-    portraitBtn:SetPoint("TOPLEFT", 8, -8)
+    portraitBtn:SetSize(38, 38)
+    portraitBtn:SetPoint("LEFT", banner, "LEFT", 6, 0)
     ns:ApplySurface(portraitBtn, M3.surface, M3.primary)
     mainFrame.portraitBtn = portraitBtn
     mainFrame.portraitTex = portraitBtn:CreateTexture(nil, "ARTWORK")
-    mainFrame.portraitTex:SetSize(34, 34)
+    mainFrame.portraitTex:SetSize(32, 32)
     mainFrame.portraitTex:SetPoint("CENTER")
     mainFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     portraitBtn:SetScript("OnEnter", function(self) ns:SetControllerFocus(self) end)
     portraitBtn:SetScript("OnClick", function(self) ns:PlayUISound(); picker:OpenForPortrait(self) end)
     ns:RegisterFocusable(portraitBtn, function() portraitBtn:Click("LeftButton") end)
 
-    local closeBtn = ns:CreateMaterialButton(banner, "X", 26, 32, 0, -12, "CORAL", function() mainFrame:Hide() end)
-    closeBtn:ClearAllPoints()
-    closeBtn:SetPoint("RIGHT", banner, "RIGHT", -8, 0)
+    mainFrame.bannerName = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    mainFrame.bannerName:SetPoint("TOPLEFT", banner, "TOPLEFT", 52, -6)
+    mainFrame.bannerName:SetPoint("RIGHT", banner, "RIGHT", -12, 0)
+    mainFrame.bannerName:SetJustifyH("LEFT")
+    mainFrame.bannerName:SetWordWrap(false)
 
-    local icSwitch = CreateFrame("Button", nil, banner, "BackdropTemplate")
-    icSwitch:SetSize(136, 32)
-    icSwitch:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
+    mainFrame.bannerTitle = banner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    mainFrame.bannerTitle:SetPoint("TOPLEFT", banner, "TOPLEFT", 52, -23)
+    mainFrame.bannerTitle:SetPoint("RIGHT", banner, "RIGHT", -12, 0)
+    mainFrame.bannerTitle:SetJustifyH("LEFT")
+    mainFrame.bannerTitle:SetWordWrap(false)
+
+    mainFrame.bannerCurrently = banner:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    mainFrame.bannerCurrently:SetPoint("TOPLEFT", banner, "TOPLEFT", 52, -37)
+    mainFrame.bannerCurrently:SetPoint("RIGHT", banner, "RIGHT", -12, 0)
+    mainFrame.bannerCurrently:SetJustifyH("LEFT")
+    mainFrame.bannerCurrently:SetWordWrap(false)
+
+    -- =========================================================
+    -- 2. QUICK CONTROL STRIP (BELOW PROFILE BANNER)
+    -- =========================================================
+    local controlBar = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
+    controlBar:SetHeight(34)
+    controlBar:SetPoint("TOPLEFT", 12, -64)
+    controlBar:SetPoint("TOPRIGHT", -12, -64)
+    ns:ApplySurface(controlBar, M3.surface, M3.outline)
+    ns:EnableClipping(controlBar)
+    mainFrame.controlBar = controlBar
+
+    local profPrevBtn = ns:CreateMaterialButton(controlBar, "<", 20, 24, 8, -5, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(-1) end)
+    local profChip = ns:CreateMaterialButton(controlBar, "Profile", 84, 24, 30, -5, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
+    local profNextBtn = ns:CreateMaterialButton(controlBar, ">", 20, 24, 116, -5, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
+    mainFrame.profPrevBtn = profPrevBtn
+    mainFrame.profChip = profChip
+    mainFrame.profNextBtn = profNextBtn
+
+    local closeBtn = ns:CreateMaterialButton(controlBar, "X", 28, 26, 0, -4, "CORAL", function() mainFrame:Hide() end)
+    closeBtn.label:ClearAllPoints()
+    closeBtn.label:SetPoint("CENTER", 0, 0)
+    mainFrame.closeBtn = closeBtn
+
+    local icSwitch = CreateFrame("Button", nil, controlBar, "BackdropTemplate")
+    icSwitch:SetSize(126, 26)
     ns:ApplySurface(icSwitch, M3.mintTonal, M3.mint)
     icSwitch.bgLabel = icSwitch:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     icSwitch.thumb = CreateFrame("Frame", nil, icSwitch, "BackdropTemplate")
-    icSwitch.thumb:SetSize(92, 26)
+    icSwitch.thumb:SetSize(84, 20)
     ns:ApplySurface(icSwitch.thumb, M3.mint, M3.outline)
     icSwitch.thumb.label = icSwitch.thumb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     icSwitch.thumb.label:SetPoint("CENTER")
@@ -2353,14 +2500,12 @@ function ns:InitControllerUI()
     ns:RegisterFocusable(icSwitch, function() icSwitch:Click("LeftButton") end)
     mainFrame.icSwitch = icSwitch
 
-    local walkUpBtn = ns:CreateMaterialButton(banner, "WALK-UPS: OPEN", 112, 32, 0, -12, "MINT", function()
+    local walkUpBtn = ns:CreateMaterialButton(controlBar, "WALK-UPS: OPEN", 128, 26, 0, -4, "MINT", function()
         local code = ns:CycleWalkUpStatus()
         RefreshHeaderBanner()
         if ns.RefreshMinimapButton then ns:RefreshMinimapButton() end
         ns:ShowStatusToast("Walk-Up Flag: " .. ns:GetWalkUpLabel(code))
     end)
-    walkUpBtn:ClearAllPoints()
-    walkUpBtn:SetPoint("RIGHT", icSwitch, "LEFT", -6, 0)
     mainFrame.walkUpBtn = walkUpBtn
 
     local expDropdown = CreateFrame("Frame", "PadRP_TopExpDropdown", mainFrame, "BackdropTemplate")
@@ -2394,7 +2539,7 @@ function ns:InitControllerUI()
     end
     mainFrame.expDropdown = expDropdown
 
-    local bannerExpBtn = ns:CreateMaterialButton(banner, "|cff8ab4f8RP:|r Normal [v]", 104, 32, 0, -12, nil, function(self)
+    local bannerExpBtn = ns:CreateMaterialButton(controlBar, "|cff8ab4f8RP:|r Normal [v]", 104, 26, 0, -4, nil, function(self)
         if mainFrame.presetDropdown then mainFrame.presetDropdown:Hide() end
         if mainFrame.modeDropdown then mainFrame.modeDropdown:Hide() end
         if mainFrame.poolDropdown then mainFrame.poolDropdown:Hide() end
@@ -2409,41 +2554,13 @@ function ns:InitControllerUI()
             ns:FocusFirstInScope()
         end
     end)
-    bannerExpBtn:ClearAllPoints()
-    bannerExpBtn:SetPoint("RIGHT", walkUpBtn, "LEFT", -6, 0)
     mainFrame.bannerExpBtn = bannerExpBtn
-
-    local profNextBtn = ns:CreateMaterialButton(banner, ">", 20, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
-    profNextBtn:ClearAllPoints()
-    profNextBtn:SetPoint("RIGHT", bannerExpBtn, "LEFT", -8, 0)
-
-    mainFrame.profChip = ns:CreateMaterialButton(banner, "Profile", 76, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
-    mainFrame.profChip:ClearAllPoints()
-    profNextBtn:ClearAllPoints()
-    profNextBtn:SetPoint("RIGHT", bannerExpBtn, "LEFT", -8, 0)
-    mainFrame.profChip:SetPoint("RIGHT", profNextBtn, "LEFT", -2, 0)
-
-    local profPrevBtn = ns:CreateMaterialButton(banner, "<", 20, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(-1) end)
-    profPrevBtn:ClearAllPoints()
-    profPrevBtn:SetPoint("RIGHT", mainFrame.profChip, "LEFT", -2, 0)
-
-    mainFrame.bannerName = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    mainFrame.bannerName:SetPoint("TOPLEFT", banner, "TOPLEFT", 56, -9)
-    mainFrame.bannerName:SetPoint("RIGHT", profPrevBtn, "LEFT", -8, 0)
-    mainFrame.bannerName:SetJustifyH("LEFT")
-    mainFrame.bannerName:SetWordWrap(false)
-
-    mainFrame.bannerTitle = banner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    mainFrame.bannerTitle:SetPoint("TOPLEFT", banner, "TOPLEFT", 56, -32)
-    mainFrame.bannerTitle:SetPoint("RIGHT", profPrevBtn, "LEFT", -8, 0)
-    mainFrame.bannerTitle:SetJustifyH("LEFT")
-    mainFrame.bannerTitle:SetWordWrap(false)
 
     local tabTitles = { "[LB] Identity", "First Glances", "Bio & Lore", "Directory", "Gratitude", "Settings [RB]", "Dev" }
     for i, title in ipairs(tabTitles) do
         local tb = CreateFrame("Button", nil, mainFrame, "BackdropTemplate")
         tb:SetSize(106, 30)
-        tb:SetPoint("TOPLEFT", 12 + (i - 1) * 110, -73)
+        tb:SetPoint("TOPLEFT", 12 + (i - 1) * 110, -108)
         ns:ApplySurface(tb, M3.surfaceLow, { 0, 0, 0, 0 })
         ns:EnableClipping(tb)
         tb.isTabBarBtn = true
@@ -2460,7 +2577,7 @@ function ns:InitControllerUI()
         tabButtons[i] = tb
 
         local panel = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
-        panel:SetPoint("TOPLEFT", 12, -106)
+        panel:SetPoint("TOPLEFT", 12, -142)
         panel:SetPoint("BOTTOMRIGHT", -12, 40)
         ns:ApplySurface(panel, M3.surfaceLow, M3.outline)
         ns:EnableClipping(panel)
@@ -2504,9 +2621,9 @@ function ns:InitControllerUI()
     p1.lnBox = ns:CreateMaterialEditBox(pageCore, "Last Name", "e.g., Gray", 282, -6, 150, 28, AutoCommitTab1)
     p1.tiBox = ns:CreateMaterialEditBox(pageCore, "Full RP Title", "e.g., Master Arcanist", 442, -6, 198, 28, AutoCommitTab1)
 
-    p1.raBox = ns:CreateMaterialEditBox(pageCore, "RP Race (Blank = Default)", "e.g., Human", 16, -58, 196, 28, AutoCommitTab1)
-    p1.clBox = ns:CreateMaterialEditBox(pageCore, "RP Class / Occupation", "e.g., Warlock", 222, -58, 168, 28, AutoCommitTab1)
-    p1.classSwatchBtn = CreateColorSwatchButton(pageCore, 398, -73, "CLASS", function()
+    p1.raBox = ns:CreateMaterialEditBox(pageCore, "RP Race (Blank = Default)", "e.g., Human", 16, -58, 180, 28, AutoCommitTab1)
+    p1.clBox = ns:CreateMaterialEditBox(pageCore, "RP Class / Occupation", "e.g., Warlock", 204, -58, 164, 28, AutoCommitTab1)
+    p1.classSwatchBtn = CreateColorSwatchButton(pageCore, 376, -73, "CLASS", function()
         ns.profile.classColorHex = nil
         ns.profile.nameColorHex = nil
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
@@ -2517,7 +2634,8 @@ function ns:InitControllerUI()
         ns:RefreshTargetCard()
         ns:ShowStatusToast("Class & Name color reset to default")
     end)
-    p1.prBox = ns:CreateMaterialEditBox(pageCore, "Pronouns", "e.g., He/Him", 436, -58, 204, 28, AutoCommitTab1)
+    p1.gnBox = ns:CreateMaterialEditBox(pageCore, "Gender", "e.g., Male", 412, -58, 110, 28, AutoCommitTab1)
+    p1.prBox = ns:CreateMaterialEditBox(pageCore, "Pronouns", "e.g., He/Him", 530, -58, 110, 28, AutoCommitTab1)
 
     p1.agBox = ns:CreateMaterialEditBox(pageCore, "Age", "e.g., 32", 16, -110, 110, 28, AutoCommitTab1)
     p1.htBox = ns:CreateMaterialEditBox(pageCore, "Height", "e.g., 6'0\" / Tall", 136, -110, 144, 28, AutoCommitTab1)
@@ -2528,6 +2646,7 @@ function ns:InitControllerUI()
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
         if ns.SyncMSP then ns:SyncMSP() end
         RefreshEyeSwatchBox()
+        SyncSelfProfileToLocalCache()
         ns:ShowStatusToast("Eye color swatch cleared")
     end)
 
@@ -2702,16 +2821,26 @@ function ns:InitControllerUI()
         local tBtn = ns:CreateMaterialButton(pageDetails, "", 202, 26, btnX, btnY, nil, function(self)
             local updated = CycleTopicConsent(t.key, t.defaultVal)
             self:SetText(FormatTopicButtonText(t.label, updated))
-            RefreshHeaderBanner()
             ns:ShowStatusToast(t.label .. ": " .. updated)
         end)
         tBtn.label:SetJustifyH("LEFT")
         p1.topicBtns[t.key] = tBtn
     end
 
-    p1.profNameBox = ns:CreateMaterialEditBox(pageDetails, "Active Profile Name", "e.g., Main Character", 16, -236, 250, 26, AutoCommitTab1)
-    p1.newProfBtn = ns:CreateMaterialButton(pageDetails, "+ New Profile", 148, 26, 278, -246, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
-    p1.delProfBtn = ns:CreateMaterialButton(pageDetails, "Delete Active Profile", 166, 26, 462, -246, "CORAL", function(self)
+    p1.lgbtqBtn = ns:CreateMaterialButton(pageDetails, "", 304, 24, 16, -236, "MINT", function()
+        ns.profile.lgbtqFriendly = not (ns.profile.lgbtqFriendly ~= false)
+        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        ns:RefreshControllerUI()
+    end)
+    p1.erpBtn = ns:CreateMaterialButton(pageDetails, "", 304, 24, 336, -236, nil, function()
+        ns.profile.erpFriendly = not (ns.profile.erpFriendly and true or false)
+        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        ns:RefreshControllerUI()
+    end)
+
+    p1.profNameBox = ns:CreateMaterialEditBox(pageDetails, "Active Profile Name", "e.g., Main Character", 16, -258, 250, 26, AutoCommitTab1)
+    p1.newProfBtn = ns:CreateMaterialButton(pageDetails, "+ New Profile", 148, 26, 278, -268, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
+    p1.delProfBtn = ns:CreateMaterialButton(pageDetails, "Delete Active Profile", 166, 26, 462, -268, "CORAL", function(self)
         local now = GetTime()
         if now < confirmDeleteProfileUntil then
             confirmDeleteProfileUntil = 0

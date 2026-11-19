@@ -87,6 +87,19 @@ local function CleanOOCDisplayText(raw)
     return strtrim(clean)
 end
 
+local function NormalizeHex6(raw)
+    if type(raw) ~= "string" then return nil end
+    local clean = string.gsub(strtrim(raw), "^#+", "")
+    clean = string.gsub(clean, "^|[cC]", "")
+    if string.match(clean, "^%x%x%x%x%x%x%x%x$") then
+        clean = string.sub(clean, 3, 8)
+    end
+    if string.match(clean, "^%x%x%x%x%x%x$") then
+        return string.lower(clean)
+    end
+    return nil
+end
+
 local function FormatRow(label, value, valueColorHex)
     if not value or strtrim(StripColorCodes(value)) == "" then return nil end
     local raw = strtrim(tostring(value))
@@ -100,6 +113,8 @@ local function BuildCharacteristicsText(data, isSelf)
     local lines = {}
     local basic = {}
     local classHex = (isSelf and ns.GetPlayerClassColorCode and ns:GetPlayerClassColorCode()) or nil
+    local eyeHex = (isSelf and ns.profile and NormalizeHex6(ns.profile.eyeColorHex)) or nil
+    local eyeColorCode = eyeHex and ("ff" .. eyeHex) or nil
 
     local function AddBasic(lbl, val, hex)
         local r = FormatRow(lbl, val, hex)
@@ -108,11 +123,12 @@ local function BuildCharacteristicsText(data, isSelf)
 
     AddBasic("Race", data.RA)
     AddBasic("Class", StripColorCodes(data.RC or ""), classHex)
+    AddBasic("Gender", data.GN or (isSelf and ns.profile and ns.profile.gender))
     AddBasic("Pronouns", data.PR or (isSelf and ns.profile and ns.profile.pronouns))
     AddBasic("Age", data.AG)
     AddBasic("Height", data.AH)
     AddBasic("Build / Body Shape", data.AW)
-    AddBasic("Eye Color", data.AE)
+    AddBasic("Eye Color", StripColorCodes(data.AE or ""), eyeColorCode)
     AddBasic("Birthplace", data.HB)
     AddBasic("Residence", data.HH)
     if data.RS and data.RS ~= "" and data.RS ~= "0" then
@@ -144,23 +160,45 @@ local function BuildCharacteristicsText(data, isSelf)
         table.insert(lines, "|cfffdd663ADDITIONAL INFORMATION|r\n" .. table.concat(extra, "\n"))
     end
 
-    if isSelf and ns.profile and type(ns.profile.rpStyleTopics) == "table" then
-        local t = ns.profile.rpStyleTopics
-        local prefs = {}
-        local function AddPref(lbl, val)
-            if val and val ~= "" and val ~= "Do not show" then
-                table.insert(prefs, string.format("|cff9aa0a6%s:|r |cffe8eaed%s|r", lbl, val))
+    if isSelf and ns.profile then
+        local styleLines = {}
+        if type(ns.profile.rpStyleTopics) == "table" then
+            local t = ns.profile.rpStyleTopics
+            local function AddStyleRow(lbl, val)
+                if val and val ~= "" then
+                    table.insert(styleLines, string.format("|cff9aa0a6%s:|r |cffe8eaed%s|r", lbl, val))
+                end
+            end
+            AddStyleRow("Accept character injury", t.injury)
+            AddStyleRow("Accept character death", t.death)
+            AddStyleRow("Accept character romance", t.romance)
+            AddStyleRow("Accept criminal activity", t.criminal)
+            AddStyleRow("Accept loss of control", t.lossOfControl)
+            if t.guild == "Yes" then
+                local wowGuild = (GetGuildInfo and GetGuildInfo("player")) or ""
+                AddStyleRow("Guild membership", wowGuild ~= "" and wowGuild or "Yes")
+            elseif t.guild and t.guild ~= "" then
+                AddStyleRow("Guild membership", t.guild)
             end
         end
-        AddPref("Injury", t.injury)
-        AddPref("Death", t.death)
-        AddPref("Romance", t.romance)
-        AddPref("Criminal", t.criminal)
-        AddPref("Loss of Control", t.lossOfControl)
-        AddPref("Guild Visibility", t.guild)
-        if #prefs > 0 then
-            table.insert(lines, "|cff8ab4f8ROLEPLAY PREFERENCES|r\n" .. table.concat(prefs, "\n"))
+
+        if #styleLines > 0 then
+            table.insert(lines, "|cff8ab4f8ROLEPLAY STYLE|r\n" .. table.concat(styleLines, "\n"))
         end
+
+        local oocLines = {}
+        local oocRaw = ns.profile.oocNotes or ns.profile.oocInfo
+        local oocOnly = CleanOOCDisplayText(oocRaw)
+        if oocOnly ~= "" then
+            table.insert(oocLines, oocOnly)
+        end
+        local lgbtqText = (ns.profile.lgbtqFriendly ~= false) and "|cff81c995Yes|r" or "|cff9aa0a6No|r"
+        local erpText = ns.profile.erpFriendly and "|cfffdd663Yes|r" or "|cff9aa0a6No|r"
+        table.insert(oocLines, "|cff9aa0a6LGBTQIA2S+ friendly:|r " .. lgbtqText)
+        table.insert(oocLines, "|cff9aa0a6ERP:|r " .. erpText)
+        table.insert(lines, "|cff81c995OTHER INFORMATION (OOC)|r\n" .. table.concat(oocLines, "\n"))
+    elseif data.CO and CleanOOCDisplayText(data.CO) ~= "" then
+        table.insert(lines, "|cff81c995OTHER INFORMATION (OOC)|r\n" .. CleanOOCDisplayText(data.CO))
     end
 
     local cuVal = (isSelf and ns.profile and ns.profile.currently) or data.CU
@@ -210,14 +248,8 @@ local function BuildGlancesStatusText(data, isSelf)
         table.insert(lines, "|cff8ab4f8CURRENTLY|r\n" .. strtrim(cuVal))
     end
 
-    local oocRaw = (isSelf and ns.profile and (ns.profile.oocNotes or ns.profile.oocInfo)) or data.CO
-    local oocOnly = CleanOOCDisplayText(oocRaw)
-    if oocOnly ~= "" then
-        table.insert(lines, "|cff81c995OTHER INFORMATION (OOC)|r\n" .. oocOnly)
-    end
-
     if #lines == 0 then
-        return "|cff9aa0a6No First Glances, Currently, or OOC notes found in this profile.|r"
+        return "|cff9aa0a6No First Glances or Currently status listed in this profile.|r"
     end
     return table.concat(lines, "\n\n")
 end
@@ -377,9 +409,19 @@ function ns:RefreshDossierWindow()
             dossierFrame.scrollText:SetWidth(scrollW - 16)
         end
         local textH = dossierFrame.scrollText:GetStringHeight() or 140
-        dossierFrame.scrollChild:SetHeight(math.max(180, textH + 28))
+        local viewH = dossierFrame.scrollFrame:GetHeight() or 360
+        dossierFrame.scrollChild:SetHeight(math.max(viewH, textH + 28))
         if dossierFrame.scrollFrame.SetVerticalScroll then
             dossierFrame.scrollFrame:SetVerticalScroll(0)
+        end
+
+        local sb = dossierFrame.scrollFrame.ScrollBar or _G[dossierFrame.scrollFrame:GetName() .. "ScrollBar"]
+        if sb then
+            if (textH + 20) > viewH then
+                sb:Show()
+            else
+                sb:Hide()
+            end
         end
     end
 end
@@ -484,7 +526,7 @@ function ns:InitDossierWindow()
     ns:EnableClipping(readerBox)
     dossierFrame.readerBox = readerBox
 
-    local scrollFrame = CreateFrame("ScrollFrame", nil, readerBox, "UIPanelScrollFrameTemplate")
+    local scrollFrame = CreateFrame("ScrollFrame", "PadRP_DossierScrollFrame", readerBox, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", 12, -10)
     scrollFrame:SetPoint("BOTTOMRIGHT", -28, 10)
     ns:EnableClipping(scrollFrame)
