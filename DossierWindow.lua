@@ -581,14 +581,6 @@ function ns:InitDossierWindow()
     noteHint:SetPoint("LEFT", dossierFrame.standingBtn, "RIGHT", 10, 0)
     noteHint:SetText("|cff9aa0a6Saved notes display a |TInterface\\Icons\\INV_Misc_Note_01:13:13|t icon in tooltips.|r")
 
-    local saveNotesBtn = ns:CreateMaterialButton(notesPanel, "Save Notes", 96, 26, 0, 0, "MINT", function()
-        SaveCurrentNotes()
-        ns:RefreshDossierWindow()
-        if ns.ShowStatusToast then ns:ShowStatusToast("Saved character & account notes") end
-    end)
-    saveNotesBtn:ClearAllPoints()
-    saveNotesBtn:SetPoint("TOPRIGHT", notesPanel, "TOPRIGHT", -12, -10)
-
     dossierFrame.charNoteLabel = notesPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     dossierFrame.charNoteLabel:SetPoint("TOPLEFT", 12, -44)
     dossierFrame.charNoteLabel:SetText("|cff81c995Character-Specific Notes|r")

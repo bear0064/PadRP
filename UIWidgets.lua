@@ -120,8 +120,10 @@ end
 
 function ns:UpdateControllerBindings()
     local owner = EnsureBindingOwner()
-    local anyOpen = (ns.dossierFrame and ns.dossierFrame:IsShown())
+    local modalOpen = (ns.dossierFrame and ns.dossierFrame:IsShown())
         or (ns.mainFrame and ns.mainFrame:IsShown())
+    local hudFocused = (ns.hudFrame and ns.hudFrame:IsShown() and ns.currentFocus == ns.hudFrame)
+    local anyOpen = modalOpen or hudFocused
 
     if not anyOpen then
         ns:SetControllerFocus(nil)
@@ -153,13 +155,20 @@ function ns:GetActiveModalScope()
     end
 
     local mf = ns.mainFrame
-    if not mf or not mf:IsShown() then return nil end
-    if mf.iconPicker and mf.iconPicker:IsShown() then return mf.iconPicker end
-    if mf.exportModal and mf.exportModal:IsShown() then return mf.exportModal end
-    if mf.presetDropdown and mf.presetDropdown:IsShown() then return mf.presetDropdown end
-    if mf.modeDropdown and mf.modeDropdown:IsShown() then return mf.modeDropdown end
-    if mf.poolDropdown and mf.poolDropdown:IsShown() then return mf.poolDropdown end
-    return mf
+    if mf and mf:IsShown() then
+        if mf.iconPicker and mf.iconPicker:IsShown() then return mf.iconPicker end
+        if mf.exportModal and mf.exportModal:IsShown() then return mf.exportModal end
+        if mf.presetDropdown and mf.presetDropdown:IsShown() then return mf.presetDropdown end
+        if mf.modeDropdown and mf.modeDropdown:IsShown() then return mf.modeDropdown end
+        if mf.poolDropdown and mf.poolDropdown:IsShown() then return mf.poolDropdown end
+        return mf
+    end
+
+    if ns.hudFrame and ns.hudFrame:IsShown() and ns.currentFocus == ns.hudFrame then
+        return ns.hudFrame
+    end
+
+    return nil
 end
 
 function ns:SetControllerFocus(widget)
@@ -200,6 +209,11 @@ function ns:FocusFirstInScope()
     local scope = ns:GetActiveModalScope()
     if not scope or not scope:IsShown() then
         ns:SetControllerFocus(nil)
+        return
+    end
+
+    if scope == ns.hudFrame then
+        ns:SetControllerFocus(ns.hudFrame)
         return
     end
 
@@ -256,19 +270,6 @@ function ns:MoveControllerFocus(dir)
     end
 
     local cur = ns.currentFocus
-
-    if dir == "UP" or dir == "DOWN" then
-        local stepPx = (dir == "DOWN") and 56 or -56
-        if cur and cur.scrollFrame then
-            if ScrollFrameByDelta(cur.scrollFrame, stepPx) then
-                return
-            end
-        elseif scope == ns.dossierFrame and ns.dossierFrame.scrollFrame and ns.dossierFrame.readerBox and ns.dossierFrame.readerBox:IsShown() then
-            if ScrollFrameByDelta(ns.dossierFrame.scrollFrame, stepPx) then
-                return
-            end
-        end
-    end
 
     if cur and cur.directoryRowIndex and (dir == "UP" or dir == "DOWN") and ns.TrySeamlessDirectoryStep then
         if ns:TrySeamlessDirectoryStep(cur.directoryRowIndex, dir) then
@@ -328,6 +329,26 @@ function ns:MoveControllerFocus(dir)
     if bestCandidate then
         ns:PlayUISound()
         ns:SetControllerFocus(bestCandidate)
+        if bestCandidate.glanceScrollFrame and bestCandidate.glanceIndex then
+            local sf = bestCandidate.glanceScrollFrame
+            local maxS = (sf.GetVerticalScrollRange and sf:GetVerticalScrollRange()) or 0
+            if maxS > 0 then
+                local targetScroll = math.max(0, math.min(maxS, (bestCandidate.glanceIndex - 1) * 112))
+                sf:SetVerticalScroll(targetScroll)
+            end
+        end
+        return
+    end
+
+    if dir == "UP" or dir == "DOWN" then
+        local stepPx = (dir == "DOWN") and 96 or -96
+        if cur.scrollFrame and ScrollFrameByDelta(cur.scrollFrame, stepPx) then
+            return
+        elseif cur.glanceScrollFrame and ScrollFrameByDelta(cur.glanceScrollFrame, stepPx) then
+            return
+        elseif scope == ns.dossierFrame and ns.dossierFrame.scrollFrame and ns.dossierFrame.readerBox and ns.dossierFrame.readerBox:IsShown() then
+            ScrollFrameByDelta(ns.dossierFrame.scrollFrame, stepPx)
+        end
     end
 end
 
@@ -381,6 +402,7 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
         box:SetFocus()
         box:SetCursorPosition(#(box:GetText() or ""))
     end)
+    box.padBtn = padBtn
 
     local function UpdatePlaceholder(self)
         if self:GetText() == "" and not self:HasFocus() then self.placeholder:Show() else self.placeholder:Hide() end
@@ -389,6 +411,9 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
     box.SetCleanText = function(self, txt)
         self.isDirty = false
         self:SetText(txt or "")
+        if self.SetCursorPosition then
+            self:SetCursorPosition(0)
+        end
         UpdatePlaceholder(self)
     end
 

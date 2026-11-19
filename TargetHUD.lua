@@ -4,6 +4,7 @@ local hudFrame
 local ldbObject
 local LDBIcon
 local fallbackMinimapBtn
+local hudDismissedKey = nil
 
 local tooltipState = setmetatable({}, { __mode = "k" })
 local isDecoratingTooltip = false
@@ -46,6 +47,42 @@ local function CleanOOCTooltipText(raw)
     clean = clean:gsub("^%s*[•|%-]+%s*", "")
     clean = clean:gsub("%s*[•|%-]+%s*$", "")
     return strtrim(clean)
+end
+
+local function GetActiveOtherPlayerUnit()
+    if UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
+        return "target"
+    end
+    if UnitExists("mouseover") and UnitIsPlayer("mouseover") and not UnitIsUnit("mouseover", "player") then
+        return "mouseover"
+    end
+    return nil
+end
+
+local function RegisterHUDWithConsolePort()
+    if not hudFrame or not ConsolePort then return end
+    pcall(function()
+        hudFrame:SetAttribute("UIPanelLayout-enabled", true)
+        hudFrame:SetAttribute("UIPanelLayout-area", "center")
+        if ConsolePort.AddInterfaceCursorFrame then
+            ConsolePort:AddInterfaceCursorFrame("PadRP_TargetHUD")
+        end
+        if ConsolePort.RegisterFrame then
+            ConsolePort:RegisterFrame(hudFrame)
+        end
+    end)
+end
+
+function ns:DismissTargetHUDFocus()
+    if hudFrame then
+        hudDismissedKey = hudFrame.inspectedKey or "__ACTIVE__"
+    end
+    if ns.SetControllerFocus then
+        ns:SetControllerFocus(nil)
+    end
+    if ns.UpdateControllerBindings then
+        ns:UpdateControllerBindings()
+    end
 end
 
 function ns:GetNoteInfo(key)
@@ -389,21 +426,63 @@ function ns:ResetMinimapButton()
     if ns.RefreshControllerUI then ns:RefreshControllerUI() end
 end
 
+local function SyncHUDFocusState(shouldShow, activeKey)
+    if not hudFrame then return end
+    local modalOpen = (ns.mainFrame and ns.mainFrame:IsShown()) or (ns.dossierFrame and ns.dossierFrame:IsShown())
+    local curKey = activeKey or "__ACTIVE__"
+    if hudDismissedKey and hudDismissedKey ~= curKey then
+        hudDismissedKey = nil
+    end
+
+    if shouldShow and not modalOpen and hudDismissedKey ~= curKey then
+        RegisterHUDWithConsolePort()
+        if ns.SetControllerFocus then
+            ns:SetControllerFocus(hudFrame)
+        end
+        if ns.UpdateControllerBindings then
+            ns:UpdateControllerBindings()
+        end
+    elseif ns.currentFocus == hudFrame then
+        if ns.SetControllerFocus then
+            ns:SetControllerFocus(nil)
+        end
+        if ns.UpdateControllerBindings then
+            ns:UpdateControllerBindings()
+        end
+    end
+end
+
 function ns:RefreshTargetHUD()
     if not hudFrame then return end
-    if not ns.db or not ns.db.ui.showTargetHUD then hudFrame:Hide(); return end
-    if ns.db.ui.hideInCombat and InCombatLockdown() then hudFrame:Hide(); return end
-    if not UnitExists("target") or not UnitIsPlayer("target") or UnitIsUnit("target", "player") then
+    if not ns.db or not ns.db.ui.showTargetHUD then
         hudFrame:Hide()
+        SyncHUDFocusState(false)
+        return
+    end
+    if ns.db.ui.hideInCombat and InCombatLockdown() then
+        hudFrame:Hide()
+        SyncHUDFocusState(false)
         return
     end
 
-    local data, activeKey = ns:GetCachedMSP("target")
-    if ns.db.ui.hudOnlyRP and (not data or not data.NA) then hudFrame:Hide(); return end
+    local activeUnit = GetActiveOtherPlayerUnit()
+    if not activeUnit then
+        hudDismissedKey = nil
+        hudFrame:Hide()
+        SyncHUDFocusState(false)
+        return
+    end
 
-    local _, tClass = UnitClass("target")
+    local data, activeKey = ns:GetCachedMSP(activeUnit)
+    if ns.db.ui.hudOnlyRP and (not data or not data.NA) then
+        hudFrame:Hide()
+        SyncHUDFocusState(false, activeKey)
+        return
+    end
+
+    local _, tClass = UnitClass(activeUnit)
     local tHex = (tClass and RAID_CLASS_COLORS and RAID_CLASS_COLORS[tClass] and RAID_CLASS_COLORS[tClass].colorStr) or "ff8ab4f8"
-    local rawName = UnitName("target") or "Unknown"
+    local rawName = UnitName(activeUnit) or "Unknown"
     local standing, _, _, hasNote = ns:GetNoteInfo(activeKey)
     local standingTag = (standing and STANDING_COLORS[standing]) or ""
     local noteTag = hasNote and " |TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t" or ""
@@ -430,17 +509,20 @@ function ns:RefreshTargetHUD()
     hudFrame.inspectedKey = activeKey
     hudFrame:SetScale(ns.db.ui.scale or 1.0)
     hudFrame:Show()
+    SyncHUDFocusState(true, activeKey)
 end
 
 function ns:InitTargetHUD()
     InitMinimapButton()
     InitTooltipHook()
 
-    hudFrame = CreateFrame("Frame", "PadRP_TargetHUD", UIParent, "BackdropTemplate")
+    hudFrame = CreateFrame("Button", "PadRP_TargetHUD", UIParent, "BackdropTemplate")
+    ns.hudFrame = hudFrame
     hudFrame:SetSize(430, 62)
     hudFrame:SetPoint("TOP", UIParent, "TOP", 0, -44)
     hudFrame:SetMovable(true)
     hudFrame:EnableMouse(true)
+    hudFrame:RegisterForClicks("LeftButtonUp")
     hudFrame:RegisterForDrag("LeftButton")
     hudFrame:SetScript("OnDragStart", hudFrame.StartMoving)
     hudFrame:SetScript("OnDragStop", hudFrame.StopMovingOrSizing)
@@ -478,23 +560,44 @@ function ns:InitTargetHUD()
 
     hudFrame:SetScript("OnEnter", function(self)
         self:SetBackdropBorderColor(0.54, 0.71, 0.97, 1.0)
+        RegisterHUDWithConsolePort()
+        if ns.SetControllerFocus then
+            ns:SetControllerFocus(self)
+        end
     end)
     hudFrame:SetScript("OnLeave", function(self)
         self:SetBackdropBorderColor(0.20, 0.24, 0.31, 0.85)
     end)
-    hudFrame:SetScript("OnMouseUp", function(self, button)
-        if button == "LeftButton" and ns.OpenTargetDossier then
+    hudFrame:SetScript("OnClick", function(self)
+        if ns.OpenTargetDossier then
             ns:OpenTargetDossier(self.inspectedKey)
         end
     end)
 
+    if ns.RegisterFocusable then
+        ns:RegisterFocusable(hudFrame, function(self)
+            if ns.OpenTargetDossier then
+                ns:OpenTargetDossier(self.inspectedKey)
+            end
+        end, function(self, isFocused)
+            if isFocused then
+                self:SetBackdropBorderColor(0.54, 0.71, 0.97, 1.0)
+            else
+                self:SetBackdropBorderColor(0.20, 0.24, 0.31, 0.85)
+            end
+        end)
+    end
+
+    RegisterHUDWithConsolePort()
+
     hudFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     hudFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    hudFrame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
     hudFrame:SetScript("OnEvent", function() ns:RefreshTargetHUD() end)
 
     ns:CreateBindButton("PadRP_InspectTargetButton", function()
         if ns.OpenTargetDossier then
-            ns:OpenTargetDossier(ns.lastInspectedKey)
+            ns:OpenTargetDossier(hudFrame and hudFrame.inspectedKey or ns.lastInspectedKey)
         end
     end)
 end

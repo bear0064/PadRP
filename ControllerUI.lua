@@ -7,12 +7,12 @@ local tabButtons = {}
 local tabPanels = {}
 
 local activeIdentityPage = 1
-local activeGlancePage = 1
 local activeBioMode = "APPEARANCE"
 local knownListPage = 1
 local knownSearchFilter = ""
-local knownNotesOnly = false
+local knownNotableOnly = false
 local knownSortMode = "RECENT"
+local collapsedBuckets = {}
 local profileListPage = 1
 
 local editPoolIdx = 1
@@ -132,11 +132,12 @@ local EXTRA_VERIFIED_RP_ICONS = {
     "Ability_Paladin_ShieldOfTemplar","Ability_Priest_FlashOfLight","Ability_Shaman_ChainLightning","Ability_Warlock_DemonicEmpowerment",
 }
 
-local STANDING_BADGES = {
-    Ally         = "|cff81c995[ALLY]|r",
-    Acquaintance = "|cff8ab4f8[KNOWN]|r",
-    Rival        = "|cfff28b82[RIVAL]|r",
-    Marked       = "|cfffdd663[MARKED]|r",
+local STANDING_BUCKETS = {
+    { key = "Ally",         label = "Ally",         colorHex = "ff81c995", tone = "MINT" },
+    { key = "Acquaintance", label = "Acquaintance", colorHex = "ff8ab4f8", tone = "PRIMARY" },
+    { key = "Rival",        label = "Rival",        colorHex = "fff28b82", tone = "CORAL" },
+    { key = "Marked",       label = "Marked",       colorHex = "fffdd663", tone = "AMBER" },
+    { key = "Other",        label = "Other",        colorHex = "ff9aa0a6", tone = nil },
 }
 
 local function FormatCheckbox(label, isChecked, activeColorHex)
@@ -569,6 +570,36 @@ local function UpdateControlStripLayout()
     end
 end
 
+local function LayoutGlanceCards()
+    local p2 = tabPanels[2]
+    if not p2 or not p2.cards or not p2.glanceScroll or not p2.glanceChild then return end
+    local scrollW = p2.glanceScroll:GetWidth()
+    if not scrollW or scrollW < 180 then
+        scrollW = math.max(300, (p2:GetWidth() or 656) - 44)
+    end
+    local childW = math.max(200, scrollW - 4)
+    p2.glanceChild:SetWidth(childW)
+
+    for slot = 1, 5 do
+        local card = p2.cards[slot]
+        if card then
+            local topY = -4 - (slot - 1) * 112
+            card:ClearAllPoints()
+            card:SetPoint("TOPLEFT", p2.glanceChild, "TOPLEFT", 0, topY)
+            card:SetWidth(childW)
+            LayoutRow(card, -38, {
+                { w = card.titleBox,  weight = 0.34 },
+                { w = card.detailBox, weight = 0.66 },
+                { w = card.clrBtn,    fixed = 56 },
+            }, 74, 12, 10)
+        end
+    end
+    p2.glanceChild:SetHeight(5 * 112 + 12)
+    if p2.glanceScroll.UpdateScrollChildRect then
+        p2.glanceScroll:UpdateScrollChildRect()
+    end
+end
+
 local function UpdateResponsiveLayouts()
     if not mainFrame or not tabPanels[1] then return end
     UpdateControlStripLayout()
@@ -613,9 +644,8 @@ local function UpdateResponsiveLayouts()
         local pv = p1.pageVitals
         if pv then
             LayoutRow(pv, -20, {
-                { w = p1.niBox, weight = 0.28 },
-                { w = p1.hoBox, weight = 0.32 },
-                { w = p1.moBox, weight = 0.40 },
+                { w = p1.hoBox, weight = 0.50 },
+                { w = p1.moBox, weight = 0.50 },
             }, 16, 16, 10)
 
             LayoutRow(pv, -68, {
@@ -671,19 +701,7 @@ local function UpdateResponsiveLayouts()
         end
     end
 
-    local p2 = tabPanels[2]
-    if p2 and p2.cards then
-        for i = 1, 3 do
-            local card = p2.cards[i]
-            if card then
-                LayoutRow(card, -27, {
-                    { w = card.titleBox,  weight = 0.36 },
-                    { w = card.detailBox, weight = 0.64 },
-                    { w = card.clrBtn,    fixed = 52 },
-                }, 74, 12, 10)
-            end
-        end
-    end
+    LayoutGlanceCards()
 
     local p3 = tabPanels[3]
     if p3 and p3.appTabBtn then
@@ -697,12 +715,12 @@ local function UpdateResponsiveLayouts()
     local p4 = tabPanels[4]
     if p4 and p4.searchBox then
         LayoutRow(p4, -38, {
-            { w = p4.searchBox,    weight = 1 },
-            { w = p4.notesOnlyBtn, fixed = 102 },
-            { w = p4.sortBtn,      fixed = 90 },
-            { w = p4.prevPageBtn,  fixed = 54 },
-            { w = p4.pageLabel,    fixed = 74, yOffset = -6 },
-            { w = p4.nextPageBtn,  fixed = 54 },
+            { w = p4.searchBox,     weight = 1 },
+            { w = p4.notableOnlyBtn, fixed = 96 },
+            { w = p4.sortBtn,        fixed = 92 },
+            { w = p4.prevPageBtn,    fixed = 54 },
+            { w = p4.pageLabel,      fixed = 74, yOffset = -6 },
+            { w = p4.nextPageBtn,    fixed = 54 },
         }, 16, 16, 6)
     end
 
@@ -882,8 +900,8 @@ function ns:ShowStatusToast(msg)
     end
 end
 
-local function GetFilteredKnownProfiles()
-    local seen, list = {}, {}
+local function BuildDirectoryRows()
+    local seen, entries = {}, {}
     local q = strtrim(string.lower(knownSearchFilter or ""))
 
     local function CheckNoteStatus(k)
@@ -896,59 +914,48 @@ local function GetFilteredKnownProfiles()
         return (rec and rec.standing) or "None", "", txt, (strtrim(txt) ~= "")
     end
 
+    local function AddCandidate(k, v, lastSeen)
+        if seen[k] then return end
+        seen[k] = true
+        local standing, charNote, acctNote, hasNote = CheckNoteStatus(k)
+        local bucketKey = (standing and standing ~= "None") and standing or "Other"
+        local isNotable = (bucketKey ~= "Other") or hasNote
+
+        if knownNotableOnly and not isNotable then return end
+
+        local hay = string.lower(table.concat({
+            tostring(k or ""),
+            StripColorCodes(v.NA or ""),
+            StripColorCodes(v.NT or ""),
+            StripColorCodes(v.NH or ""),
+            StripColorCodes(v.CU or ""),
+            tostring(standing or ""),
+            tostring(charNote or ""),
+            tostring(acctNote or ""),
+        }, " "))
+        if q == "" or string.find(hay, q, 1, true) then
+            table.insert(entries, {
+                key = k,
+                data = v,
+                lastSeen = tonumber(lastSeen) or 0,
+                standing = standing,
+                bucketKey = bucketKey,
+                hasNote = hasNote,
+            })
+        end
+    end
+
     for k, v in pairs(ns.mspCache or {}) do
-        if v and v.NA and v.NA ~= "" and not seen[k] then
-            seen[k] = true
-            local standing, charNote, acctNote, hasNote = CheckNoteStatus(k)
-            if not knownNotesOnly or hasNote then
-                local hay = string.lower(table.concat({
-                    tostring(k or ""),
-                    StripColorCodes(v.NA or ""),
-                    StripColorCodes(v.NT or ""),
-                    StripColorCodes(v.NH or ""),
-                    StripColorCodes(v.CU or ""),
-                    tostring(standing or ""),
-                    tostring(charNote or ""),
-                    tostring(acctNote or ""),
-                }, " "))
-                if q == "" or string.find(hay, q, 1, true) then
-                    table.insert(list, {
-                        key = k,
-                        data = v,
-                        lastSeen = tonumber(v.lastSeen) or 0,
-                        standing = standing,
-                        hasNote = hasNote,
-                    })
-                end
-            end
+        if v and v.NA and v.NA ~= "" then
+            AddCandidate(k, v, v.lastSeen)
         end
     end
 
-    for k, noteRec in pairs(ns.db.notes or {}) do
-        if not seen[k] then
-            seen[k] = true
-            local standing, charNote, acctNote, hasNote = CheckNoteStatus(k)
-            if not knownNotesOnly or hasNote then
-                local hay = string.lower(table.concat({
-                    tostring(k or ""),
-                    tostring(standing or ""),
-                    tostring(charNote or ""),
-                    tostring(acctNote or ""),
-                }, " "))
-                if q == "" or string.find(hay, q, 1, true) then
-                    table.insert(list, {
-                        key = k,
-                        data = { NA = strsplit("-", k) },
-                        lastSeen = 0,
-                        standing = standing,
-                        hasNote = hasNote,
-                    })
-                end
-            end
-        end
+    for k in pairs(ns.db.notes or {}) do
+        AddCandidate(k, { NA = strsplit("-", k) }, 0)
     end
 
-    table.sort(list, function(a, b)
+    table.sort(entries, function(a, b)
         if knownSortMode == "RECENT" then
             if a.lastSeen ~= b.lastSeen then
                 return a.lastSeen > b.lastSeen
@@ -957,7 +964,63 @@ local function GetFilteredKnownProfiles()
         return string.lower(StripColorCodes(a.data.NA or a.key)) < string.lower(StripColorCodes(b.data.NA or b.key))
     end)
 
-    return list
+    if not knownNotableOnly then
+        local flatRows = {}
+        for _, item in ipairs(entries) do
+            table.insert(flatRows, {
+                kind = "ENTRY",
+                key = item.key,
+                data = item.data,
+                lastSeen = item.lastSeen,
+                standing = item.standing,
+                hasNote = item.hasNote,
+                indented = false,
+            })
+        end
+        return flatRows, #entries
+    end
+
+    local groups = {}
+    for _, bInfo in ipairs(STANDING_BUCKETS) do
+        groups[bInfo.key] = {}
+    end
+    for _, item in ipairs(entries) do
+        table.insert(groups[item.bucketKey] or groups.Other, item)
+    end
+
+    local rows = {}
+    for _, bInfo in ipairs(STANDING_BUCKETS) do
+        local members = groups[bInfo.key]
+        if #members > 0 then
+            local isCollapsed = collapsedBuckets[bInfo.key] and true or false
+            local arrow = isCollapsed and ">" or "v"
+            table.insert(rows, {
+                kind = "HEADER",
+                bucketKey = bInfo.key,
+                label = bInfo.label,
+                colorHex = bInfo.colorHex,
+                tone = bInfo.tone,
+                count = #members,
+                text = string.format("|c%s%s %s|r  |cff9aa0a6(%d)|r", bInfo.colorHex, arrow, bInfo.label, #members),
+            })
+            if not isCollapsed then
+                for _, item in ipairs(members) do
+                    table.insert(rows, {
+                        kind = "ENTRY",
+                        bucketKey = bInfo.key,
+                        key = item.key,
+                        data = item.data,
+                        lastSeen = item.lastSeen,
+                        standing = item.standing,
+                        hasNote = item.hasNote,
+                        indented = true,
+                    })
+                end
+            end
+        end
+    end
+
+    return rows, #entries
 end
 
 local function RefreshProfilesTab()
@@ -1033,7 +1096,7 @@ end
 function ns:RefreshNetInspector(newLine)
     if not inspectorFrame then return end
 
-    local knownCount = #GetFilteredKnownProfiles()
+    local _, knownCount = BuildDirectoryRows()
     local engineLabel = (type(_G.msp) == "table") and "|cff81c995LibMSP|r" or "|cfff28b82Missing LibMSP|r"
     inspectorFrame.statusBar:SetText(string.format(
         "Engine: %s  |  Sent: |cfffdd663%d|r  |  Live Replies: |cff81c995%d|r  |  Cached: |cff8ab4f8%d|r  |  Last: |cffe8eaed%s|r",
@@ -1232,6 +1295,11 @@ function ns:ControllerConfirmAction()
     local scope = ns:GetActiveModalScope()
     if not scope or not ns:CanProcessPadAction() then return end
 
+    if scope == ns.hudFrame and ns.OpenTargetDossier then
+        ns:OpenTargetDossier(ns.hudFrame.inspectedKey)
+        return
+    end
+
     local now = (GetTime and GetTime()) or 0
     local activeBox = ns.activeEditBox
     if activeBox and activeBox.HasFocus and activeBox:HasFocus() then
@@ -1286,6 +1354,14 @@ function ns:ControllerCancelAction()
         ns:PlayUISound()
         return
     end
+    if scope == ns.hudFrame then
+        if ns.DismissTargetHUDFocus then
+            ns:DismissTargetHUDFocus()
+        elseif ns.SetControllerFocus then
+            ns:SetControllerFocus(nil)
+        end
+        return
+    end
     if mainFrame and mainFrame:IsShown() then
         mainFrame:Hide()
     end
@@ -1318,11 +1394,10 @@ local function GetActiveGratitudePool()
     return g.icPhrases
 end
 
-local function LoadGlancesPageIntoUI()
+local function LoadAllGlancesIntoUI()
     local p2 = tabPanels[2]
     if not p2 or not p2.cards or not ns.profile then return end
     local p = ns.profile
-    local baseOffset = (activeGlancePage == 2) and 3 or 0
     local placeholders = {
         { title = "e.g., Singed Cuffs",   detail = "e.g., Faint arcane scorch marks line the hems of his sleeves." },
         { title = "e.g., Worn Satchel",   detail = "e.g., Stuffed with rolled parchment, ink vials, and dried herbs." },
@@ -1331,10 +1406,9 @@ local function LoadGlancesPageIntoUI()
         { title = "e.g., Travel Cloak",   detail = "e.g., Weathered dark wool dusted with road ash from afar." },
     }
 
-    for i = 1, 3 do
-        local slot = baseOffset + i
-        local card = p2.cards[i]
-        if slot <= 5 then
+    for slot = 1, 5 do
+        local card = p2.cards[slot]
+        if card then
             local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
             card.slotIndex = slot
             card.slotBadge:SetText("|cff8ab4f8GLANCE #" .. slot .. "|r")
@@ -1344,9 +1418,6 @@ local function LoadGlancesPageIntoUI()
             card.titleBox:SetCleanText(g.title)
             card.detailBox:SetCleanText(g.detail)
             card:Show()
-        else
-            card.slotIndex = nil
-            card:Hide()
         end
     end
 end
@@ -1372,7 +1443,6 @@ function ns:LoadProfileIntoUI()
         p1.cuBox:SetCleanText(p.currently)
         p1.oocNotesBox:SetCleanText(p.oocNotes or p.oocInfo)
 
-        p1.niBox:SetCleanText(p.nickname)
         p1.hoBox:SetCleanText(p.houseName)
         p1.moBox:SetCleanText(p.motto)
         p1.hbBox:SetCleanText(p.birthplace)
@@ -1386,7 +1456,7 @@ function ns:LoadProfileIntoUI()
     end
     RefreshEyeSwatchBox()
     RefreshClassSwatchBox()
-    LoadGlancesPageIntoUI()
+    LoadAllGlancesIntoUI()
     local p3 = tabPanels[3]
     if p3 and p3.bioEditor then
         p3.bioEditor:SetCleanText(activeBioMode == "APPEARANCE" and p.description or p.history)
@@ -1422,7 +1492,6 @@ local function CommitModifiedBoxesToProfile(forceAll)
         CheckBox(p1.cuBox, "currently")
         CheckBox(p1.oocNotesBox, "oocNotes")
 
-        CheckBox(p1.niBox, "nickname")
         CheckBox(p1.hoBox, "houseName")
         CheckBox(p1.moBox, "motto")
         CheckBox(p1.hbBox, "birthplace")
@@ -1442,10 +1511,9 @@ local function CommitModifiedBoxesToProfile(forceAll)
 
     local p2 = tabPanels[2]
     if p2 and p2.cards then
-        for i = 1, 3 do
-            local card = p2.cards[i]
-            local slot = card and card.slotIndex
-            if card and slot and card:IsShown() and p.glances[slot] then
+        for slot = 1, 5 do
+            local card = p2.cards[slot]
+            if card and p.glances[slot] then
                 if forceAll or card.titleBox.isDirty then
                     p.glances[slot].title = card.titleBox:GetText()
                     card.titleBox.isDirty = false
@@ -1588,15 +1656,21 @@ local function RefreshHeaderBanner()
     end
 end
 
-local function FormatDirectoryRowText(k, d, item)
+local function FormatDirectoryEntryText(k, d, item)
     local parts = {}
     local sep = " |cff5f6368•|r "
 
     if item.hasNote then
         table.insert(parts, "|TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t")
     end
-    if item.standing and STANDING_BADGES[item.standing] then
-        table.insert(parts, STANDING_BADGES[item.standing])
+    if not item.indented and item.standing and item.standing ~= "None" then
+        local bInfo
+        for _, sb in ipairs(STANDING_BUCKETS) do
+            if sb.key == item.standing then bInfo = sb break end
+        end
+        if bInfo then
+            table.insert(parts, "|c" .. bInfo.colorHex .. "[" .. string.upper(bInfo.label) .. "]|r")
+        end
     end
 
     local rawName = d.NA or k
@@ -1653,47 +1727,57 @@ local function FormatDirectoryRowText(k, d, item)
         table.insert(parts, "|cff8ab4f8{" .. guildClean .. "}|r")
     end
     if curClean ~= "" then
-        local shortCur = string.sub(curClean, 1, 36)
-        if #curClean > 36 then shortCur = shortCur .. "..." end
+        local shortCur = string.sub(curClean, 1, 34)
+        if #curClean > 34 then shortCur = shortCur .. "..." end
         table.insert(parts, "|cff9aa0a6\"" .. shortCur .. "\"|r")
     end
 
-    return table.concat(parts, sep)
+    local prefix = item.indented and "  - " or ""
+    return prefix .. table.concat(parts, sep)
 end
 
 function ns:RefreshTargetCard()
     if not mainFrame or not tabPanels[4] then return end
     local p4 = tabPanels[4]
 
-    local entries = GetFilteredKnownProfiles()
+    local rows, totalEntries = BuildDirectoryRows()
     local perPage = 8
-    local totalPages = math.max(1, math.ceil(#entries / perPage))
+    local totalPages = math.max(1, math.ceil(#rows / perPage))
     if knownListPage > totalPages then knownListPage = totalPages end
     if knownListPage < 1 then knownListPage = 1 end
 
-    p4.countLabel:SetText(string.format("|cff8ab4f8RP DIRECTORY (%d)|r  -  Select any player to open Dossier & Notes", #entries))
+    local bucketLabel = knownNotableOnly and "NOTABLE ACCORDION" or "RP DIRECTORY"
+    p4.countLabel:SetText(string.format("|cff8ab4f8%s (%d)|r  -  Select any player to open Dossier & Notes", bucketLabel, totalEntries))
     p4.pageLabel:SetText(string.format("Page %d / %d", knownListPage, totalPages))
 
-    p4.notesOnlyBtn:SetText(FormatCheckbox("Notes Only", knownNotesOnly, "ff81c995"))
-    p4.notesOnlyBtn:SetTone(knownNotesOnly and "MINT" or nil)
+    p4.notableOnlyBtn:SetText(FormatCheckbox("Notable", knownNotableOnly, "fffdd663"))
+    p4.notableOnlyBtn:SetTone(knownNotableOnly and "AMBER" or nil)
     p4.sortBtn:SetText(knownSortMode == "RECENT" and "Sort: Recent" or "Sort: A-Z")
     p4.sortBtn:SetTone(knownSortMode == "RECENT" and "PRIMARY" or nil)
 
     local startIdx = (knownListPage - 1) * perPage
     for i = 1, perPage do
         local rowBtn = p4.knownRows[i]
-        local item = entries[startIdx + i]
+        local item = rows[startIdx + i]
         if item then
-            local k = item.key
-            local d = item.data
-            local seenStr = (item.lastSeen and item.lastSeen > 0) and date("%m/%d %H:%M", item.lastSeen) or "--/--"
-
-            rowBtn.profileKey = k
-            rowBtn:SetText(FormatDirectoryRowText(k, d, item))
-            rowBtn.seenLabel:SetText("|cff9aa0a6" .. seenStr .. "|r")
+            if item.kind == "HEADER" then
+                rowBtn.profileKey = nil
+                rowBtn.bucketKey = item.bucketKey
+                rowBtn:SetTone(item.tone)
+                rowBtn:SetText(item.text)
+                rowBtn.seenLabel:SetText("")
+            else
+                rowBtn.profileKey = item.key
+                rowBtn.bucketKey = nil
+                rowBtn:SetTone(nil)
+                rowBtn:SetText(FormatDirectoryEntryText(item.key, item.data, item))
+                local seenStr = (item.lastSeen and item.lastSeen > 0) and date("%m/%d %H:%M", item.lastSeen) or "--/--"
+                rowBtn.seenLabel:SetText("|cff9aa0a6" .. seenStr .. "|r")
+            end
             rowBtn:Show()
         else
             rowBtn.profileKey = nil
+            rowBtn.bucketKey = nil
             rowBtn.seenLabel:SetText("")
             rowBtn:Hide()
         end
@@ -1705,9 +1789,9 @@ function ns:TrySeamlessDirectoryStep(rowIndex, dir)
     local p4 = tabPanels[4]
     if not p4 or not p4:IsShown() or not p4.knownRows then return false end
 
-    local entries = GetFilteredKnownProfiles()
+    local rows = BuildDirectoryRows()
     local perPage = 8
-    local totalPages = math.max(1, math.ceil(#entries / perPage))
+    local totalPages = math.max(1, math.ceil(#rows / perPage))
 
     local lastShownIdx = 0
     for i = 1, perPage do
@@ -1871,7 +1955,6 @@ function ns:RefreshControllerUI()
     RefreshEyeSwatchBox()
     RefreshClassSwatchBox()
 
-    SyncBox(p1.niBox, p.nickname)
     SyncBox(p1.hoBox, p.houseName)
     SyncBox(p1.moBox, p.motto)
     SyncBox(p1.hbBox, p.birthplace)
@@ -1913,12 +1996,9 @@ function ns:RefreshControllerUI()
     RefreshProfilesTab()
 
     local p2 = tabPanels[2]
-    p2.page1Btn:SetTone(activeGlancePage == 1 and "PRIMARY" or nil)
-    p2.page2Btn:SetTone(activeGlancePage == 2 and "PRIMARY" or nil)
-    for i = 1, 3 do
-        local card = p2.cards[i]
-        local slot = card.slotIndex
-        if slot and card:IsShown() then
+    for slot = 1, 5 do
+        local card = p2.cards[slot]
+        if card then
             local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
             SetIconTextureSafe(card.iconTex, g.icon, CURATED_RP_ICONS[1])
             if not card.titleBox:HasFocus() and not card.titleBox.isDirty then card.titleBox:SetCleanText(g.title) end
@@ -1971,7 +2051,7 @@ function ns:RefreshControllerUI()
             engState,
             ns.mspStats.sent or 0,
             ns.mspStats.liveReplies or 0,
-            #GetFilteredKnownProfiles(),
+            select(2, BuildDirectoryRows()),
             ns.mspStats.lastReplyFrom or "None"
         ))
         p8.chkDebug:SetText(FormatCheckbox("Debug Events", ns.mspDebug, "ff81c995"))
@@ -2409,7 +2489,7 @@ function ns:InitControllerUI()
             if ns.profile.glances[slot] then
                 ns.profile.glances[slot].icon = clean
             end
-            LoadGlancesPageIntoUI()
+            LoadAllGlancesIntoUI()
             ns:ShowStatusToast("Glance #" .. slot .. " icon updated!")
         end
         ns:SnapshotActiveProfile()
@@ -2909,9 +2989,8 @@ function ns:InitControllerUI()
     pageVitals:Hide()
     p1.pageVitals = pageVitals
 
-    p1.niBox = ns:CreateMaterialEditBox(pageVitals, "Nickname", "e.g., Kiyaskiw", 16, -6, 196, 26, AutoCommitTab1)
-    p1.hoBox = ns:CreateMaterialEditBox(pageVitals, "House / Clan / Guild Name", "e.g., House Gray", 222, -6, 204, 26, AutoCommitTab1)
-    p1.moBox = ns:CreateMaterialEditBox(pageVitals, "Motto / Catchphrase", "e.g., It isn't fraud if they're impressed.", 436, -6, 204, 26, AutoCommitTab1)
+    p1.hoBox = ns:CreateMaterialEditBox(pageVitals, "House / Clan / Guild Name", "e.g., House Gray", 16, -6, 306, 26, AutoCommitTab1)
+    p1.moBox = ns:CreateMaterialEditBox(pageVitals, "Motto / Catchphrase", "e.g., It isn't fraud if they're impressed.", 334, -6, 306, 26, AutoCommitTab1)
 
     p1.gnBox = ns:CreateMaterialEditBox(pageVitals, "Gender", "e.g., Male", 16, -54, 130, 26, AutoCommitTab1)
     p1.agBox = ns:CreateMaterialEditBox(pageVitals, "Age", "e.g., 32", 156, -54, 110, 26, AutoCommitTab1)
@@ -3016,42 +3095,61 @@ function ns:InitControllerUI()
     revertBtn:SetPoint("BOTTOMRIGHT", p1, "BOTTOMRIGHT", -16, 14)
 
     local p2 = tabPanels[2]
-    p2.page1Btn = ns:CreateMaterialButton(p2, "Glances 1 - 3", 170, 26, 16, -10, "PRIMARY", function()
-        CommitModifiedBoxesToProfile(false)
-        activeGlancePage = 1
-        LoadGlancesPageIntoUI()
-        ns:RefreshControllerUI()
-        ns:FocusFirstInScope()
-    end)
-    p2.page2Btn = ns:CreateMaterialButton(p2, "Glances 4 - 5", 170, 26, 194, -10, nil, function()
-        CommitModifiedBoxesToProfile(false)
-        activeGlancePage = 2
-        LoadGlancesPageIntoUI()
-        ns:RefreshControllerUI()
-        ns:FocusFirstInScope()
-    end)
     local gIntro = p2:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    gIntro:SetPoint("LEFT", p2.page2Btn, "RIGHT", 12, 0)
-    gIntro:SetText("|cff9aa0a6All 5 slots broadcast to TRP3 / MRP / XRP|r")
+    gIntro:SetPoint("TOPLEFT", 16, -12)
+    gIntro:SetPoint("TOPRIGHT", -16, -12)
+    gIntro:SetJustifyH("LEFT")
+    gIntro:SetText("|cff8ab4f8FIRST GLANCES (1 - 5)|r  |cff9aa0a6-  Scroll with D-Pad or wheel to edit all 5 slots; all broadcast to TRP3 / MRP / XRP|r")
+
+    local glanceScroll = CreateFrame("ScrollFrame", "PadRP_GlancesScrollFrame", p2, "UIPanelScrollFrameTemplate")
+    glanceScroll:SetPoint("TOPLEFT", 12, -32)
+    glanceScroll:SetPoint("BOTTOMRIGHT", -28, 56)
+    glanceScroll:EnableMouseWheel(true)
+    ns:EnableClipping(glanceScroll)
+    p2.glanceScroll = glanceScroll
+
+    local glanceChild = CreateFrame("Frame", nil, glanceScroll)
+    glanceChild:SetSize(580, 576)
+    glanceScroll:SetScrollChild(glanceChild)
+    p2.glanceChild = glanceChild
+
+    local function StepGlanceScroll(step)
+        if not glanceScroll then return end
+        local cur = glanceScroll:GetVerticalScroll() or 0
+        local maxS = (glanceScroll.GetVerticalScrollRange and glanceScroll:GetVerticalScrollRange()) or 0
+        glanceScroll:SetVerticalScroll(math.max(0, math.min(maxS, cur + (step * 72))))
+    end
+
+    glanceScroll:SetScript("OnSizeChanged", function()
+        LayoutGlanceCards()
+    end)
+    glanceScroll:SetScript("OnMouseWheel", function(_, delta)
+        if delta and delta ~= 0 then
+            StepGlanceScroll(delta > 0 and -1 or 1)
+        end
+    end)
+    AttachWheelScroller(glanceChild, StepGlanceScroll)
 
     p2.cards = {}
     local function AutoCommitGlances() CommitModifiedBoxesToProfile(false) end
-    for i = 1, 3 do
-        local card = CreateFrame("Frame", nil, p2, "BackdropTemplate")
-        card:SetHeight(94)
-        card:SetPoint("TOPLEFT", 16, -42 - (i - 1) * 100)
-        card:SetPoint("TOPRIGHT", -16, -42 - (i - 1) * 100)
+    for slot = 1, 5 do
+        local card = CreateFrame("Frame", nil, glanceChild, "BackdropTemplate")
+        card:SetHeight(104)
+        card:SetPoint("TOPLEFT", glanceChild, "TOPLEFT", 0, -4 - (slot - 1) * 112)
+        card:SetWidth(576)
         ns:ApplySurface(card, M3.surfaceDim, M3.outline)
         ns:EnableClipping(card)
-        card.slotIndex = i
+        card.slotIndex = slot
         card.slotBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        card.slotBadge:SetPoint("TOPLEFT", 12, -10)
-        card.slotBadge:SetText("|cff8ab4f8GLANCE #" .. i .. "|r")
+        card.slotBadge:SetPoint("TOPLEFT", 12, -8)
+        card.slotBadge:SetText("|cff8ab4f8GLANCE #" .. slot .. "|r")
 
         local iconBtn = CreateFrame("Button", nil, card, "BackdropTemplate")
         iconBtn:SetSize(44, 44)
-        iconBtn:SetPoint("TOPLEFT", 14, -40)
+        iconBtn:SetPoint("TOPLEFT", 14, -44)
         ns:ApplySurface(iconBtn, M3.surface, M3.primary)
+        iconBtn.glanceScrollFrame = glanceScroll
+        iconBtn.glanceIndex = slot
         card.iconBtn = iconBtn
         card.iconTex = iconBtn:CreateTexture(nil, "ARTWORK")
         card.iconTex:SetSize(38, 38)
@@ -3066,19 +3164,36 @@ function ns:InitControllerUI()
         end)
         ns:RegisterFocusable(iconBtn, function() iconBtn:Click("LeftButton") end)
 
-        card.titleBox = ns:CreateMaterialEditBox(card, "1. Short Hook / Trait Name", "", 74, -12, 180, 28, AutoCommitGlances)
-        card.detailBox = ns:CreateMaterialEditBox(card, "2. Tooltip Description", "", 264, -12, 286, 28, AutoCommitGlances)
-        card.clrBtn = ns:CreateMaterialButton(card, "Clear", 52, 28, 560, -27, nil, function()
-            local slot = card.slotIndex
+        card.titleBox = ns:CreateMaterialEditBox(card, "1. Short Hook / Trait Name", "", 74, -24, 170, 26, AutoCommitGlances)
+        card.titleBox.glanceScrollFrame = glanceScroll
+        card.titleBox.glanceIndex = slot
+
+        card.detailBox = ns:CreateMaterialEditBox(card, "2. Tooltip Description", "", 254, -24, 240, 26, AutoCommitGlances)
+        card.detailBox.glanceScrollFrame = glanceScroll
+        card.detailBox.glanceIndex = slot
+
+        card.clrBtn = ns:CreateMaterialButton(card, "Clear", 56, 26, 510, -39, nil, function()
+            local sIdx = card.slotIndex
             card.titleBox:SetCleanText("")
             card.detailBox:SetCleanText("")
-            if slot and ns.profile.glances[slot] then
-                ns.profile.glances[slot].title, ns.profile.glances[slot].detail = "", ""
+            if sIdx and ns.profile.glances[sIdx] then
+                ns.profile.glances[sIdx].title, ns.profile.glances[sIdx].detail = "", ""
             end
             ns:SnapshotActiveProfile()
             ns:SyncMSP()
         end)
-        p2.cards[i] = card
+        card.clrBtn.glanceScrollFrame = glanceScroll
+        card.clrBtn.glanceIndex = slot
+
+        AttachWheelScroller(card, StepGlanceScroll)
+        AttachWheelScroller(iconBtn, StepGlanceScroll)
+        AttachWheelScroller(card.titleBox, StepGlanceScroll)
+        AttachWheelScroller(card.titleBox.padBtn, StepGlanceScroll)
+        AttachWheelScroller(card.detailBox, StepGlanceScroll)
+        AttachWheelScroller(card.detailBox.padBtn, StepGlanceScroll)
+        AttachWheelScroller(card.clrBtn, StepGlanceScroll)
+
+        p2.cards[slot] = card
     end
 
     local saveGlanceBtn = ns:CreateMaterialButton(p2, "Save & Broadcast All 5 First Glances Now", 624, 36, 16, -354, "PRIMARY", function()
@@ -3138,7 +3253,7 @@ function ns:InitControllerUI()
     openLiveBtn:ClearAllPoints()
     openLiveBtn:SetPoint("TOPRIGHT", p4, "TOPRIGHT", -16, -8)
 
-    p4.searchBox = ns:CreateMaterialEditBox(p4, nil, "Search by Name, Title, House, or Note...", 16, -38, 250, 26, function(txt)
+    p4.searchBox = ns:CreateMaterialEditBox(p4, nil, "Search by Name, Title, House, or Note...", 16, -38, 220, 26, function(txt)
         knownSearchFilter = txt or ""
         knownListPage = 1
         ns:RefreshTargetCard()
@@ -3149,19 +3264,19 @@ function ns:InitControllerUI()
         ns:RefreshTargetCard()
     end)
 
-    p4.notesOnlyBtn = ns:CreateMaterialButton(p4, "[ ] Notes Only", 102, 26, 272, -38, nil, function()
-        knownNotesOnly = not knownNotesOnly
+    p4.notableOnlyBtn = ns:CreateMaterialButton(p4, "[ ] Notable", 96, 26, 242, -38, nil, function()
+        knownNotableOnly = not knownNotableOnly
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
 
-    p4.sortBtn = ns:CreateMaterialButton(p4, "Sort: Recent", 90, 26, 382, -38, "PRIMARY", function()
+    p4.sortBtn = ns:CreateMaterialButton(p4, "Sort: Recent", 92, 26, 344, -38, "PRIMARY", function()
         knownSortMode = (knownSortMode == "RECENT") and "NAME" or "RECENT"
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
 
-    p4.prevPageBtn = ns:CreateMaterialButton(p4, "< Prev", 54, 26, 478, -38, nil, function()
+    p4.prevPageBtn = ns:CreateMaterialButton(p4, "< Prev", 54, 26, 442, -38, nil, function()
         knownListPage = math.max(1, knownListPage - 1)
         ns:RefreshTargetCard()
     end)
@@ -3183,7 +3298,11 @@ function ns:InitControllerUI()
     for i = 1, 8 do
         local rowY = -72 - (i - 1) * 35
         local rowBtn = ns:CreateMaterialButton(p4, "", 624, 32, 16, rowY, nil, function(self)
-            if self.profileKey and ns.OpenTargetDossier then
+            if self.bucketKey then
+                collapsedBuckets[self.bucketKey] = not collapsedBuckets[self.bucketKey]
+                knownListPage = 1
+                ns:RefreshTargetCard()
+            elseif self.profileKey and ns.OpenTargetDossier then
                 ns:OpenTargetDossier(self.profileKey)
             end
         end)
