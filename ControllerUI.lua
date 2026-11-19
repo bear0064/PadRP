@@ -22,7 +22,7 @@ local confirmDeleteProfileUntil = 0
 local confirmClearBioUntil = 0
 local confirmClearCacheUntil = 0
 
-local nativeIconPool = nil
+local verifiedIconPool = nil
 
 local RP_EXPERIENCE_LIST = {
     { code = "1", label = "Normal" },
@@ -84,6 +84,30 @@ local CURATED_RP_ICONS = {
     "Trade_Enchanting",            "Trade_LeatherWorking",        "Trade_Herbalism",             "Trade_Mining",
 }
 
+local EXTRA_VERIFIED_RP_ICONS = {
+    "INV_Misc_Lantern_02",         "INV_Misc_Candle_01",          "INV_Misc_Candle_03",          "INV_Misc_Compass_01",
+    "INV_Misc_Horn_01",            "INV_Misc_Horn_02",            "INV_Misc_Drum_01",            "INV_Misc_Lute_01",
+    "INV_Misc_Tome_07",            "INV_Misc_Tome_08",            "INV_Misc_Tome_09",            "INV_Misc_Tome_10",
+    "INV_Misc_Quill_01",           "INV_Misc_Ink_01",             "INV_Misc_Parachute_01",       "INV_Misc_rope_01",
+    "INV_Misc_Gear_01",            "INV_Misc_Gear_02",            "INV_Misc_Wrench_01",          "INV_Misc_Lantern_01",
+    "INV_Jewelry_Ring_01",         "INV_Jewelry_Ring_05",         "INV_Jewelry_Ring_10",         "INV_Jewelry_Ring_14",
+    "INV_Jewelry_Necklace_01",     "INV_Jewelry_Necklace_03",     "INV_Jewelry_Necklace_09",     "INV_Jewelry_Necklace_14",
+    "INV_Misc_Gem_Diamond_01",     "INV_Misc_Gem_Opal_01",        "INV_Misc_Gem_Pearl_01",       "INV_Misc_Gem_Topaz_01",
+    "INV_Weapon_Rifle_01",         "INV_Weapon_Rifle_06",         "INV_Weapon_Crossbow_01",      "INV_Weapon_Bow_01",
+    "INV_Sword_01",                "INV_Sword_12",                "INV_Sword_24",                "INV_Sword_33",
+    "INV_Staff_01",                "INV_Staff_09",                "INV_Staff_20",                "INV_Staff_29",
+    "INV_Shield_01",               "INV_Shield_04",               "INV_Shield_19",               "INV_Shield_28",
+    "Spell_Arcane_Portaldarnassus","Spell_Arcane_Portalironforge","Spell_Arcane_Portalorgrimmar","Spell_Arcane_Portalthundbluff",
+    "Spell_Holy_GreaterHeal",      "Spell_Holy_Renew",            "Spell_Holy_FlashHeal",        "Spell_Holy_PrayerOfHealing",
+    "Spell_Nature_HealingTouch",   "Spell_Nature_Regrowth",       "Spell_Nature_Thorns",         "Spell_Nature_Polymorph",
+    "Spell_Shadow_LifeDrain",      "Spell_Shadow_Fear",           "Spell_Shadow_MindControl",    "Spell_Shadow_CurseOfSargeras",
+    "INV_Misc_Food_01",            "INV_Misc_Food_10",            "INV_Misc_Food_23",            "INV_Misc_Food_42",
+    "INV_Drink_01",                "INV_Drink_07",                "INV_Drink_14",                "INV_Drink_18",
+    "INV_Potion_01",               "INV_Potion_12",               "INV_Potion_25",               "INV_Potion_41",
+    "Ability_Warrior_BattleShout", "Ability_Rogue_Sprint",        "Ability_Hunter_AspectOfTheMonkey","Ability_Mage_Invisibility",
+    "Ability_Paladin_ShieldOfTemplar","Ability_Priest_FlashOfLight","Ability_Shaman_ChainLightning","Ability_Warlock_DemonicEmpowerment",
+}
+
 local STANDING_BADGES = {
     Ally         = "|cff81c995[ALLY]|r ",
     Acquaintance = "|cff8ab4f8[KNOWN]|r ",
@@ -97,6 +121,7 @@ local function FormatCheckbox(label, isChecked, activeColorHex)
 end
 
 local function SetIconTextureSafe(tex, icon, fallback)
+    if not tex then return end
     if ns.ResolveIconTexture then
         tex:SetTexture(ns:ResolveIconTexture(icon, fallback))
     else
@@ -128,6 +153,29 @@ local function RGBToHex6(r, g, b)
         return math.floor(v * 255 + 0.5)
     end
     return string.format("%02x%02x%02x", ClampByte(r), ClampByte(g), ClampByte(b))
+end
+
+local function RefreshEyeSwatchBox()
+    local p1 = tabPanels[1]
+    local swatch = p1 and p1.eyeSwatchBtn
+    if not swatch or not ns.M3 then return end
+    local M3 = ns.M3
+    local eyeHex = NormalizeHex6((ns.profile and ns.profile.eyeColorHex) or (ns.profile and ns.profile.eyeColor))
+    if eyeHex then
+        local r, g, b = HexToRGB(eyeHex)
+        swatch:SetBackdropColor(r, g, b, 1)
+        swatch:SetBackdropBorderColor(1, 1, 1, 0.9)
+        if swatch.fillTex then
+            swatch.fillTex:SetColorTexture(r, g, b, 1)
+            swatch.fillTex:Show()
+        end
+    else
+        swatch:SetBackdropColor(unpack(M3.surfaceHigh))
+        swatch:SetBackdropBorderColor(unpack(M3.outline))
+        if swatch.fillTex then
+            swatch.fillTex:Hide()
+        end
+    end
 end
 
 local function GetPlayerActiveNameColorHex()
@@ -258,11 +306,11 @@ local function UpdateResponsiveLayouts()
             }, 16, 16, 10)
 
             LayoutRow(pc, -125, {
-                { w = p1.agBox,       weight = 0.17 },
-                { w = p1.htBox,       weight = 0.22 },
-                { w = p1.wtBox,       weight = 0.25 },
-                { w = p1.eyBox,       weight = 0.24 },
-                { w = p1.eyeColorBtn, fixed = 54 },
+                { w = p1.agBox,        weight = 0.18 },
+                { w = p1.htBox,        weight = 0.24 },
+                { w = p1.wtBox,        weight = 0.28 },
+                { w = p1.eyBox,        weight = 0.30 },
+                { w = p1.eyeSwatchBtn, fixed = 28 },
             }, 16, 16, 8)
 
             LayoutRow(pc, -177, {
@@ -293,14 +341,17 @@ local function UpdateResponsiveLayouts()
                 { w = p1.hhBox, weight = 1 },
             }, 16, 16, 10)
 
-            LayoutRow(pd, -118, {
-                { w = p1.relBtn,   weight = 1 },
-                { w = p1.styleBtn, weight = 1 },
+            LayoutRow(pd, -125, {
+                { w = p1.faceBox,  weight = 0.34 },
+                { w = p1.tatBox,   weight = 0.33 },
+                { w = p1.voiceBox, weight = 0.33 },
             }, 16, 16, 10)
 
-            LayoutRow(pd, -158, {
-                { w = p1.portraitPickBtn, weight = 1 },
-            }, 16, 16, 0)
+            LayoutRow(pd, -168, {
+                { w = p1.relBtn,          weight = 0.34 },
+                { w = p1.styleBtn,        weight = 0.33 },
+                { w = p1.portraitPickBtn, weight = 0.33 },
+            }, 16, 16, 10)
 
             LayoutRow(pd, -221, {
                 { w = p1.profNameBox, weight = 1 },
@@ -449,35 +500,56 @@ local function UpdateResponsiveLayouts()
     end
 end
 
-local function CollectIconsFromAPI(fn, seen, out)
-    if type(fn) ~= "function" then return end
-    local buf = {}
-    local ok, res = pcall(fn, buf)
-    local src = (ok and type(res) == "table" and #res > 0) and res or buf
-    for _, icon in ipairs(src) do
-        if icon and icon ~= "" then
-            local key = tostring(icon)
-            if not seen[key] then
-                seen[key] = true
-                table.insert(out, key)
+local function IsIconTextureValid(icon)
+    if not icon or icon == "" then return false end
+    if ns.ResolveIconTexture then
+        local resolved = ns:ResolveIconTexture(icon, nil)
+        return resolved ~= nil and resolved ~= "" and resolved ~= 0
+    end
+    local path = "Interface\\Icons\\" .. tostring(icon)
+    local probe = UIParent:CreateTexture()
+    probe:SetTexture(path)
+    local ok = probe:GetTexture() ~= nil
+    probe:Hide()
+    return ok
+end
+
+local function EnsureVerifiedIconPool()
+    if verifiedIconPool then return verifiedIconPool end
+    verifiedIconPool = {}
+    local seen = {}
+
+    local function TryAdd(icon)
+        if not icon or icon == "" then return end
+        local key = tostring(icon)
+        if seen[key] then return end
+        if IsIconTextureValid(key) then
+            seen[key] = true
+            table.insert(verifiedIconPool, key)
+        end
+    end
+
+    for _, name in ipairs(CURATED_RP_ICONS) do
+        TryAdd(name)
+    end
+    for _, name in ipairs(EXTRA_VERIFIED_RP_ICONS) do
+        TryAdd(name)
+    end
+
+    -- Also pull live class and spell icons when available
+    if _G.GetNumClasses and _G.GetClassInfo then
+        local okC, numC = pcall(_G.GetNumClasses)
+        if okC and type(numC) == "number" then
+            for cIdx = 1, numC do
+                local _, classFile = _G.GetClassInfo(cIdx)
+                if classFile then
+                    TryAdd("ClassIcon_" .. classFile)
+                end
             end
         end
     end
-end
 
-local function EnsureNativeIconPool()
-    if nativeIconPool then return nativeIconPool end
-    nativeIconPool = {}
-    local seen = {}
-    for _, name in ipairs(CURATED_RP_ICONS) do
-        seen[name] = true
-        table.insert(nativeIconPool, name)
-    end
-    CollectIconsFromAPI(_G.GetMacroIcons, seen, nativeIconPool)
-    CollectIconsFromAPI(_G.GetMacroItemIcons, seen, nativeIconPool)
-    CollectIconsFromAPI(_G.GetLooseMacroIcons, seen, nativeIconPool)
-    CollectIconsFromAPI(_G.GetLooseMacroItemIcons, seen, nativeIconPool)
-    return nativeIconPool
+    return verifiedIconPool
 end
 
 function ns:ShowStatusToast(msg)
@@ -914,8 +986,12 @@ function ns:LoadProfileIntoUI()
         p1.moBox:SetCleanText(p.motto)
         p1.hbBox:SetCleanText(p.birthplace)
         p1.hhBox:SetCleanText(p.residence)
+        p1.faceBox:SetCleanText(p.facialFeatures)
+        p1.tatBox:SetCleanText(p.tattoos)
+        p1.voiceBox:SetCleanText(p.voiceReference)
         p1.profNameBox:SetCleanText(p.profileName)
     end
+    RefreshEyeSwatchBox()
     LoadGlancesPageIntoUI()
     local p3 = tabPanels[3]
     if p3 and p3.bioEditor then
@@ -955,6 +1031,9 @@ local function CommitModifiedBoxesToProfile(forceAll)
         CheckBox(p1.moBox, "motto")
         CheckBox(p1.hbBox, "birthplace")
         CheckBox(p1.hhBox, "residence")
+        CheckBox(p1.faceBox, "facialFeatures")
+        CheckBox(p1.tatBox, "tattoos")
+        CheckBox(p1.voiceBox, "voiceReference")
 
         if forceAll or p1.profNameBox.isDirty then
             local pName = strtrim(p1.profNameBox:GetText() or "")
@@ -1227,14 +1306,7 @@ function ns:RefreshControllerUI()
     SyncBox(p1.cuBox, p.currently)
     SyncBox(p1.oocBox, p.oocInfo)
 
-    if p1.eyeColorBtn then
-        local eyeHex = NormalizeHex6(p.eyeColor)
-        if eyeHex then
-            p1.eyeColorBtn:SetText("|cff" .. eyeHex .. "Tint|r")
-        else
-            p1.eyeColorBtn:SetText("Tint")
-        end
-    end
+    RefreshEyeSwatchBox()
 
     if p1.nameColorBtn then
         local customHex = NormalizeHex6(p.nameColorHex)
@@ -1250,11 +1322,17 @@ function ns:RefreshControllerUI()
     SyncBox(p1.moBox, p.motto)
     SyncBox(p1.hbBox, p.birthplace)
     SyncBox(p1.hhBox, p.residence)
+    SyncBox(p1.faceBox, p.facialFeatures)
+    SyncBox(p1.tatBox, p.tattoos)
+    SyncBox(p1.voiceBox, p.voiceReference)
     SyncBox(p1.profNameBox, p.profileName)
 
     p1.relBtn:SetText("Relationship: |cfffdd663" .. ns:GetRelationshipLabel(p.relationship) .. "|r")
     p1.styleBtn:SetText("RP Style: |cff8ab4f8" .. GetRPExperienceLabelText(p.rpStyle) .. "|r")
-    p1.portraitPickBtn:SetText("Character Portrait Icon: |cff81c995" .. tostring(p.icon or "INV_Helmet_46") .. "|r  |cff9aa0a6[Browse Icons]|r")
+    if p1.portraitPickBtn then
+        SetIconTextureSafe(p1.portraitPickBtn.iconTex, p.icon, "INV_Helmet_46")
+        p1.portraitPickBtn:SetText("Portrait")
+    end
 
     local p2 = tabPanels[2]
     p2.page1Btn:SetTone(activeGlancePage == 1 and "PRIMARY" or nil)
@@ -1356,17 +1434,16 @@ end
 local function OpenNativeColorPicker(mode, returnWidget)
     if not ColorPickerFrame or not ns.profile then return end
     local isEye = (mode == "EYE")
-    local prevHex = isEye and NormalizeHex6(ns.profile.eyeColor) or NormalizeHex6(ns.profile.nameColorHex)
+    local prevHex = isEye and NormalizeHex6((ns.profile and ns.profile.eyeColorHex) or (ns.profile and ns.profile.eyeColor))
+        or NormalizeHex6(ns.profile.nameColorHex)
     local startHex = prevHex or "8ab4f8"
     local r, g, b = HexToRGB(startHex)
 
     local function ApplyLiveRGB(nr, ng, nb)
         local hex6 = RGBToHex6(nr, ng, nb)
         if isEye then
-            ns.profile.eyeColor = hex6
-            if tabPanels[1] and tabPanels[1].eyBox and not tabPanels[1].eyBox:HasFocus() then
-                tabPanels[1].eyBox:SetCleanText(hex6)
-            end
+            ns.profile.eyeColorHex = hex6
+            RefreshEyeSwatchBox()
         else
             ns.profile.nameColorHex = hex6
             RefreshHeaderBanner()
@@ -1381,7 +1458,7 @@ local function OpenNativeColorPicker(mode, returnWidget)
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
         if ns.SyncMSP then ns:SyncMSP() end
         ns:RefreshControllerUI()
-        ns:ShowStatusToast((isEye and "Eye color" or "RP name color") .. " set to #" .. string.upper(RGBToHex6(nr, ng, nb)))
+        ns:ShowStatusToast((isEye and "Eye color swatch" or "RP name color") .. " set to #" .. string.upper(RGBToHex6(nr, ng, nb)))
         if returnWidget and returnWidget:IsVisible() then
             ns:SetControllerFocus(returnWidget)
         end
@@ -1518,7 +1595,7 @@ function ns:InitControllerUI()
     end)
 
     -- =========================================================
-    -- SEARCHABLE NATIVE ICON BROWSER (CURATED RP + ALL WOW ICONS)
+    -- SEARCHABLE NATIVE ICON BROWSER (CURATED RP + VERIFIED POOL)
     -- =========================================================
     local picker = CreateFrame("Frame", "PadRP_IconPicker", mainFrame, "BackdropTemplate")
     picker:SetSize(512, 412)
@@ -1555,13 +1632,13 @@ function ns:InitControllerUI()
         picker:RebuildFilter()
     end)
 
-    picker.nativeBtn = ns:CreateMaterialButton(picker, "All WoW Icons", 142, 24, 140, -34, nil, function()
-        picker.sourceMode = "NATIVE"
+    picker.nativeBtn = ns:CreateMaterialButton(picker, "More RP Icons", 142, 24, 140, -34, nil, function()
+        picker.sourceMode = "VERIFIED"
         picker.page = 1
         picker:RebuildFilter()
     end)
 
-    picker.searchBox = ns:CreateMaterialEditBox(picker, nil, "Search (e.g., sword, fire, book, ring, id)...", 288, -34, 162, 24, function(txt)
+    picker.searchBox = ns:CreateMaterialEditBox(picker, nil, "Search (e.g., sword, fire, book, ring)...", 288, -34, 162, 24, function(txt)
         picker.searchQuery = txt or ""
         picker.page = 1
         picker:RebuildFilter()
@@ -1674,7 +1751,7 @@ function ns:InitControllerUI()
 
     picker.RebuildFilter = function(self)
         wipe(self.filteredIcons)
-        local pool = (self.sourceMode == "NATIVE") and EnsureNativeIconPool() or CURATED_RP_ICONS
+        local pool = (self.sourceMode == "VERIFIED") and EnsureVerifiedIconPool() or CURATED_RP_ICONS
         local q = strtrim(string.lower(self.searchQuery or ""))
 
         if q == "" then
@@ -1690,13 +1767,10 @@ function ns:InitControllerUI()
         end
 
         self.curatedBtn:SetTone(self.sourceMode == "CURATED" and "PRIMARY" or nil)
-        self.nativeBtn:SetTone(self.sourceMode == "NATIVE" and "PRIMARY" or nil)
+        self.nativeBtn:SetTone(self.sourceMode == "VERIFIED" and "PRIMARY" or nil)
         self.curatedBtn:SetText(string.format("Curated RP (%d)", #CURATED_RP_ICONS))
-        if nativeIconPool then
-            self.nativeBtn:SetText(string.format("All WoW (%d)", #nativeIconPool))
-        else
-            self.nativeBtn:SetText("All WoW Icons")
-        end
+        local vPool = EnsureVerifiedIconPool()
+        self.nativeBtn:SetText(string.format("Expanded RP (%d)", #vPool))
 
         self:RefreshGrid()
     end
@@ -1925,6 +1999,7 @@ function ns:InitControllerUI()
     local function AutoCommitTab1()
         CommitModifiedBoxesToProfile(false)
         RefreshHeaderBanner()
+        RefreshEyeSwatchBox()
         ns:ShowStatusToast("Saved character vitals to PadRPDB")
     end
 
@@ -1960,12 +2035,25 @@ function ns:InitControllerUI()
     p1.prBox = ns:CreateMaterialEditBox(pageCore, "Pronouns", "e.g., He/Him", 436, -58, 204, 28, AutoCommitTab1)
 
     p1.agBox = ns:CreateMaterialEditBox(pageCore, "Age", "e.g., 32", 16, -110, 110, 28, AutoCommitTab1)
-    p1.htBox = ns:CreateMaterialEditBox(pageCore, "Height", "e.g., 6'0\" / Tall", 136, -110, 140, 28, AutoCommitTab1)
-    p1.wtBox = ns:CreateMaterialEditBox(pageCore, "Build / Body Shape", "e.g., Athletic", 286, -110, 150, 28, AutoCommitTab1)
-    p1.eyBox = ns:CreateMaterialEditBox(pageCore, "Eye Color", "e.g., Pale amber / hex", 446, -110, 132, 28, AutoCommitTab1)
-    p1.eyeColorBtn = ns:CreateMaterialButton(pageCore, "Tint", 54, 28, 586, -125, nil, function(self)
+    p1.htBox = ns:CreateMaterialEditBox(pageCore, "Height", "e.g., 6'0\" / Tall", 136, -110, 144, 28, AutoCommitTab1)
+    p1.wtBox = ns:CreateMaterialEditBox(pageCore, "Build / Body Shape", "e.g., Athletic", 290, -110, 166, 28, AutoCommitTab1)
+    p1.eyBox = ns:CreateMaterialEditBox(pageCore, "Eye Color", "e.g., Pale amber / Luminous", 466, -110, 138, 28, AutoCommitTab1)
+
+    local eyeSwatchBtn = CreateFrame("Button", nil, pageCore, "BackdropTemplate")
+    eyeSwatchBtn:SetSize(28, 28)
+    eyeSwatchBtn:SetPoint("TOPLEFT", pageCore, "TOPLEFT", 612, -125)
+    ns:ApplySurface(eyeSwatchBtn, M3.surfaceHigh, M3.outline)
+    eyeSwatchBtn.fillTex = eyeSwatchBtn:CreateTexture(nil, "ARTWORK")
+    eyeSwatchBtn.fillTex:SetPoint("TOPLEFT", 4, -4)
+    eyeSwatchBtn.fillTex:SetPoint("BOTTOMRIGHT", -4, 4)
+    eyeSwatchBtn.fillTex:Hide()
+    eyeSwatchBtn:SetScript("OnEnter", function(self) ns:SetControllerFocus(self) end)
+    eyeSwatchBtn:SetScript("OnClick", function(self)
+        ns:PlayUISound()
         OpenNativeColorPicker("EYE", self)
     end)
+    ns:RegisterFocusable(eyeSwatchBtn, function() eyeSwatchBtn:Click("LeftButton") end)
+    p1.eyeSwatchBtn = eyeSwatchBtn
 
     p1.cuBox = ns:CreateMaterialEditBox(pageCore, "Currently (Select Preset, Cycle, or Type Custom)", "What is your character doing right now?", 16, -162, 336, 28, AutoCommitTab1)
 
@@ -2101,12 +2189,16 @@ function ns:InitControllerUI()
     p1.hbBox = ns:CreateMaterialEditBox(pageDetails, "Birthplace", "e.g., Lordaeron (Allegedly)", 16, -60, 306, 28, AutoCommitTab1)
     p1.hhBox = ns:CreateMaterialEditBox(pageDetails, "Residence", "e.g., The Mage Quarter, Stormwind", 334, -60, 306, 28, AutoCommitTab1)
 
-    p1.relBtn = ns:CreateMaterialButton(pageDetails, "Relationship: Not Specified", 306, 30, 16, -118, "AMBER", function()
+    p1.faceBox = ns:CreateMaterialEditBox(pageDetails, "Facial Features", "e.g., Sharp smirk, manicured beard", 16, -110, 202, 28, AutoCommitTab1)
+    p1.tatBox = ns:CreateMaterialEditBox(pageDetails, "Tattoos / Markings", "e.g., Arcane sigil on left forearm", 228, -110, 202, 28, AutoCommitTab1)
+    p1.voiceBox = ns:CreateMaterialEditBox(pageDetails, "Voice Reference", "e.g., Calm, measured cadence", 440, -110, 200, 28, AutoCommitTab1)
+
+    p1.relBtn = ns:CreateMaterialButton(pageDetails, "Relationship: Not Specified", 202, 28, 16, -168, "AMBER", function()
         local code = ns:CycleRelationshipStatus()
         ns:RefreshControllerUI()
         ns:ShowStatusToast("Relationship: " .. ns:GetRelationshipLabel(code))
     end)
-    p1.styleBtn = ns:CreateMaterialButton(pageDetails, "RP Style: Normal", 306, 30, 334, -118, "PRIMARY", function()
+    p1.styleBtn = ns:CreateMaterialButton(pageDetails, "RP Style: Normal", 202, 28, 228, -168, "PRIMARY", function()
         local cur = tostring((ns.profile and ns.profile.rpStyle) or "1")
         local nextIdx = 1
         for idx, item in ipairs(RP_EXPERIENCE_LIST) do
@@ -2119,9 +2211,18 @@ function ns:InitControllerUI()
         ns:RefreshControllerUI()
     end)
 
-    p1.portraitPickBtn = ns:CreateMaterialButton(pageDetails, "Character Portrait Icon", 624, 30, 16, -158, nil, function(self)
+    local portraitPickBtn = ns:CreateMaterialButton(pageDetails, "Portrait", 200, 28, 440, -168, nil, function(self)
         picker:OpenForPortrait(self)
     end)
+    portraitPickBtn.iconTex = portraitPickBtn:CreateTexture(nil, "OVERLAY")
+    portraitPickBtn.iconTex:SetSize(20, 20)
+    portraitPickBtn.iconTex:SetPoint("LEFT", portraitPickBtn, "LEFT", 8, 0)
+    portraitPickBtn.iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    portraitPickBtn.label:ClearAllPoints()
+    portraitPickBtn.label:SetPoint("LEFT", portraitPickBtn.iconTex, "RIGHT", 8, 0)
+    portraitPickBtn.label:SetPoint("RIGHT", portraitPickBtn, "RIGHT", -8, 0)
+    portraitPickBtn.label:SetJustifyH("LEFT")
+    p1.portraitPickBtn = portraitPickBtn
 
     p1.profNameBox = ns:CreateMaterialEditBox(pageDetails, "Active Profile Name", "e.g., Main Character", 16, -206, 250, 28, AutoCommitTab1)
     p1.newProfBtn = ns:CreateMaterialButton(pageDetails, "+ New Profile", 148, 28, 278, -221, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
