@@ -29,6 +29,25 @@ local function HexToRGB(hex)
            tonumber(clean:sub(5, 6), 16) / 255
 end
 
+local function StripColorCodes(str)
+    if not str then return "" end
+    local clean = tostring(str):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    return clean
+end
+
+local function CleanOOCTooltipText(raw)
+    if not raw then return "" end
+    local clean = strtrim(StripColorCodes(raw))
+    clean = clean:gsub("%[Walk%-Ups:[^%]]*%]", "")
+    clean = clean:gsub("%[Walk%-Ups Welcome%]", "")
+    clean = clean:gsub("%[Walk%-Ups: Ask First%]", "")
+    clean = clean:gsub("%[No Walk%-Ups%]", "")
+    clean = clean:gsub("%[Pronouns:[^%]]*%]", "")
+    clean = clean:gsub("^%s*[•|%-]+%s*", "")
+    clean = clean:gsub("%s*[•|%-]+%s*$", "")
+    return strtrim(clean)
+end
+
 function ns:GetNoteInfo(key)
     if not key or not ns.db or not ns.db.notes then
         return "None", "", "", false
@@ -138,7 +157,7 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
             portraitTag = string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", iconPath)
         end
 
-        local displayName = data.NA:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        local displayName = StripColorCodes(data.NA)
         if data.PX and strtrim(data.PX) ~= "" and not string.find(displayName, strtrim(data.PX), 1, true) then
             displayName = strtrim(data.PX) .. " " .. displayName
         end
@@ -153,7 +172,7 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
             tooltip:AddLine("< " .. data.NT .. " >", 0.99, 0.84, 0.39, true)
         end
 
-        local raceClass = strtrim((data.RA or "") .. " " .. (data.RC and data.RC:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") or ""))
+        local raceClass = strtrim((data.RA or "") .. " " .. (data.RC and StripColorCodes(data.RC) or ""))
         if raceClass ~= "" then
             tooltip:AddLine(raceClass, r, g, b, false)
         end
@@ -165,17 +184,28 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         end
 
         local cuVal = (isSelf and ns.profile and ns.profile.currently) or data.CU
-        if cuVal and strtrim(cuVal) ~= "" then
+        if cuVal and strtrim(StripColorCodes(cuVal)) ~= "" then
             tooltip:AddLine(" ")
             tooltip:AddLine("Currently", 1.0, 1.0, 1.0, false)
-            tooltip:AddLine(strtrim(cuVal), 0.99, 0.84, 0.39, true)
+            tooltip:AddLine(strtrim(StripColorCodes(cuVal)), 0.99, 0.84, 0.39, true)
         end
 
-        local oocVal = (isSelf and ns.profile and (ns.profile.oocNotes or ns.profile.oocInfo)) or data.CO
-        if oocVal and strtrim(oocVal) ~= "" then
+        local oocRaw = (isSelf and ns.profile and (ns.profile.oocNotes or ns.profile.oocInfo)) or data.CO
+        local oocClean = CleanOOCTooltipText(oocRaw)
+        local oocBlock = {}
+        if oocClean ~= "" then
+            table.insert(oocBlock, oocClean)
+        end
+        if isSelf and ns.profile then
+            local lgbtqText = (ns.profile.lgbtqFriendly ~= false) and "|cff81c995Yes|r" or "|cff9aa0a6No|r"
+            local erpText = ns.profile.erpFriendly and "|cfffdd663Yes|r" or "|cff9aa0a6No|r"
+            table.insert(oocBlock, "|cff9aa0a6LGBTQIA2S+ friendly:|r " .. lgbtqText)
+            table.insert(oocBlock, "|cff9aa0a6ERP:|r " .. erpText)
+        end
+        if #oocBlock > 0 then
             tooltip:AddLine(" ")
             tooltip:AddLine("Other information (OOC)", 1.0, 1.0, 1.0, false)
-            tooltip:AddLine(strtrim(oocVal), 0.99, 0.84, 0.39, true)
+            tooltip:AddLine(table.concat(oocBlock, "\n"), 0.99, 0.84, 0.39, true)
         end
 
         local glances = ns:ParseGlances(data.PE)
@@ -379,14 +409,14 @@ function ns:RefreshTargetHUD()
     local noteTag = hasNote and " |TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t" or ""
 
     if data and data.NA and data.NA ~= "" then
-        local cleanNA = data.NA:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        local cleanNA = StripColorCodes(data.NA)
         local titleStr = (data.NT and data.NT ~= "") and ("  |cfffdd663<" .. data.NT .. ">|r") or ""
         hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. cleanNA .. "|r" .. titleStr .. noteTag)
         local isIC = (data.FC == "2")
         local icDot = isIC and "|cff81c995[IC]|r" or "|cfff28b82[OOC]|r"
         local wuBadge = ns:GetTargetWalkUpInfo(data)
         local prefixBadges = wuBadge and (icDot .. " " .. wuBadge) or icDot
-        local cuStr = (data.CU and data.CU ~= "") and data.CU or "|cff9aa0a6Focus / Click to open Dossier|r"
+        local cuStr = (data.CU and data.CU ~= "") and StripColorCodes(data.CU) or "|cff9aa0a6Focus / Click to open Dossier|r"
         hudFrame.subText:SetText(prefixBadges .. "  |cffe8eaed" .. cuStr .. "|r")
         hudFrame.hintText:SetText("|cff81c995Focus / Click to Open Dossier|r")
         hudFrame.accentBar:SetColorTexture(isIC and 0.51 or 0.95, isIC and 0.79 or 0.55, isIC and 0.58 or 0.51, 1)
