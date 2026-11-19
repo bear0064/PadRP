@@ -104,6 +104,42 @@ local function SetIconTextureSafe(tex, icon, fallback)
     end
 end
 
+local function NormalizeHex6(raw)
+    if type(raw) ~= "string" then return nil end
+    local clean = string.gsub(strtrim(raw), "^#+", "")
+    clean = string.gsub(clean, "^[cC][fF]", "")
+    if string.match(clean, "^%x%x%x%x%x%x$") then
+        return string.lower(clean)
+    end
+    return nil
+end
+
+local function HexToRGB(hex6)
+    local h = NormalizeHex6(hex6) or "8ab4f8"
+    local r = tonumber(string.sub(h, 1, 2), 16) / 255
+    local g = tonumber(string.sub(h, 3, 4), 16) / 255
+    local b = tonumber(string.sub(h, 5, 6), 16) / 255
+    return r, g, b
+end
+
+local function RGBToHex6(r, g, b)
+    local function ClampByte(v)
+        v = math.max(0, math.min(1, tonumber(v) or 0))
+        return math.floor(v * 255 + 0.5)
+    end
+    return string.format("%02x%02x%02x", ClampByte(r), ClampByte(g), ClampByte(b))
+end
+
+local function GetPlayerActiveNameColorHex()
+    local custom = NormalizeHex6(ns.profile and ns.profile.nameColorHex)
+    if custom then
+        return "ff" .. custom
+    end
+    local _, classFile = UnitClass("player")
+    local classHex = (classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] and RAID_CLASS_COLORS[classFile].colorStr) or "ffffffff"
+    return classHex
+end
+
 local function AttachWheelScroller(frame, onWheelStep)
     if not frame or not frame.EnableMouseWheel then return end
     frame:EnableMouseWheel(true)
@@ -135,8 +171,8 @@ local function ApplyRPExperienceSelection(code)
     if mainFrame and mainFrame.bannerExpBtn then
         mainFrame.bannerExpBtn:SetText("|cff8ab4f8RP:|r " .. GetRPExperienceLabelText(ns.profile.rpStyle) .. " [v]")
     end
-    if tabPanels[1] and tabPanels[1].styleBtn and ns.GetRPStyleLabel then
-        tabPanels[1].styleBtn:SetText("RP Style: |cff8ab4f8" .. ns:GetRPStyleLabel(ns.profile.rpStyle) .. "|r")
+    if tabPanels[1] and tabPanels[1].styleBtn then
+        tabPanels[1].styleBtn:SetText("RP Style: |cff8ab4f8" .. GetRPExperienceLabelText(ns.profile.rpStyle) .. "|r")
     end
     ns:ShowStatusToast("RP Experience: " .. GetRPExperienceLabelText(ns.profile.rpStyle))
 end
@@ -222,11 +258,12 @@ local function UpdateResponsiveLayouts()
             }, 16, 16, 10)
 
             LayoutRow(pc, -125, {
-                { w = p1.agBox, weight = 0.18 },
-                { w = p1.htBox, weight = 0.24 },
-                { w = p1.wtBox, weight = 0.29 },
-                { w = p1.eyBox, weight = 0.29 },
-            }, 16, 16, 10)
+                { w = p1.agBox,       weight = 0.17 },
+                { w = p1.htBox,       weight = 0.22 },
+                { w = p1.wtBox,       weight = 0.25 },
+                { w = p1.eyBox,       weight = 0.24 },
+                { w = p1.eyeColorBtn, fixed = 54 },
+            }, 16, 16, 8)
 
             LayoutRow(pc, -177, {
                 { w = p1.cuBox,         weight = 1 },
@@ -237,8 +274,10 @@ local function UpdateResponsiveLayouts()
             }, 16, 16, 6)
 
             LayoutRow(pc, -233, {
-                { w = p1.oocBox, weight = 1 },
-            }, 16, 16, 0)
+                { w = p1.oocBox,        weight = 1 },
+                { w = p1.nameColorBtn,  fixed = 112 },
+                { w = p1.resetColorBtn, fixed = 86 },
+            }, 16, 16, 8)
         end
 
         local pd = p1.pageDetails
@@ -987,8 +1026,7 @@ local function RefreshHeaderBanner()
     if not mainFrame or not ns.profile then return end
     local p = ns.profile
     local M3 = ns.M3
-    local _, classFile = UnitClass("player")
-    local classHex = (classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] and RAID_CLASS_COLORS[classFile].colorStr) or "ffffffff"
+    local nameHex = GetPlayerActiveNameColorHex()
 
     if mainFrame.portraitTex then
         SetIconTextureSafe(mainFrame.portraitTex, p.icon, "INV_Helmet_46")
@@ -1001,7 +1039,7 @@ local function RefreshHeaderBanner()
     if p.lastName and strtrim(p.lastName) ~= "" then table.insert(nameParts, strtrim(p.lastName)) end
     local fullName = table.concat(nameParts, " ")
 
-    mainFrame.bannerName:SetText("|c" .. classHex .. fullName .. "|r")
+    mainFrame.bannerName:SetText("|c" .. nameHex .. fullName .. "|r")
     local titlePart = (p.title and p.title ~= "") and ("|cfffdd663<" .. p.title .. ">|r") or "|cff9aa0a6No RP Title|r"
     local housePart = (p.houseName and p.houseName ~= "") and ("  |cff8ab4f8-  " .. p.houseName .. "|r") or ""
     mainFrame.bannerTitle:SetText(titlePart .. housePart)
@@ -1189,6 +1227,24 @@ function ns:RefreshControllerUI()
     SyncBox(p1.cuBox, p.currently)
     SyncBox(p1.oocBox, p.oocInfo)
 
+    if p1.eyeColorBtn then
+        local eyeHex = NormalizeHex6(p.eyeColor)
+        if eyeHex then
+            p1.eyeColorBtn:SetText("|cff" .. eyeHex .. "Tint|r")
+        else
+            p1.eyeColorBtn:SetText("Tint")
+        end
+    end
+
+    if p1.nameColorBtn then
+        local customHex = NormalizeHex6(p.nameColorHex)
+        if customHex then
+            p1.nameColorBtn:SetText("|cff" .. customHex .. "[#]|r Name: #" .. string.upper(customHex))
+        else
+            p1.nameColorBtn:SetText("|cff8ab4f8[#]|r Name: Class")
+        end
+    end
+
     SyncBox(p1.niBox, p.nickname)
     SyncBox(p1.hoBox, p.houseName)
     SyncBox(p1.moBox, p.motto)
@@ -1197,7 +1253,7 @@ function ns:RefreshControllerUI()
     SyncBox(p1.profNameBox, p.profileName)
 
     p1.relBtn:SetText("Relationship: |cfffdd663" .. ns:GetRelationshipLabel(p.relationship) .. "|r")
-    p1.styleBtn:SetText("RP Style: |cff8ab4f8" .. ns:GetRPStyleLabel(p.rpStyle) .. "|r")
+    p1.styleBtn:SetText("RP Style: |cff8ab4f8" .. GetRPExperienceLabelText(p.rpStyle) .. "|r")
     p1.portraitPickBtn:SetText("Character Portrait Icon: |cff81c995" .. tostring(p.icon or "INV_Helmet_46") .. "|r  |cff9aa0a6[Browse Icons]|r")
 
     local p2 = tabPanels[2]
@@ -1294,6 +1350,99 @@ function ns:ToggleMainFrame()
         mainFrame:Show()
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
+    end
+end
+
+local function OpenNativeColorPicker(mode, returnWidget)
+    if not ColorPickerFrame or not ns.profile then return end
+    local isEye = (mode == "EYE")
+    local prevHex = isEye and NormalizeHex6(ns.profile.eyeColor) or NormalizeHex6(ns.profile.nameColorHex)
+    local startHex = prevHex or "8ab4f8"
+    local r, g, b = HexToRGB(startHex)
+
+    local function ApplyLiveRGB(nr, ng, nb)
+        local hex6 = RGBToHex6(nr, ng, nb)
+        if isEye then
+            ns.profile.eyeColor = hex6
+            if tabPanels[1] and tabPanels[1].eyBox and not tabPanels[1].eyBox:HasFocus() then
+                tabPanels[1].eyBox:SetCleanText(hex6)
+            end
+        else
+            ns.profile.nameColorHex = hex6
+            RefreshHeaderBanner()
+            if tabPanels[1] and tabPanels[1].nameColorBtn then
+                tabPanels[1].nameColorBtn:SetText("|cff" .. hex6 .. "[#]|r Name: #" .. string.upper(hex6))
+            end
+        end
+    end
+
+    local function FinalizeRGB(nr, ng, nb)
+        ApplyLiveRGB(nr, ng, nb)
+        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        if ns.SyncMSP then ns:SyncMSP() end
+        ns:RefreshControllerUI()
+        ns:ShowStatusToast((isEye and "Eye color" or "RP name color") .. " set to #" .. string.upper(RGBToHex6(nr, ng, nb)))
+        if returnWidget and returnWidget:IsVisible() then
+            ns:SetControllerFocus(returnWidget)
+        end
+    end
+
+    local function CancelRGB(prevValues)
+        if prevHex then
+            local pr, pg, pb = HexToRGB(prevHex)
+            ApplyLiveRGB(pr, pg, pb)
+            if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+            if ns.SyncMSP then ns:SyncMSP() end
+            ns:RefreshControllerUI()
+            ns:ShowStatusToast("Color change cancelled")
+        elseif type(prevValues) == "table" and prevValues.r then
+            ApplyLiveRGB(prevValues.r, prevValues.g, prevValues.b)
+        end
+        if returnWidget and returnWidget:IsVisible() then
+            ns:SetControllerFocus(returnWidget)
+        end
+    end
+
+    ColorPickerFrame.hasOpacity = false
+    ColorPickerFrame.opacity = 1
+    ColorPickerFrame.previousValues = { r = r, g = g, b = b, opacity = 1 }
+
+    if ColorPickerFrame.SetupColorPickerAndShow then
+        ColorPickerFrame:SetupColorPickerAndShow({
+            r = r,
+            g = g,
+            b = b,
+            hasOpacity = false,
+            swatchFunc = function()
+                local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+                ApplyLiveRGB(nr, ng, nb)
+            end,
+            cancelFunc = function(prev)
+                CancelRGB(prev)
+            end,
+            opacityFunc = nil,
+        })
+        if ColorPickerFrame.SetScript and not ColorPickerFrame._padRPOnHideHooked then
+            ColorPickerFrame._padRPOnHideHooked = true
+            local origOnHide = ColorPickerFrame:GetScript("OnHide")
+            ColorPickerFrame:SetScript("OnHide", function(self, ...)
+                if origOnHide then origOnHide(self, ...) end
+                if self.GetColorRGB then
+                    local nr, ng, nb = self:GetColorRGB()
+                    FinalizeRGB(nr, ng, nb)
+                end
+            end)
+        end
+    else
+        ColorPickerFrame:SetColorRGB(r, g, b)
+        ColorPickerFrame.func = function()
+            local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+            ApplyLiveRGB(nr, ng, nb)
+        end
+        ColorPickerFrame.cancelFunc = function(prev)
+            CancelRGB(prev)
+        end
+        ColorPickerFrame:Show()
     end
 end
 
@@ -1664,7 +1813,7 @@ function ns:InitControllerUI()
     mainFrame.walkUpBtn = walkUpBtn
 
     local expDropdown = CreateFrame("Frame", "PadRP_TopExpDropdown", mainFrame, "BackdropTemplate")
-    expDropdown:SetSize(196, 134)
+    expDropdown:SetSize(196, 164)
     expDropdown:SetFrameStrata("DIALOG")
     expDropdown:SetFrameLevel(mainFrame:GetFrameLevel() + 40)
     ns:ApplySurface(expDropdown, M3.surfaceDim, M3.primary)
@@ -1810,10 +1959,13 @@ function ns:InitControllerUI()
     p1.clBox = ns:CreateMaterialEditBox(pageCore, "RP Class / Occupation", "e.g., Warlock", 222, -58, 204, 28, AutoCommitTab1)
     p1.prBox = ns:CreateMaterialEditBox(pageCore, "Pronouns", "e.g., He/Him", 436, -58, 204, 28, AutoCommitTab1)
 
-    p1.agBox = ns:CreateMaterialEditBox(pageCore, "Age", "e.g., 32", 16, -110, 145, 28, AutoCommitTab1)
-    p1.htBox = ns:CreateMaterialEditBox(pageCore, "Height", "e.g., 6'0\" / Tall", 171, -110, 145, 28, AutoCommitTab1)
-    p1.wtBox = ns:CreateMaterialEditBox(pageCore, "Build / Body Shape", "e.g., Athletic", 326, -110, 152, 28, AutoCommitTab1)
-    p1.eyBox = ns:CreateMaterialEditBox(pageCore, "Eye Color", "e.g., Pale amber", 488, -110, 152, 28, AutoCommitTab1)
+    p1.agBox = ns:CreateMaterialEditBox(pageCore, "Age", "e.g., 32", 16, -110, 110, 28, AutoCommitTab1)
+    p1.htBox = ns:CreateMaterialEditBox(pageCore, "Height", "e.g., 6'0\" / Tall", 136, -110, 140, 28, AutoCommitTab1)
+    p1.wtBox = ns:CreateMaterialEditBox(pageCore, "Build / Body Shape", "e.g., Athletic", 286, -110, 150, 28, AutoCommitTab1)
+    p1.eyBox = ns:CreateMaterialEditBox(pageCore, "Eye Color", "e.g., Pale amber / hex", 446, -110, 132, 28, AutoCommitTab1)
+    p1.eyeColorBtn = ns:CreateMaterialButton(pageCore, "Tint", 54, 28, 586, -125, nil, function(self)
+        OpenNativeColorPicker("EYE", self)
+    end)
 
     p1.cuBox = ns:CreateMaterialEditBox(pageCore, "Currently (Select Preset, Cycle, or Type Custom)", "What is your character doing right now?", 16, -162, 336, 28, AutoCommitTab1)
 
@@ -1855,7 +2007,18 @@ function ns:InitControllerUI()
         ns:ShowStatusToast("Cleared Currently status")
     end)
 
-    p1.oocBox = ns:CreateMaterialEditBox(pageCore, "Out-of-Character (OOC) Note & RP Preferences", "e.g., Playing on controller.", 16, -218, 624, 28, AutoCommitTab1)
+    p1.oocBox = ns:CreateMaterialEditBox(pageCore, "Out-of-Character (OOC) Note & RP Name Tint", "e.g., Playing on controller.", 16, -218, 410, 28, AutoCommitTab1)
+    p1.nameColorBtn = ns:CreateMaterialButton(pageCore, "[#] Name: Class", 112, 28, 434, -233, "PRIMARY", function(self)
+        OpenNativeColorPicker("NAME", self)
+    end)
+    p1.resetColorBtn = ns:CreateMaterialButton(pageCore, "Reset Cls", 86, 28, 554, -233, nil, function()
+        ns.profile.nameColorHex = nil
+        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        if ns.SyncMSP then ns:SyncMSP() end
+        RefreshHeaderBanner()
+        ns:RefreshControllerUI()
+        ns:ShowStatusToast("Reset RP name color to class default")
+    end)
 
     local dropdown = CreateFrame("Frame", nil, pageCore, "BackdropTemplate")
     dropdown:SetSize(426, 194)
@@ -1895,12 +2058,20 @@ function ns:InitControllerUI()
                     ns:SetControllerFocus(p1.presetBtn)
                 end)
                 r.selectBtn.label:SetJustifyH("LEFT")
+                AttachWheelScroller(r.selectBtn, function(step)
+                    dropdown.page = dropdown.page + step
+                    dropdown:Rebuild()
+                end)
                 r.delBtn = ns:CreateMaterialButton(self, "X", 30, 24, 388, -28 - (i - 1) * 26, "CORAL", function(btn)
                     if btn.presetIndex and ns.db.currentlyPresets[btn.presetIndex] then
                         table.remove(ns.db.currentlyPresets, btn.presetIndex)
                         dropdown:Rebuild()
                         ns:FocusFirstInScope()
                     end
+                end)
+                AttachWheelScroller(r.delBtn, function(step)
+                    dropdown.page = dropdown.page + step
+                    dropdown:Rebuild()
                 end)
                 self.rows[i] = r
             end
@@ -1936,10 +2107,16 @@ function ns:InitControllerUI()
         ns:ShowStatusToast("Relationship: " .. ns:GetRelationshipLabel(code))
     end)
     p1.styleBtn = ns:CreateMaterialButton(pageDetails, "RP Style: Normal", 306, 30, 334, -118, "PRIMARY", function()
-        local code = ns:CycleRPStyle()
-        RefreshHeaderBanner()
+        local cur = tostring((ns.profile and ns.profile.rpStyle) or "1")
+        local nextIdx = 1
+        for idx, item in ipairs(RP_EXPERIENCE_LIST) do
+            if item.code == cur then
+                nextIdx = (idx % #RP_EXPERIENCE_LIST) + 1
+                break
+            end
+        end
+        ApplyRPExperienceSelection(RP_EXPERIENCE_LIST[nextIdx].code)
         ns:RefreshControllerUI()
-        ns:ShowStatusToast("RP Style: " .. ns:GetRPStyleLabel(code))
     end)
 
     p1.portraitPickBtn = ns:CreateMaterialButton(pageDetails, "Character Portrait Icon", 624, 30, 16, -158, nil, function(self)
@@ -2298,6 +2475,13 @@ function ns:InitControllerUI()
         RefreshGratitudeStudio()
     end)
 
+    local function StepPhrasePage(step)
+        local pool = GetActiveGratitudePool()
+        editPhraseIdx = math.max(1, math.min(#pool, editPhraseIdx + (step * 3)))
+        RefreshGratitudeStudio()
+    end
+    AttachWheelScroller(p5, StepPhrasePage)
+
     p5.phraseRows = {}
     for i = 1, 3 do
         local rowY = -142 - (i - 1) * 28
@@ -2312,17 +2496,14 @@ function ns:InitControllerUI()
         end)
         r.delBtn:ClearAllPoints()
         r.delBtn:SetPoint("TOPRIGHT", p5, "TOPRIGHT", -16, rowY)
+        AttachWheelScroller(r.delBtn, StepPhrasePage)
+
         r.selectBtn = ns:CreateMaterialButton(p5, "", 586, 25, 16, rowY, nil, function()
             if r.phraseIndex then editPhraseIdx = r.phraseIndex; RefreshGratitudeStudio() end
         end)
         r.selectBtn:SetPoint("RIGHT", r.delBtn, "LEFT", -6, 0)
         r.selectBtn.label:SetJustifyH("LEFT")
-
-        AttachWheelScroller(r.selectBtn, function(step)
-            local pool = GetActiveGratitudePool()
-            editPhraseIdx = math.max(1, math.min(#pool, editPhraseIdx + (step * 3)))
-            RefreshGratitudeStudio()
-        end)
+        AttachWheelScroller(r.selectBtn, StepPhrasePage)
 
         p5.phraseRows[i] = r
     end

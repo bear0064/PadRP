@@ -105,28 +105,42 @@ end
 
 function ns:PerformThank(targetRawName, spellLabel, isManualHardwarePress, category)
     local cleanTarget = NormalizeWhisperTarget(targetRawName)
-    if not cleanTarget then return end
+    if not cleanTarget then return false end
+
+    local mode = ns.db.gratitude.mode
+    if mode == "OFF" then return false end
+    if mode == "MANUAL" and not isManualHardwarePress then
+        return false
+    end
 
     local template = PickRandomPhrase(category or "STANDARD")
     local formatted = ns:FormatTokens(template, cleanTarget, spellLabel or "aid")
-    local mode = ns.db.gratitude.mode
-
     local inInstance = IsInInstance and select(1, IsInInstance())
-    local canSendCustomEmote = (isManualHardwarePress == true) or (inInstance == true) or (mode ~= "DO_EMOTE")
+    local sentOk = false
 
     if mode == "DO_EMOTE" and not isManualHardwarePress then
-        DoEmote("THANK", cleanTarget)
+        local ok = pcall(DoEmote, "THANK", cleanTarget)
+        sentOk = ok and true or false
     elseif mode == "AUTO_WHISPER" then
-        SendChatMessage(formatted, "WHISPER", nil, cleanTarget)
-    elseif mode == "MANUAL" and not isManualHardwarePress then
-        return
+        local ok = pcall(SendChatMessage, formatted, "WHISPER", nil, cleanTarget)
+        sentOk = ok and true or false
+    elseif isManualHardwarePress or inInstance then
+        local ok = pcall(SendChatMessage, formatted, "EMOTE")
+        sentOk = ok and true or false
     else
-        -- SMART, AUTO_EMOTE, or manual hardware press -> output custom phrase to /e emote
-        SendChatMessage(formatted, "EMOTE")
+        -- Open-world automatic trigger: whisper helper instead of protected EMOTE send
+        local ok = pcall(SendChatMessage, formatted, "WHISPER", nil, cleanTarget)
+        if not ok then
+            ok = pcall(DoEmote, "THANK", cleanTarget)
+        end
+        sentOk = ok and true or false
     end
 
-    local displayName = ns:GetUnitRPName(cleanTarget, true)
-    print(string.format("|cff81c995[PadRP]|r Thanked |cfffdd663%s|r (%s) with custom pool phrase.", displayName, spellLabel or "aid"))
+    if sentOk then
+        local displayName = ns:GetUnitRPName(cleanTarget, true)
+        print(string.format("|cff81c995[PadRP]|r Thanked |cfffdd663%s|r (%s) with custom pool phrase.", displayName, spellLabel or "aid"))
+    end
+    return sentOk
 end
 
 function ns:QuickThankAction()
@@ -151,8 +165,9 @@ local function QueueGratitudeForHelper(sourceKey, sourceName, matchedAction, cat
         return
     end
 
+    local cooldownKey = sourceKey or string.lower(cleanTarget)
     local now = GetTime()
-    local dedupKey = cleanTarget .. ":" .. tostring(matchedAction)
+    local dedupKey = cooldownKey .. ":" .. tostring(category or "STANDARD") .. ":" .. string.lower(tostring(matchedAction or ""))
     if recentEventDedup[dedupKey] and (now - recentEventDedup[dedupKey]) < 3.0 then
         return
     end
@@ -166,7 +181,6 @@ local function QueueGratitudeForHelper(sourceKey, sourceName, matchedAction, cat
         return
     end
 
-    local cooldownKey = sourceKey or cleanTarget
     if g.oncePerSession and sessionThanked[cooldownKey] and category == "STANDARD" then
         return
     end
@@ -179,9 +193,13 @@ local function QueueGratitudeForHelper(sourceKey, sourceName, matchedAction, cat
     recentThanks[cooldownKey] = now
     sessionThanked[cooldownKey] = true
 
-    C_Timer.After(1.2, function()
+    if C_Timer and C_Timer.After then
+        C_Timer.After(1.2, function()
+            ns:PerformThank(cleanTarget, matchedAction, false, category)
+        end)
+    else
         ns:PerformThank(cleanTarget, matchedAction, false, category)
-    end)
+    end
 end
 
 local function HandleCombatLogEvent()
