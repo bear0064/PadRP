@@ -656,12 +656,12 @@ local function UpdateResponsiveLayouts()
                 }, 16, 16, 8)
             end
 
-            LayoutRow(pd, -236, {
+            LayoutRow(pd, -232, {
                 { w = p1.lgbtqBtn, weight = 1 },
                 { w = p1.erpBtn,   weight = 1 },
             }, 16, 16, 8)
 
-            LayoutRow(pd, -268, {
+            LayoutRow(pd, -278, {
                 { w = p1.profNameBox, weight = 1 },
                 { w = p1.newProfBtn,  fixed = 148 },
                 { w = p1.delProfBtn,  fixed = 166 },
@@ -1629,7 +1629,6 @@ function ns:RefreshTargetCard()
     end
 end
 
--- Seamless controller paging across Directory rows
 function ns:TrySeamlessDirectoryStep(rowIndex, dir)
     if activeTab ~= 4 then return false end
     local p4 = tabPanels[4]
@@ -2860,20 +2859,20 @@ function ns:InitControllerUI()
         p1.topicBtns[t.key] = tBtn
     end
 
-    p1.lgbtqBtn = ns:CreateMaterialButton(pageDetails, "", 304, 24, 16, -236, "MINT", function()
+    p1.lgbtqBtn = ns:CreateMaterialButton(pageDetails, "", 304, 24, 16, -232, "MINT", function()
         ns.profile.lgbtqFriendly = not (ns.profile.lgbtqFriendly ~= false)
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
         ns:RefreshControllerUI()
     end)
-    p1.erpBtn = ns:CreateMaterialButton(pageDetails, "", 304, 24, 336, -236, nil, function()
+    p1.erpBtn = ns:CreateMaterialButton(pageDetails, "", 304, 24, 336, -232, nil, function()
         ns.profile.erpFriendly = not (ns.profile.erpFriendly and true or false)
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
         ns:RefreshControllerUI()
     end)
 
-    p1.profNameBox = ns:CreateMaterialEditBox(pageDetails, "Active Profile Name", "e.g., Main Character", 16, -258, 250, 26, AutoCommitTab1)
-    p1.newProfBtn = ns:CreateMaterialButton(pageDetails, "+ New Profile", 148, 26, 278, -268, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
-    p1.delProfBtn = ns:CreateMaterialButton(pageDetails, "Delete Active Profile", 166, 26, 462, -268, "CORAL", function(self)
+    p1.profNameBox = ns:CreateMaterialEditBox(pageDetails, "Active Profile Name", "e.g., Main Character", 16, -268, 250, 26, AutoCommitTab1)
+    p1.newProfBtn = ns:CreateMaterialButton(pageDetails, "+ New Profile", 148, 26, 278, -278, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
+    p1.delProfBtn = ns:CreateMaterialButton(pageDetails, "Delete Active Profile", 166, 26, 462, -278, "CORAL", function(self)
         local now = GetTime()
         if now < confirmDeleteProfileUntil then
             confirmDeleteProfileUntil = 0
