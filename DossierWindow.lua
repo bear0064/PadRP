@@ -2,7 +2,9 @@ local _, ns = ...
 
 local dossierFrame
 local selectedDossierKey = nil
+local lastRenderedKey = nil
 local activeSubView = "CHAR"
+local lastRenderedSubView = nil
 local SUB_VIEWS = { "CHAR", "ABOUT", "GLANCES", "NOTES" }
 local STANDINGS = { "None", "Ally", "Acquaintance", "Rival", "Marked" }
 
@@ -291,7 +293,11 @@ function ns:RefreshDossierWindow()
         return
     end
 
+    local viewChanged = (key ~= lastRenderedKey) or (activeSubView ~= lastRenderedSubView)
     selectedDossierKey = key
+    lastRenderedKey = key
+    lastRenderedSubView = activeSubView
+
     local isSelf = IsPlayerSelfKey(key)
     local isLiveTarget = UnitExists("target") and UnitIsPlayer("target") and (ns:GetUnitKey("target") == key)
     local tHex = "ff8ab4f8"
@@ -411,17 +417,11 @@ function ns:RefreshDossierWindow()
         local textH = dossierFrame.scrollText:GetStringHeight() or 140
         local viewH = dossierFrame.scrollFrame:GetHeight() or 360
         dossierFrame.scrollChild:SetHeight(math.max(viewH, textH + 28))
-        if dossierFrame.scrollFrame.SetVerticalScroll then
+        if viewChanged and dossierFrame.scrollFrame.SetVerticalScroll then
             dossierFrame.scrollFrame:SetVerticalScroll(0)
         end
-
-        local sb = dossierFrame.scrollFrame.ScrollBar or _G[dossierFrame.scrollFrame:GetName() .. "ScrollBar"]
-        if sb then
-            if (textH + 20) > viewH then
-                sb:Show()
-            else
-                sb:Hide()
-            end
+        if dossierFrame.scrollFrame.UpdateScrollChildRect then
+            dossierFrame.scrollFrame:UpdateScrollChildRect()
         end
     end
 end
@@ -441,6 +441,8 @@ function ns:OpenTargetDossier(specificKey)
     end
 
     activeSubView = "CHAR"
+    lastRenderedKey = nil
+    lastRenderedSubView = nil
     dossierFrame:SetScale((ns.db and ns.db.ui and ns.db.ui.scale) or 1.0)
     dossierFrame:Show()
     dossierFrame:Raise()
@@ -528,9 +530,18 @@ function ns:InitDossierWindow()
 
     local scrollFrame = CreateFrame("ScrollFrame", "PadRP_DossierScrollFrame", readerBox, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", 12, -10)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 10)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 12)
+    scrollFrame:EnableMouseWheel(true)
     ns:EnableClipping(scrollFrame)
     dossierFrame.scrollFrame = scrollFrame
+
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        if not delta or delta == 0 then return end
+        local cur = self:GetVerticalScroll() or 0
+        local maxS = (self.GetVerticalScrollRange and self:GetVerticalScrollRange()) or 0
+        local step = (delta > 0) and -56 or 56
+        self:SetVerticalScroll(math.max(0, math.min(maxS, cur + step)))
+    end)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetSize(580, 180)

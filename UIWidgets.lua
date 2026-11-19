@@ -33,6 +33,17 @@ local SOLID_BACKDROP = {
     insets   = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
+local function ScrollFrameByDelta(scrollFrame, deltaPixels)
+    if not scrollFrame or not scrollFrame.GetVerticalScroll or not scrollFrame.SetVerticalScroll then return false end
+    local cur = scrollFrame:GetVerticalScroll() or 0
+    local maxS = (scrollFrame.GetVerticalScrollRange and scrollFrame:GetVerticalScrollRange()) or 0
+    if maxS <= 2 then return false end
+    local nextVal = math.max(0, math.min(maxS, cur + deltaPixels))
+    if math.abs(nextVal - cur) < 0.5 then return false end
+    scrollFrame:SetVerticalScroll(nextVal)
+    return true
+end
+
 function ns:ApplySurface(frame, bgColor, borderColor)
     frame:SetBackdrop(SOLID_BACKDROP)
     frame:SetBackdropColor(unpack(bgColor or ns.M3.surface))
@@ -47,7 +58,7 @@ end
 
 function ns:CanProcessPadAction()
     local now = GetTime()
-    if (now - lastPadInputTime) < 0.09 then return false end
+    if (now - lastPadInputTime) < 0.18 then return false end
     lastPadInputTime = now
     return true
 end
@@ -221,6 +232,26 @@ function ns:MoveControllerFocus(dir)
     end
 
     local cur = ns.currentFocus
+
+    if dir == "UP" or dir == "DOWN" then
+        local stepPx = (dir == "DOWN") and 56 or -56
+        if cur and cur.scrollFrame then
+            if ScrollFrameByDelta(cur.scrollFrame, stepPx) then
+                return
+            end
+        elseif scope == ns.dossierFrame and ns.dossierFrame.scrollFrame and ns.dossierFrame.readerBox and ns.dossierFrame.readerBox:IsShown() then
+            if ScrollFrameByDelta(ns.dossierFrame.scrollFrame, stepPx) then
+                return
+            end
+        end
+    end
+
+    if cur and cur.directoryRowIndex and (dir == "UP" or dir == "DOWN") and ns.TrySeamlessDirectoryStep then
+        if ns:TrySeamlessDirectoryStep(cur.directoryRowIndex, dir) then
+            return
+        end
+    end
+
     if not cur or not cur:IsVisible() or not IsFrameDescendantOf(cur, scope) then
         ns:FocusFirstInScope()
         return
@@ -401,7 +432,9 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", 12, -10)
     scrollFrame:SetPoint("BOTTOMRIGHT", -28, 22)
+    scrollFrame:EnableMouseWheel(true)
     ns:EnableClipping(scrollFrame)
+    container.scrollFrame = scrollFrame
 
     local editBox = CreateFrame("EditBox", nil, scrollFrame)
     editBox:SetMultiLine(true)
@@ -435,6 +468,10 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
         editBox:SetFocus()
     end)
 
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        if not delta or delta == 0 then return end
+        ScrollFrameByDelta(self, delta > 0 and -36 or 36)
+    end)
     scrollFrame:SetScript("OnSizeChanged", function(_, w)
         if w and w > 60 then editBox:SetWidth(w - 12) end
     end)

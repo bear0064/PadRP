@@ -1629,6 +1629,45 @@ function ns:RefreshTargetCard()
     end
 end
 
+-- Seamless controller paging across Directory rows
+function ns:TrySeamlessDirectoryStep(rowIndex, dir)
+    if activeTab ~= 4 then return false end
+    local p4 = tabPanels[4]
+    if not p4 or not p4:IsShown() or not p4.knownRows then return false end
+
+    local entries = GetFilteredKnownProfiles()
+    local perPage = 8
+    local totalPages = math.max(1, math.ceil(#entries / perPage))
+
+    local lastShownIdx = 0
+    for i = 1, perPage do
+        if p4.knownRows[i] and p4.knownRows[i]:IsShown() then
+            lastShownIdx = i
+        end
+    end
+    if lastShownIdx == 0 then return false end
+
+    if dir == "DOWN" and rowIndex >= lastShownIdx and knownListPage < totalPages then
+        knownListPage = knownListPage + 1
+        ns:RefreshTargetCard()
+        ns:PlayUISound()
+        if p4.knownRows[1] and p4.knownRows[1]:IsShown() then
+            ns:SetControllerFocus(p4.knownRows[1])
+        end
+        return true
+    elseif dir == "UP" and rowIndex <= 1 and knownListPage > 1 then
+        knownListPage = knownListPage - 1
+        ns:RefreshTargetCard()
+        ns:PlayUISound()
+        local targetRow = p4.knownRows[perPage]
+        if targetRow and targetRow:IsShown() then
+            ns:SetControllerFocus(targetRow)
+        end
+        return true
+    end
+    return false
+end
+
 local function RefreshGratitudeStudio()
     local p5 = tabPanels[5]
     if not p5 then return end
@@ -2417,9 +2456,6 @@ function ns:InitControllerUI()
     end
     mainFrame.iconPicker = picker
 
-    -- =========================================================
-    -- 1. TOP PROFILE BANNER (CHARACTER INFO + GREEN GUILD + CURRENTLY)
-    -- =========================================================
     local banner = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
     banner:SetHeight(50)
     banner:SetPoint("TOPLEFT", 12, -10)
@@ -2458,9 +2494,6 @@ function ns:InitControllerUI()
     mainFrame.bannerCurrently:SetJustifyH("LEFT")
     mainFrame.bannerCurrently:SetWordWrap(false)
 
-    -- =========================================================
-    -- 2. QUICK CONTROL STRIP (BELOW PROFILE BANNER)
-    -- =========================================================
     local controlBar = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
     controlBar:SetHeight(34)
     controlBar:SetPoint("TOPLEFT", 12, -64)
@@ -3041,6 +3074,7 @@ function ns:InitControllerUI()
             end
         end)
         rowBtn:SetPoint("RIGHT", p4, "RIGHT", -16, 0)
+        rowBtn.directoryRowIndex = i
 
         rowBtn.seenLabel = rowBtn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         rowBtn.seenLabel:SetPoint("RIGHT", -12, 0)
