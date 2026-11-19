@@ -32,6 +32,22 @@ local RP_EXPERIENCE_LIST = {
     { code = "5", label = "New" },
 }
 
+local TOPIC_CONSENT_OPTIONS = {
+    "With player permission",
+    "Yes",
+    "No",
+    "Do not show",
+}
+
+local RP_STYLE_TOPICS = {
+    { key = "injury",        label = "Injury",           defaultVal = "With player permission" },
+    { key = "death",         label = "Death",            defaultVal = "No" },
+    { key = "romance",       label = "Romance",          defaultVal = "Do not show" },
+    { key = "criminal",      label = "Criminal",         defaultVal = "Yes" },
+    { key = "lossOfControl", label = "Loss of Control",  defaultVal = "No" },
+    { key = "guild",         label = "Guild Visibility", defaultVal = "Do not show" },
+}
+
 local MODE_LIST = {
     { key = "SMART",        label = "Smart Auto (IC Emote Nearby / Whisper Far)" },
     { key = "AUTO_EMOTE",   label = "Auto Custom Emote (/e)" },
@@ -109,10 +125,10 @@ local EXTRA_VERIFIED_RP_ICONS = {
 }
 
 local STANDING_BADGES = {
-    Ally         = "|cff81c995[ALLY]|r ",
-    Acquaintance = "|cff8ab4f8[KNOWN]|r ",
-    Rival        = "|cfff28b82[RIVAL]|r ",
-    Marked       = "|cfffdd663[MARKED]|r ",
+    Ally         = "|cff81c995[ALLY]|r",
+    Acquaintance = "|cff8ab4f8[KNOWN]|r",
+    Rival        = "|cfff28b82[RIVAL]|r",
+    Marked       = "|cfffdd663[MARKED]|r",
 }
 
 local function FormatCheckbox(label, isChecked, activeColorHex)
@@ -129,10 +145,61 @@ local function SetIconTextureSafe(tex, icon, fallback)
     end
 end
 
+local function EnsureTopicConsentTable()
+    if not ns.profile then return {} end
+    if type(ns.profile.rpStyleTopics) ~= "table" then
+        ns.profile.rpStyleTopics = {}
+    end
+    for _, t in ipairs(RP_STYLE_TOPICS) do
+        if not ns.profile.rpStyleTopics[t.key] then
+            ns.profile.rpStyleTopics[t.key] = t.defaultVal
+        end
+    end
+    return ns.profile.rpStyleTopics
+end
+
+local function GetTopicConsentValue(topicKey, fallback)
+    local tbl = EnsureTopicConsentTable()
+    return tbl[topicKey] or fallback or "With player permission"
+end
+
+local function CycleTopicConsent(topicKey, defaultVal)
+    local tbl = EnsureTopicConsentTable()
+    local cur = tbl[topicKey] or defaultVal
+    local nextIdx = 1
+    for i, opt in ipairs(TOPIC_CONSENT_OPTIONS) do
+        if opt == cur then
+            nextIdx = (i % #TOPIC_CONSENT_OPTIONS) + 1
+            break
+        end
+    end
+    tbl[topicKey] = TOPIC_CONSENT_OPTIONS[nextIdx]
+    if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+    if ns.SyncMSP then ns:SyncMSP() end
+    return tbl[topicKey]
+end
+
+local function FormatTopicButtonText(topicLabel, val)
+    local colorHex = "ff8ab4f8"
+    if val == "Yes" then
+        colorHex = "ff81c995"
+    elseif val == "No" then
+        colorHex = "fff28b82"
+    elseif val == "Do not show" then
+        colorHex = "ff9aa0a6"
+    else
+        colorHex = "fffdd663"
+    end
+    return string.format("%s: |c%s%s|r", topicLabel, colorHex, val)
+end
+
 local function NormalizeHex6(raw)
     if type(raw) ~= "string" then return nil end
     local clean = string.gsub(strtrim(raw), "^#+", "")
-    clean = string.gsub(clean, "^[cC][fF]", "")
+    clean = string.gsub(clean, "^|[cC]", "")
+    if string.match(clean, "^%x%x%x%x%x%x%x%x$") then
+        clean = string.sub(clean, 3, 8)
+    end
     if string.match(clean, "^%x%x%x%x%x%x$") then
         return string.lower(clean)
     end
@@ -155,37 +222,129 @@ local function RGBToHex6(r, g, b)
     return string.format("%02x%02x%02x", ClampByte(r), ClampByte(g), ClampByte(b))
 end
 
-local function RefreshEyeSwatchBox()
-    local p1 = tabPanels[1]
-    local swatch = p1 and p1.eyeSwatchBtn
+local function GetWoWClassHex6()
+    local _, classFile = UnitClass("player")
+    local classStr = (classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] and RAID_CLASS_COLORS[classFile].colorStr) or "ffffffff"
+    return NormalizeHex6(classStr) or "ffffff"
+end
+
+local function GetPlayerActiveClassColorHex()
+    local custom = NormalizeHex6(ns.profile and (ns.profile.classColorHex or ns.profile.nameColorHex))
+    if custom then
+        return "ff" .. custom
+    end
+    return "ff" .. GetWoWClassHex6()
+end
+
+function ns:GetPlayerClassColorCode()
+    return GetPlayerActiveClassColorHex()
+end
+
+function ns:GetPlayerNameColorCode()
+    return GetPlayerActiveClassColorHex()
+end
+
+local function StripColorCodes(str)
+    if not str then return "" end
+    local clean = string.gsub(tostring(str), "|c%x%x%x%x%x%x%x%x", "")
+    clean = string.gsub(clean, "|r", "")
+    return clean
+end
+
+local function IsPlayerSelfKey(k)
+    if not k or k == "" then return false end
+    local lk = string.lower(strtrim(tostring(k)))
+    local pName = UnitName("player")
+    if pName then
+        local shortK = strsplit("-", k)
+        if string.lower(strtrim(shortK or "")) == string.lower(pName) then
+            return true
+        end
+    end
+    if ns.GetUnitKey then
+        local selfKey = ns:GetUnitKey("player")
+        if selfKey and string.lower(strtrim(selfKey)) == lk then
+            return true
+        end
+    end
+    if ns.profile then
+        local parts = {}
+        if ns.profile.firstName and strtrim(ns.profile.firstName) ~= "" then
+            table.insert(parts, strtrim(ns.profile.firstName))
+        end
+        if ns.profile.lastName and strtrim(ns.profile.lastName) ~= "" then
+            table.insert(parts, strtrim(ns.profile.lastName))
+        end
+        if #parts > 0 and string.lower(table.concat(parts, " ")) == lk then
+            return true
+        end
+    end
+    return false
+end
+
+local function SyncSelfColorToLocalCache()
+    if type(ns.mspCache) ~= "table" then return end
+    local custom = NormalizeHex6(ns.profile and (ns.profile.classColorHex or ns.profile.nameColorHex))
+    for k, rec in pairs(ns.mspCache) do
+        if type(rec) == "table" and IsPlayerSelfKey(k) then
+            if rec.RC and strtrim(StripColorCodes(rec.RC)) ~= "" then
+                local plainRC = StripColorCodes(rec.RC)
+                rec.RC = custom and ("|cff" .. custom .. plainRC .. "|r") or plainRC
+            end
+            if rec.NA and strtrim(StripColorCodes(rec.NA)) ~= "" then
+                local plainNA = StripColorCodes(rec.NA)
+                rec.NA = custom and ("|cff" .. custom .. plainNA .. "|r") or plainNA
+            end
+        end
+    end
+    if ns.RefreshTargetHUD then ns:RefreshTargetHUD() end
+    if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
+end
+
+local function ApplySwatchVisual(swatch, hex6, isFocused)
     if not swatch or not ns.M3 then return end
     local M3 = ns.M3
-    local eyeHex = NormalizeHex6((ns.profile and ns.profile.eyeColorHex) or (ns.profile and ns.profile.eyeColor))
-    if eyeHex then
-        local r, g, b = HexToRGB(eyeHex)
+    if hex6 then
+        local r, g, b = HexToRGB(hex6)
         swatch:SetBackdropColor(r, g, b, 1)
-        swatch:SetBackdropBorderColor(1, 1, 1, 0.9)
+        swatch:SetBackdropBorderColor(isFocused and 0.54 or 1, isFocused and 0.71 or 1, isFocused and 0.97 or 1, 1)
         if swatch.fillTex then
             swatch.fillTex:SetColorTexture(r, g, b, 1)
             swatch.fillTex:Show()
         end
     else
         swatch:SetBackdropColor(unpack(M3.surfaceHigh))
-        swatch:SetBackdropBorderColor(unpack(M3.outline))
+        if isFocused then
+            swatch:SetBackdropBorderColor(unpack(M3.primary))
+        else
+            swatch:SetBackdropBorderColor(unpack(M3.outline))
+        end
         if swatch.fillTex then
             swatch.fillTex:Hide()
         end
     end
 end
 
-local function GetPlayerActiveNameColorHex()
-    local custom = NormalizeHex6(ns.profile and ns.profile.nameColorHex)
-    if custom then
-        return "ff" .. custom
+local function RefreshEyeSwatchBox()
+    local p1 = tabPanels[1]
+    local swatch = p1 and p1.eyeSwatchBtn
+    if not swatch then return end
+    local eyeHex = NormalizeHex6((ns.profile and ns.profile.eyeColorHex) or (ns.profile and ns.profile.eyeColor))
+    swatch.activeHex6 = eyeHex
+    ApplySwatchVisual(swatch, eyeHex, ns.currentFocus == swatch)
+end
+
+local function RefreshClassSwatchBox()
+    local p1 = tabPanels[1]
+    local swatch = p1 and p1.classSwatchBtn
+    if not swatch then return end
+    local hex6 = NormalizeHex6(ns.profile and (ns.profile.classColorHex or ns.profile.nameColorHex)) or GetWoWClassHex6()
+    swatch.activeHex6 = hex6
+    ApplySwatchVisual(swatch, hex6, ns.currentFocus == swatch)
+    if p1.clBox and p1.clBox.SetTextColor then
+        local r, g, b = HexToRGB(hex6)
+        p1.clBox:SetTextColor(r, g, b, 1)
     end
-    local _, classFile = UnitClass("player")
-    local classHex = (classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] and RAID_CLASS_COLORS[classFile].colorStr) or "ffffffff"
-    return classHex
 end
 
 local function AttachWheelScroller(frame, onWheelStep)
@@ -300,10 +459,11 @@ local function UpdateResponsiveLayouts()
             }, 16, 16, 10)
 
             LayoutRow(pc, -73, {
-                { w = p1.raBox, weight = 0.33 },
-                { w = p1.clBox, weight = 0.37 },
-                { w = p1.prBox, weight = 0.30 },
-            }, 16, 16, 10)
+                { w = p1.raBox,          weight = 0.33 },
+                { w = p1.clBox,          weight = 0.37 },
+                { w = p1.classSwatchBtn, fixed = 28 },
+                { w = p1.prBox,          weight = 0.30 },
+            }, 16, 16, 8)
 
             LayoutRow(pc, -125, {
                 { w = p1.agBox,        weight = 0.18 },
@@ -322,38 +482,50 @@ local function UpdateResponsiveLayouts()
             }, 16, 16, 6)
 
             LayoutRow(pc, -233, {
-                { w = p1.oocBox,        weight = 1 },
-                { w = p1.nameColorBtn,  fixed = 112 },
-                { w = p1.resetColorBtn, fixed = 86 },
-            }, 16, 16, 8)
+                { w = p1.oocNotesBox, weight = 1 },
+            }, 16, 16, 0)
         end
 
         local pd = p1.pageDetails
         if pd then
-            LayoutRow(pd, -21, {
+            LayoutRow(pd, -16, {
                 { w = p1.niBox, weight = 0.28 },
                 { w = p1.hoBox, weight = 0.32 },
                 { w = p1.moBox, weight = 0.40 },
             }, 16, 16, 10)
 
-            LayoutRow(pd, -75, {
+            LayoutRow(pd, -62, {
                 { w = p1.hbBox, weight = 1 },
                 { w = p1.hhBox, weight = 1 },
             }, 16, 16, 10)
 
-            LayoutRow(pd, -125, {
+            LayoutRow(pd, -104, {
                 { w = p1.faceBox,  weight = 0.34 },
                 { w = p1.tatBox,   weight = 0.33 },
                 { w = p1.voiceBox, weight = 0.33 },
             }, 16, 16, 10)
 
-            LayoutRow(pd, -168, {
+            LayoutRow(pd, -142, {
                 { w = p1.relBtn,          weight = 0.34 },
                 { w = p1.styleBtn,        weight = 0.33 },
                 { w = p1.portraitPickBtn, weight = 0.33 },
             }, 16, 16, 10)
 
-            LayoutRow(pd, -221, {
+            if p1.topicBtns then
+                LayoutRow(pd, -174, {
+                    { w = p1.topicBtns.injury,  weight = 1 },
+                    { w = p1.topicBtns.death,   weight = 1 },
+                    { w = p1.topicBtns.romance, weight = 1 },
+                }, 16, 16, 8)
+
+                LayoutRow(pd, -204, {
+                    { w = p1.topicBtns.criminal,      weight = 1 },
+                    { w = p1.topicBtns.lossOfControl, weight = 1 },
+                    { w = p1.topicBtns.guild,         weight = 1 },
+                }, 16, 16, 8)
+            end
+
+            LayoutRow(pd, -246, {
                 { w = p1.profNameBox, weight = 1 },
                 { w = p1.newProfBtn,  fixed = 148 },
                 { w = p1.delProfBtn,  fixed = 166 },
@@ -493,7 +665,6 @@ local function UpdateResponsiveLayouts()
 
         LayoutRow(p7, -68, {
             { w = p7.popOutBtn,     weight = 1 },
-            { w = p7.sweepDevBtn,   weight = 1 },
             { w = p7.selfTestBtn,   weight = 1 },
             { w = p7.clearCacheBtn, weight = 1 },
         }, 16, 16, 8)
@@ -536,7 +707,6 @@ local function EnsureVerifiedIconPool()
         TryAdd(name)
     end
 
-    -- Also pull live class and spell icons when available
     if _G.GetNumClasses and _G.GetClassInfo then
         local okC, numC = pcall(_G.GetNumClasses)
         if okC and type(numC) == "number" then
@@ -791,15 +961,11 @@ local function InitNetInspectorWindow()
         end
     end)
 
-    ns:CreateMaterialButton(inspectorFrame, "Sweep Nearby", 122, 26, 142, -306, "MINT", function()
-        ns:ScanNearbyPlayers()
-    end)
-
-    ns:CreateMaterialButton(inspectorFrame, "Run Self-Test", 122, 26, 272, -306, "AMBER", function()
+    ns:CreateMaterialButton(inspectorFrame, "Run Self-Test", 122, 26, 142, -306, "AMBER", function()
         ns:RunMSPSelfTest()
     end)
 
-    ns:CreateMaterialButton(inspectorFrame, "Clear Log", 126, 26, 402, -306, "CORAL", function()
+    ns:CreateMaterialButton(inspectorFrame, "Clear Log", 126, 26, 272, -306, "CORAL", function()
         wipe(ns.netLogs)
         msgFrame:Clear()
         ns:LogNet("CLEAR", "ff9aa0a6", "Log cleared.")
@@ -965,6 +1131,7 @@ end
 function ns:LoadProfileIntoUI()
     if not mainFrame or not ns.profile then return end
     local p = ns.profile
+    EnsureTopicConsentTable()
     local p1 = tabPanels[1]
     if p1 and p1.fnBox then
         p1.pxBox:SetCleanText(p.titlePrefix)
@@ -979,7 +1146,7 @@ function ns:LoadProfileIntoUI()
         p1.wtBox:SetCleanText(p.weight)
         p1.eyBox:SetCleanText(p.eyeColor)
         p1.cuBox:SetCleanText(p.currently)
-        p1.oocBox:SetCleanText(p.oocInfo)
+        p1.oocNotesBox:SetCleanText(p.oocNotes or p.oocInfo)
 
         p1.niBox:SetCleanText(p.nickname)
         p1.hoBox:SetCleanText(p.houseName)
@@ -992,6 +1159,7 @@ function ns:LoadProfileIntoUI()
         p1.profNameBox:SetCleanText(p.profileName)
     end
     RefreshEyeSwatchBox()
+    RefreshClassSwatchBox()
     LoadGlancesPageIntoUI()
     local p3 = tabPanels[3]
     if p3 and p3.bioEditor then
@@ -1002,6 +1170,7 @@ end
 local function CommitModifiedBoxesToProfile(forceAll)
     if not ns.profile or not mainFrame then return false end
     local p = ns.profile
+    EnsureTopicConsentTable()
     local changed = false
     local p1 = tabPanels[1]
     if p1 and p1.fnBox then
@@ -1024,7 +1193,7 @@ local function CommitModifiedBoxesToProfile(forceAll)
         CheckBox(p1.wtBox, "weight")
         CheckBox(p1.eyBox, "eyeColor")
         CheckBox(p1.cuBox, "currently")
-        CheckBox(p1.oocBox, "oocInfo")
+        CheckBox(p1.oocNotesBox, "oocNotes")
 
         CheckBox(p1.niBox, "nickname")
         CheckBox(p1.hoBox, "houseName")
@@ -1071,6 +1240,7 @@ local function CommitModifiedBoxesToProfile(forceAll)
     if changed then
         ns:SnapshotActiveProfile()
         ns:SyncMSP()
+        SyncSelfColorToLocalCache()
     end
     return changed
 end
@@ -1105,7 +1275,7 @@ local function RefreshHeaderBanner()
     if not mainFrame or not ns.profile then return end
     local p = ns.profile
     local M3 = ns.M3
-    local nameHex = GetPlayerActiveNameColorHex()
+    local activeHex = GetPlayerActiveClassColorHex()
 
     if mainFrame.portraitTex then
         SetIconTextureSafe(mainFrame.portraitTex, p.icon, "INV_Helmet_46")
@@ -1118,7 +1288,7 @@ local function RefreshHeaderBanner()
     if p.lastName and strtrim(p.lastName) ~= "" then table.insert(nameParts, strtrim(p.lastName)) end
     local fullName = table.concat(nameParts, " ")
 
-    mainFrame.bannerName:SetText("|c" .. nameHex .. fullName .. "|r")
+    mainFrame.bannerName:SetText("|c" .. activeHex .. fullName .. "|r")
     local titlePart = (p.title and p.title ~= "") and ("|cfffdd663<" .. p.title .. ">|r") or "|cff9aa0a6No RP Title|r"
     local housePart = (p.houseName and p.houseName ~= "") and ("  |cff8ab4f8-  " .. p.houseName .. "|r") or ""
     mainFrame.bannerTitle:SetText(titlePart .. housePart)
@@ -1166,6 +1336,78 @@ local function RefreshHeaderBanner()
     end
 end
 
+local function FormatDirectoryRowText(k, d, item)
+    local parts = {}
+    local sep = " |cff5f6368•|r "
+
+    if item.hasNote then
+        table.insert(parts, "|TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t")
+    end
+    if item.standing and STANDING_BADGES[item.standing] then
+        table.insert(parts, STANDING_BADGES[item.standing])
+    end
+
+    local rawName = d.NA or k
+    local activeHex = nil
+    if IsPlayerSelfKey(k) then
+        activeHex = GetPlayerActiveClassColorHex()
+    elseif type(rawName) == "string" then
+        local embeddedHex = string.match(rawName, "^|c(%x%x%x%x%x%x%x%x)")
+        if embeddedHex then
+            activeHex = embeddedHex
+        end
+    end
+
+    local cleanName = StripColorCodes(rawName)
+    local charOnly = strsplit("-", k)
+    local realmPart = (charOnly and charOnly ~= cleanName) and (" |cff8ab4f8(" .. k .. ")|r") or ""
+    local displayColor = activeHex or "ffe8eaed"
+    table.insert(parts, "|c" .. displayColor .. cleanName .. "|r" .. realmPart)
+
+    local statusBadges = {}
+    if d.FC == "2" then
+        table.insert(statusBadges, "|cff81c995[IC]|r")
+    elseif d.FC == "1" then
+        table.insert(statusBadges, "|cfff28b82[OOC]|r")
+    end
+
+    local _, wuCode = ns:GetTargetWalkUpInfo(d)
+    if wuCode == "WELCOME" then
+        table.insert(statusBadges, "|cff81c995[WU]|r")
+    elseif wuCode == "ASK" then
+        table.insert(statusBadges, "|cfffdd663[Ask]|r")
+    elseif wuCode == "CLOSED" then
+        table.insert(statusBadges, "|cfff28b82[Off]|r")
+    end
+
+    if UnitInRaid and UnitInRaid(k) then
+        table.insert(statusBadges, "|cfffdd663[Raid]|r")
+    elseif UnitInParty and UnitInParty(k) then
+        table.insert(statusBadges, "|cff8ab4f8[Party]|r")
+    end
+
+    if #statusBadges > 0 then
+        table.insert(parts, table.concat(statusBadges, " "))
+    end
+
+    local titleClean = d.NT and strtrim(d.NT) or ""
+    local guildClean = d.NH and strtrim(d.NH) or ""
+    local curClean = d.CU and strtrim(d.CU) or ""
+
+    if titleClean ~= "" then
+        table.insert(parts, "|cfffdd663<" .. titleClean .. ">|r")
+    end
+    if guildClean ~= "" then
+        table.insert(parts, "|cff8ab4f8{" .. guildClean .. "}|r")
+    elseif titleClean == "" and curClean ~= "" then
+        local shortCur = string.sub(curClean, 1, 36)
+        if #curClean > 36 then shortCur = shortCur .. "..." end
+        table.insert(parts, "|cff9aa0a6\"" .. shortCur .. "\"|r")
+    end
+
+    return table.concat(parts, sep)
+end
+
 function ns:RefreshTargetCard()
     if not mainFrame or not tabPanels[4] then return end
     local p4 = tabPanels[4]
@@ -1191,21 +1433,10 @@ function ns:RefreshTargetCard()
         if item then
             local k = item.key
             local d = item.data
-            local standTag = (item.standing and STANDING_BADGES[item.standing]) or ""
-            local icTag = (d.FC == "2") and "|cff81c995[IC]|r " or ((d.FC == "1") and "|cfff28b82[OOC]|r " or "")
-            local noteTag = item.hasNote and "|TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t " or ""
-
-            local _, wuCode = ns:GetTargetWalkUpInfo(d)
-            local wuTag = ""
-            if wuCode == "WELCOME" then wuTag = " |cff81c995[WU]|r"
-            elseif wuCode == "ASK" then wuTag = " |cfffdd663[Ask]|r"
-            elseif wuCode == "CLOSED" then wuTag = " |cfff28b82[Off]|r" end
-
-            local titleStr = (d.NT and d.NT ~= "") and ("  |cfffdd663<" .. d.NT .. ">|r") or ""
             local seenStr = (item.lastSeen and item.lastSeen > 0) and date("%m/%d %H:%M", item.lastSeen) or "--/--"
 
             rowBtn.profileKey = k
-            rowBtn:SetText(string.format("%s%s%s|cffe8eaed%s|r |cff8ab4f8(%s)|r%s%s", noteTag, standTag, icTag, d.NA or k, k, wuTag, titleStr))
+            rowBtn:SetText(FormatDirectoryRowText(k, d, item))
             rowBtn.seenLabel:SetText("|cff9aa0a6" .. seenStr .. "|r")
             rowBtn:Show()
         else
@@ -1274,6 +1505,7 @@ function ns:RefreshControllerUI()
     RefreshHeaderBanner()
 
     local p = ns.profile
+    EnsureTopicConsentTable()
     local p1 = tabPanels[1]
     if activeIdentityPage == 1 then
         p1.coreSubBtn:SetTone("PRIMARY")
@@ -1304,18 +1536,10 @@ function ns:RefreshControllerUI()
     SyncBox(p1.wtBox, p.weight)
     SyncBox(p1.eyBox, p.eyeColor)
     SyncBox(p1.cuBox, p.currently)
-    SyncBox(p1.oocBox, p.oocInfo)
+    SyncBox(p1.oocNotesBox, p.oocNotes or p.oocInfo)
 
     RefreshEyeSwatchBox()
-
-    if p1.nameColorBtn then
-        local customHex = NormalizeHex6(p.nameColorHex)
-        if customHex then
-            p1.nameColorBtn:SetText("|cff" .. customHex .. "[#]|r Name: #" .. string.upper(customHex))
-        else
-            p1.nameColorBtn:SetText("|cff8ab4f8[#]|r Name: Class")
-        end
-    end
+    RefreshClassSwatchBox()
 
     SyncBox(p1.niBox, p.nickname)
     SyncBox(p1.hoBox, p.houseName)
@@ -1332,6 +1556,16 @@ function ns:RefreshControllerUI()
     if p1.portraitPickBtn then
         SetIconTextureSafe(p1.portraitPickBtn.iconTex, p.icon, "INV_Helmet_46")
         p1.portraitPickBtn:SetText("Portrait")
+    end
+
+    if p1.topicBtns then
+        for _, t in ipairs(RP_STYLE_TOPICS) do
+            local btn = p1.topicBtns[t.key]
+            if btn then
+                local curVal = GetTopicConsentValue(t.key, t.defaultVal)
+                btn:SetText(FormatTopicButtonText(t.label, curVal))
+            end
+        end
     end
 
     local p2 = tabPanels[2]
@@ -1433,48 +1667,68 @@ end
 
 local function OpenNativeColorPicker(mode, returnWidget)
     if not ColorPickerFrame or not ns.profile then return end
-    local isEye = (mode == "EYE")
-    local prevHex = isEye and NormalizeHex6((ns.profile and ns.profile.eyeColorHex) or (ns.profile and ns.profile.eyeColor))
-        or NormalizeHex6(ns.profile.nameColorHex)
-    local startHex = prevHex or "8ab4f8"
+    local prevHex
+    if mode == "EYE" then
+        prevHex = NormalizeHex6(ns.profile.eyeColorHex or ns.profile.eyeColor)
+    else
+        prevHex = NormalizeHex6(ns.profile.classColorHex or ns.profile.nameColorHex)
+    end
+    local startHex = prevHex or GetWoWClassHex6()
     local r, g, b = HexToRGB(startHex)
+    local wasCancelled = false
 
     local function ApplyLiveRGB(nr, ng, nb)
         local hex6 = RGBToHex6(nr, ng, nb)
-        if isEye then
+        if mode == "EYE" then
             ns.profile.eyeColorHex = hex6
             RefreshEyeSwatchBox()
         else
+            ns.profile.classColorHex = hex6
             ns.profile.nameColorHex = hex6
+            RefreshClassSwatchBox()
             RefreshHeaderBanner()
-            if tabPanels[1] and tabPanels[1].nameColorBtn then
-                tabPanels[1].nameColorBtn:SetText("|cff" .. hex6 .. "[#]|r Name: #" .. string.upper(hex6))
-            end
+            SyncSelfColorToLocalCache()
+            ns:RefreshTargetCard()
+            if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
         end
     end
 
     local function FinalizeRGB(nr, ng, nb)
+        if wasCancelled then return end
         ApplyLiveRGB(nr, ng, nb)
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
         if ns.SyncMSP then ns:SyncMSP() end
+        SyncSelfColorToLocalCache()
         ns:RefreshControllerUI()
-        ns:ShowStatusToast((isEye and "Eye color swatch" or "RP name color") .. " set to #" .. string.upper(RGBToHex6(nr, ng, nb)))
+        local label = (mode == "EYE") and "Eye color" or "Class & Name color"
+        ns:ShowStatusToast(label .. " set to #" .. string.upper(RGBToHex6(nr, ng, nb)))
         if returnWidget and returnWidget:IsVisible() then
             ns:SetControllerFocus(returnWidget)
         end
     end
 
-    local function CancelRGB(prevValues)
-        if prevHex then
-            local pr, pg, pb = HexToRGB(prevHex)
-            ApplyLiveRGB(pr, pg, pb)
-            if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
-            if ns.SyncMSP then ns:SyncMSP() end
-            ns:RefreshControllerUI()
-            ns:ShowStatusToast("Color change cancelled")
-        elseif type(prevValues) == "table" and prevValues.r then
-            ApplyLiveRGB(prevValues.r, prevValues.g, prevValues.b)
+    local function CancelRGB()
+        wasCancelled = true
+        if mode == "EYE" then
+            ns.profile.eyeColorHex = prevHex
+            RefreshEyeSwatchBox()
+        else
+            ns.profile.classColorHex = prevHex
+            ns.profile.nameColorHex = prevHex
+            RefreshClassSwatchBox()
+            RefreshHeaderBanner()
+            SyncSelfColorToLocalCache()
+            ns:RefreshTargetCard()
+            if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
         end
+        if prevHex and ColorPickerFrame.SetColorRGB then
+            local pr, pg, pb = HexToRGB(prevHex)
+            ColorPickerFrame:SetColorRGB(pr, pg, pb)
+        end
+        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        if ns.SyncMSP then ns:SyncMSP() end
+        ns:RefreshControllerUI()
+        ns:ShowStatusToast("Color change cancelled")
         if returnWidget and returnWidget:IsVisible() then
             ns:SetControllerFocus(returnWidget)
         end
@@ -1485,6 +1739,22 @@ local function OpenNativeColorPicker(mode, returnWidget)
     ColorPickerFrame.previousValues = { r = r, g = g, b = b, opacity = 1 }
 
     if ColorPickerFrame.SetupColorPickerAndShow then
+        ColorPickerFrame._padRPFinalize = function()
+            if not wasCancelled and ColorPickerFrame.GetColorRGB then
+                local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+                FinalizeRGB(nr, ng, nb)
+            end
+        end
+        if not ColorPickerFrame._padRPOnHideHooked and ColorPickerFrame.HookScript then
+            ColorPickerFrame._padRPOnHideHooked = true
+            ColorPickerFrame:HookScript("OnHide", function(self)
+                if self._padRPFinalize then
+                    local fn = self._padRPFinalize
+                    self._padRPFinalize = nil
+                    fn()
+                end
+            end)
+        end
         ColorPickerFrame:SetupColorPickerAndShow({
             r = r,
             g = g,
@@ -1494,33 +1764,48 @@ local function OpenNativeColorPicker(mode, returnWidget)
                 local nr, ng, nb = ColorPickerFrame:GetColorRGB()
                 ApplyLiveRGB(nr, ng, nb)
             end,
-            cancelFunc = function(prev)
-                CancelRGB(prev)
+            cancelFunc = function()
+                CancelRGB()
             end,
             opacityFunc = nil,
         })
-        if ColorPickerFrame.SetScript and not ColorPickerFrame._padRPOnHideHooked then
-            ColorPickerFrame._padRPOnHideHooked = true
-            local origOnHide = ColorPickerFrame:GetScript("OnHide")
-            ColorPickerFrame:SetScript("OnHide", function(self, ...)
-                if origOnHide then origOnHide(self, ...) end
-                if self.GetColorRGB then
-                    local nr, ng, nb = self:GetColorRGB()
-                    FinalizeRGB(nr, ng, nb)
-                end
-            end)
-        end
     else
         ColorPickerFrame:SetColorRGB(r, g, b)
         ColorPickerFrame.func = function()
             local nr, ng, nb = ColorPickerFrame:GetColorRGB()
             ApplyLiveRGB(nr, ng, nb)
         end
-        ColorPickerFrame.cancelFunc = function(prev)
-            CancelRGB(prev)
+        ColorPickerFrame.cancelFunc = function()
+            CancelRGB()
         end
         ColorPickerFrame:Show()
     end
+end
+
+local function CreateColorSwatchButton(parent, x, y, mode, onReset)
+    local M3 = ns.M3
+    local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    btn:SetSize(28, 28)
+    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    ns:ApplySurface(btn, M3.surfaceHigh, M3.outline)
+    btn.fillTex = btn:CreateTexture(nil, "ARTWORK")
+    btn.fillTex:SetPoint("TOPLEFT", 4, -4)
+    btn.fillTex:SetPoint("BOTTOMRIGHT", -4, 4)
+    btn.fillTex:Hide()
+    btn:SetScript("OnEnter", function(self) ns:SetControllerFocus(self) end)
+    btn:SetScript("OnClick", function(self, mouseBtn)
+        ns:PlayUISound()
+        if mouseBtn == "RightButton" and onReset then
+            onReset()
+        else
+            OpenNativeColorPicker(mode, self)
+        end
+    end)
+    ns:RegisterFocusable(btn, function() btn:Click("LeftButton") end, function(self, isFocused)
+        ApplySwatchVisual(self, self.activeHex6, isFocused)
+    end)
+    return btn
 end
 
 function ns:InitControllerUI()
@@ -2000,6 +2285,7 @@ function ns:InitControllerUI()
         CommitModifiedBoxesToProfile(false)
         RefreshHeaderBanner()
         RefreshEyeSwatchBox()
+        RefreshClassSwatchBox()
         ns:ShowStatusToast("Saved character vitals to PadRPDB")
     end
 
@@ -2031,29 +2317,32 @@ function ns:InitControllerUI()
     p1.tiBox = ns:CreateMaterialEditBox(pageCore, "Full RP Title", "e.g., Master Arcanist", 442, -6, 198, 28, AutoCommitTab1)
 
     p1.raBox = ns:CreateMaterialEditBox(pageCore, "RP Race (Blank = Default)", "e.g., Human", 16, -58, 196, 28, AutoCommitTab1)
-    p1.clBox = ns:CreateMaterialEditBox(pageCore, "RP Class / Occupation", "e.g., Warlock", 222, -58, 204, 28, AutoCommitTab1)
+    p1.clBox = ns:CreateMaterialEditBox(pageCore, "RP Class / Occupation", "e.g., Warlock", 222, -58, 168, 28, AutoCommitTab1)
+    p1.classSwatchBtn = CreateColorSwatchButton(pageCore, 398, -73, "CLASS", function()
+        ns.profile.classColorHex = nil
+        ns.profile.nameColorHex = nil
+        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        if ns.SyncMSP then ns:SyncMSP() end
+        RefreshClassSwatchBox()
+        RefreshHeaderBanner()
+        SyncSelfColorToLocalCache()
+        ns:RefreshTargetCard()
+        if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
+        ns:ShowStatusToast("Class & Name color reset to default")
+    end)
     p1.prBox = ns:CreateMaterialEditBox(pageCore, "Pronouns", "e.g., He/Him", 436, -58, 204, 28, AutoCommitTab1)
 
     p1.agBox = ns:CreateMaterialEditBox(pageCore, "Age", "e.g., 32", 16, -110, 110, 28, AutoCommitTab1)
     p1.htBox = ns:CreateMaterialEditBox(pageCore, "Height", "e.g., 6'0\" / Tall", 136, -110, 144, 28, AutoCommitTab1)
     p1.wtBox = ns:CreateMaterialEditBox(pageCore, "Build / Body Shape", "e.g., Athletic", 290, -110, 166, 28, AutoCommitTab1)
     p1.eyBox = ns:CreateMaterialEditBox(pageCore, "Eye Color", "e.g., Pale amber / Luminous", 466, -110, 138, 28, AutoCommitTab1)
-
-    local eyeSwatchBtn = CreateFrame("Button", nil, pageCore, "BackdropTemplate")
-    eyeSwatchBtn:SetSize(28, 28)
-    eyeSwatchBtn:SetPoint("TOPLEFT", pageCore, "TOPLEFT", 612, -125)
-    ns:ApplySurface(eyeSwatchBtn, M3.surfaceHigh, M3.outline)
-    eyeSwatchBtn.fillTex = eyeSwatchBtn:CreateTexture(nil, "ARTWORK")
-    eyeSwatchBtn.fillTex:SetPoint("TOPLEFT", 4, -4)
-    eyeSwatchBtn.fillTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    eyeSwatchBtn.fillTex:Hide()
-    eyeSwatchBtn:SetScript("OnEnter", function(self) ns:SetControllerFocus(self) end)
-    eyeSwatchBtn:SetScript("OnClick", function(self)
-        ns:PlayUISound()
-        OpenNativeColorPicker("EYE", self)
+    p1.eyeSwatchBtn = CreateColorSwatchButton(pageCore, 612, -125, "EYE", function()
+        ns.profile.eyeColorHex = nil
+        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        if ns.SyncMSP then ns:SyncMSP() end
+        RefreshEyeSwatchBox()
+        ns:ShowStatusToast("Eye color swatch cleared")
     end)
-    ns:RegisterFocusable(eyeSwatchBtn, function() eyeSwatchBtn:Click("LeftButton") end)
-    p1.eyeSwatchBtn = eyeSwatchBtn
 
     p1.cuBox = ns:CreateMaterialEditBox(pageCore, "Currently (Select Preset, Cycle, or Type Custom)", "What is your character doing right now?", 16, -162, 336, 28, AutoCommitTab1)
 
@@ -2095,18 +2384,7 @@ function ns:InitControllerUI()
         ns:ShowStatusToast("Cleared Currently status")
     end)
 
-    p1.oocBox = ns:CreateMaterialEditBox(pageCore, "Out-of-Character (OOC) Note & RP Name Tint", "e.g., Playing on controller.", 16, -218, 410, 28, AutoCommitTab1)
-    p1.nameColorBtn = ns:CreateMaterialButton(pageCore, "[#] Name: Class", 112, 28, 434, -233, "PRIMARY", function(self)
-        OpenNativeColorPicker("NAME", self)
-    end)
-    p1.resetColorBtn = ns:CreateMaterialButton(pageCore, "Reset Cls", 86, 28, 554, -233, nil, function()
-        ns.profile.nameColorHex = nil
-        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
-        if ns.SyncMSP then ns:SyncMSP() end
-        RefreshHeaderBanner()
-        ns:RefreshControllerUI()
-        ns:ShowStatusToast("Reset RP name color to class default")
-    end)
+    p1.oocNotesBox = ns:CreateMaterialEditBox(pageCore, "Other Information (OOC)", "e.g., New to WoW RP.", 16, -218, 624, 28, AutoCommitTab1)
 
     local dropdown = CreateFrame("Frame", nil, pageCore, "BackdropTemplate")
     dropdown:SetSize(426, 194)
@@ -2182,23 +2460,23 @@ function ns:InitControllerUI()
     pageDetails:Hide()
     p1.pageDetails = pageDetails
 
-    p1.niBox = ns:CreateMaterialEditBox(pageDetails, "Nickname", "e.g., Kiyaskiw", 16, -6, 196, 28, AutoCommitTab1)
-    p1.hoBox = ns:CreateMaterialEditBox(pageDetails, "House / Clan / Guild Name", "e.g., House Gray", 222, -6, 204, 28, AutoCommitTab1)
-    p1.moBox = ns:CreateMaterialEditBox(pageDetails, "Motto / Catchphrase", "e.g., It isn't fraud if they're impressed.", 436, -6, 204, 28, AutoCommitTab1)
+    p1.niBox = ns:CreateMaterialEditBox(pageDetails, "Nickname", "e.g., Kiyaskiw", 16, -6, 196, 26, AutoCommitTab1)
+    p1.hoBox = ns:CreateMaterialEditBox(pageDetails, "House / Clan / Guild Name", "e.g., House Gray", 222, -6, 204, 26, AutoCommitTab1)
+    p1.moBox = ns:CreateMaterialEditBox(pageDetails, "Motto / Catchphrase", "e.g., It isn't fraud if they're impressed.", 436, -6, 204, 26, AutoCommitTab1)
 
-    p1.hbBox = ns:CreateMaterialEditBox(pageDetails, "Birthplace", "e.g., Lordaeron (Allegedly)", 16, -60, 306, 28, AutoCommitTab1)
-    p1.hhBox = ns:CreateMaterialEditBox(pageDetails, "Residence", "e.g., The Mage Quarter, Stormwind", 334, -60, 306, 28, AutoCommitTab1)
+    p1.hbBox = ns:CreateMaterialEditBox(pageDetails, "Birthplace", "e.g., Lordaeron (Allegedly)", 16, -52, 306, 26, AutoCommitTab1)
+    p1.hhBox = ns:CreateMaterialEditBox(pageDetails, "Residence", "e.g., The Mage Quarter, Stormwind", 334, -52, 306, 26, AutoCommitTab1)
 
-    p1.faceBox = ns:CreateMaterialEditBox(pageDetails, "Facial Features", "e.g., Sharp smirk, manicured beard", 16, -110, 202, 28, AutoCommitTab1)
-    p1.tatBox = ns:CreateMaterialEditBox(pageDetails, "Tattoos / Markings", "e.g., Arcane sigil on left forearm", 228, -110, 202, 28, AutoCommitTab1)
-    p1.voiceBox = ns:CreateMaterialEditBox(pageDetails, "Voice Reference", "e.g., Calm, measured cadence", 440, -110, 200, 28, AutoCommitTab1)
+    p1.faceBox = ns:CreateMaterialEditBox(pageDetails, "Facial Features", "e.g., Sharp smirk, manicured beard", 16, -94, 202, 26, AutoCommitTab1)
+    p1.tatBox = ns:CreateMaterialEditBox(pageDetails, "Tattoos / Markings", "e.g., Arcane sigil on left forearm", 228, -94, 202, 26, AutoCommitTab1)
+    p1.voiceBox = ns:CreateMaterialEditBox(pageDetails, "Voice Reference", "e.g., Calm, measured cadence", 440, -94, 200, 26, AutoCommitTab1)
 
-    p1.relBtn = ns:CreateMaterialButton(pageDetails, "Relationship: Not Specified", 202, 28, 16, -168, "AMBER", function()
+    p1.relBtn = ns:CreateMaterialButton(pageDetails, "Relationship: Not Specified", 202, 26, 16, -142, "AMBER", function()
         local code = ns:CycleRelationshipStatus()
         ns:RefreshControllerUI()
         ns:ShowStatusToast("Relationship: " .. ns:GetRelationshipLabel(code))
     end)
-    p1.styleBtn = ns:CreateMaterialButton(pageDetails, "RP Style: Normal", 202, 28, 228, -168, "PRIMARY", function()
+    p1.styleBtn = ns:CreateMaterialButton(pageDetails, "RP Style: Normal", 202, 26, 228, -142, "PRIMARY", function()
         local cur = tostring((ns.profile and ns.profile.rpStyle) or "1")
         local nextIdx = 1
         for idx, item in ipairs(RP_EXPERIENCE_LIST) do
@@ -2211,7 +2489,7 @@ function ns:InitControllerUI()
         ns:RefreshControllerUI()
     end)
 
-    local portraitPickBtn = ns:CreateMaterialButton(pageDetails, "Portrait", 200, 28, 440, -168, nil, function(self)
+    local portraitPickBtn = ns:CreateMaterialButton(pageDetails, "Portrait", 200, 26, 440, -142, nil, function(self)
         picker:OpenForPortrait(self)
     end)
     portraitPickBtn.iconTex = portraitPickBtn:CreateTexture(nil, "OVERLAY")
@@ -2224,9 +2502,24 @@ function ns:InitControllerUI()
     portraitPickBtn.label:SetJustifyH("LEFT")
     p1.portraitPickBtn = portraitPickBtn
 
-    p1.profNameBox = ns:CreateMaterialEditBox(pageDetails, "Active Profile Name", "e.g., Main Character", 16, -206, 250, 28, AutoCommitTab1)
-    p1.newProfBtn = ns:CreateMaterialButton(pageDetails, "+ New Profile", 148, 28, 278, -221, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
-    p1.delProfBtn = ns:CreateMaterialButton(pageDetails, "Delete Active Profile", 166, 28, 462, -221, "CORAL", function(self)
+    p1.topicBtns = {}
+    for idx, t in ipairs(RP_STYLE_TOPICS) do
+        local rowIdx = (idx <= 3) and 0 or 1
+        local colIdx = (idx - 1) % 3
+        local btnX = 16 + colIdx * 212
+        local btnY = -174 - rowIdx * 30
+        local tBtn = ns:CreateMaterialButton(pageDetails, "", 202, 26, btnX, btnY, nil, function(self)
+            local updated = CycleTopicConsent(t.key, t.defaultVal)
+            self:SetText(FormatTopicButtonText(t.label, updated))
+            ns:ShowStatusToast(t.label .. ": " .. updated)
+        end)
+        tBtn.label:SetJustifyH("LEFT")
+        p1.topicBtns[t.key] = tBtn
+    end
+
+    p1.profNameBox = ns:CreateMaterialEditBox(pageDetails, "Active Profile Name", "e.g., Main Character", 16, -236, 250, 26, AutoCommitTab1)
+    p1.newProfBtn = ns:CreateMaterialButton(pageDetails, "+ New Profile", 148, 26, 278, -246, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
+    p1.delProfBtn = ns:CreateMaterialButton(pageDetails, "Delete Active Profile", 166, 26, 462, -246, "CORAL", function(self)
         local now = GetTime()
         if now < confirmDeleteProfileUntil then
             confirmDeleteProfileUntil = 0
@@ -2378,18 +2671,11 @@ function ns:InitControllerUI()
     p4.countLabel = p4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     p4.countLabel:SetPoint("TOPLEFT", 16, -12)
 
-    local sweepBtn = ns:CreateMaterialButton(p4, "Sweep Nearby", 104, 24, 0, 0, "MINT", function()
-        ns:ScanNearbyPlayers()
-        ns:ShowStatusToast("Sweeping nearby players...")
-    end)
-    sweepBtn:ClearAllPoints()
-    sweepBtn:SetPoint("TOPRIGHT", p4, "TOPRIGHT", -16, -8)
-
     local openLiveBtn = ns:CreateMaterialButton(p4, "Open Target Dossier", 142, 24, 0, 0, "PRIMARY", function()
         ns:OpenTargetDossier()
     end)
     openLiveBtn:ClearAllPoints()
-    openLiveBtn:SetPoint("RIGHT", sweepBtn, "LEFT", -6, 0)
+    openLiveBtn:SetPoint("TOPRIGHT", p4, "TOPRIGHT", -16, -8)
 
     p4.searchBox = ns:CreateMaterialEditBox(p4, nil, "Search by Name, Title, House, or Note...", 16, -38, 250, 26, function(txt)
         knownSearchFilter = txt or ""
@@ -2434,19 +2720,23 @@ function ns:InitControllerUI()
 
     p4.knownRows = {}
     for i = 1, 8 do
-        local rowY = -74 - (i - 1) * 34
-        local rowBtn = ns:CreateMaterialButton(p4, "", 624, 30, 16, rowY, nil, function(self)
+        local rowY = -72 - (i - 1) * 35
+        local rowBtn = ns:CreateMaterialButton(p4, "", 624, 32, 16, rowY, nil, function(self)
             if self.profileKey and ns.OpenTargetDossier then
                 ns:OpenTargetDossier(self.profileKey)
             end
         end)
         rowBtn:SetPoint("RIGHT", p4, "RIGHT", -16, 0)
-        rowBtn.label:SetJustifyH("LEFT")
-        rowBtn.label:SetPoint("RIGHT", -92, 0)
 
         rowBtn.seenLabel = rowBtn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        rowBtn.seenLabel:SetPoint("RIGHT", -10, 0)
+        rowBtn.seenLabel:SetPoint("RIGHT", -12, 0)
         rowBtn.seenLabel:SetJustifyH("RIGHT")
+
+        rowBtn.label:ClearAllPoints()
+        rowBtn.label:SetPoint("LEFT", rowBtn, "LEFT", 12, 0)
+        rowBtn.label:SetPoint("RIGHT", rowBtn.seenLabel, "LEFT", -12, 0)
+        rowBtn.label:SetJustifyH("LEFT")
+        rowBtn.label:SetWordWrap(false)
 
         AttachWheelScroller(rowBtn, function(step)
             knownListPage = knownListPage + step
@@ -2735,14 +3025,11 @@ function ns:InitControllerUI()
         ns:ToggleNetInspector(true)
         ns:RefreshControllerUI()
     end)
-    p7.sweepDevBtn = ns:CreateMaterialButton(p7, "Sweep Nearby", 148, 28, 172, -68, "MINT", function()
-        ns:ScanNearbyPlayers()
-    end)
-    p7.selfTestBtn = ns:CreateMaterialButton(p7, "Run Self-Test", 148, 28, 328, -68, "AMBER", function()
+    p7.selfTestBtn = ns:CreateMaterialButton(p7, "Run Self-Test", 148, 28, 172, -68, "AMBER", function()
         ns:RunMSPSelfTest()
     end)
 
-    p7.clearCacheBtn = ns:CreateMaterialButton(p7, "Clear Profile Cache", 156, 28, 484, -68, "CORAL", function(self)
+    p7.clearCacheBtn = ns:CreateMaterialButton(p7, "Clear Profile Cache", 156, 28, 328, -68, "CORAL", function(self)
         local now = GetTime()
         if now < confirmClearCacheUntil then
             confirmClearCacheUntil = 0

@@ -3,6 +3,7 @@ local _, ns = ...
 local dossierFrame
 local selectedDossierKey = nil
 local activeSubView = "CHAR"
+local SUB_VIEWS = { "CHAR", "ABOUT", "GLANCES", "NOTES" }
 local STANDINGS = { "None", "Ally", "Acquaintance", "Rival", "Marked" }
 
 local function EnsureNoteRecord(key)
@@ -38,21 +39,76 @@ local function SaveCurrentNotes()
     end
 end
 
-local function FormatRow(label, value)
-    if not value or strtrim(tostring(value)) == "" then return nil end
-    return string.format("|cff9aa0a6%s:|r  |cffe8eaed%s|r", label, strtrim(tostring(value)))
+local function IsPlayerSelfKey(key)
+    if not key or key == "" then return false end
+    local lk = string.lower(strtrim(tostring(key)))
+    local pName = UnitName("player")
+    if pName then
+        local shortK = strsplit("-", key)
+        if string.lower(strtrim(shortK or "")) == string.lower(pName) then
+            return true
+        end
+    end
+    if ns.GetUnitKey then
+        local selfKey = ns:GetUnitKey("player")
+        if selfKey and string.lower(strtrim(selfKey)) == lk then
+            return true
+        end
+    end
+    if ns.profile then
+        local parts = {}
+        if ns.profile.firstName and strtrim(ns.profile.firstName) ~= "" then
+            table.insert(parts, strtrim(ns.profile.firstName))
+        end
+        if ns.profile.lastName and strtrim(ns.profile.lastName) ~= "" then
+            table.insert(parts, strtrim(ns.profile.lastName))
+        end
+        if #parts > 0 and string.lower(table.concat(parts, " ")) == lk then
+            return true
+        end
+    end
+    return false
 end
 
-local function BuildCharacteristicsText(data)
+local function StripColorCodes(str)
+    if not str then return "" end
+    local clean = string.gsub(tostring(str), "|c%x%x%x%x%x%x%x%x", "")
+    clean = string.gsub(clean, "|r", "")
+    return clean
+end
+
+local function CleanOOCDisplayText(raw)
+    if not raw then return "" end
+    local clean = strtrim(StripColorCodes(raw))
+    clean = string.gsub(clean, "%[Walk%-Ups:[^%]]*%]", "")
+    clean = string.gsub(clean, "%[Pronouns:[^%]]*%]", "")
+    clean = string.gsub(clean, "^%s*[•|%-]+%s*", "")
+    clean = string.gsub(clean, "%s*[•|%-]+%s*$", "")
+    return strtrim(clean)
+end
+
+local function FormatRow(label, value, valueColorHex)
+    if not value or strtrim(StripColorCodes(value)) == "" then return nil end
+    local raw = strtrim(tostring(value))
+    if valueColorHex and not string.find(raw, "|c", 1, true) then
+        return string.format("|cff9aa0a6%s:|r  |c%s%s|r", label, valueColorHex, raw)
+    end
+    return string.format("|cff9aa0a6%s:|r  |cffe8eaed%s|r", label, raw)
+end
+
+local function BuildCharacteristicsText(data, isSelf)
     local lines = {}
     local basic = {}
-    local function AddBasic(lbl, val)
-        local r = FormatRow(lbl, val)
+    local classHex = (isSelf and ns.GetPlayerClassColorCode and ns:GetPlayerClassColorCode()) or nil
+
+    local function AddBasic(lbl, val, hex)
+        local r = FormatRow(lbl, val, hex)
         if r then table.insert(basic, r) end
     end
 
     AddBasic("Race", data.RA)
-    AddBasic("Class", data.RC)
+    AddBasic("Class", StripColorCodes(data.RC or ""), classHex)
+    AddBasic("Pronouns", data.PR or (isSelf and ns.profile and ns.profile.pronouns))
     AddBasic("Age", data.AG)
     AddBasic("Height", data.AH)
     AddBasic("Build / Body Shape", data.AW)
@@ -78,17 +134,41 @@ local function BuildCharacteristicsText(data)
     AddExtra("Nickname", data.NI)
     AddExtra("House / Clan", data.NH)
     AddExtra("Motto", data.MO)
+    if isSelf and ns.profile then
+        AddExtra("Facial Features", ns.profile.facialFeatures)
+        AddExtra("Tattoos / Markings", ns.profile.tattoos)
+        AddExtra("Voice Reference", ns.profile.voiceReference)
+    end
 
     if #extra > 0 then
         table.insert(lines, "|cfffdd663ADDITIONAL INFORMATION|r\n" .. table.concat(extra, "\n"))
     end
 
-    if data.CU and data.CU ~= "" then
-        table.insert(lines, "|cff81c995CURRENTLY|r\n" .. data.CU)
+    if isSelf and ns.profile and type(ns.profile.rpStyleTopics) == "table" then
+        local t = ns.profile.rpStyleTopics
+        local prefs = {}
+        local function AddPref(lbl, val)
+            if val and val ~= "" then
+                table.insert(prefs, string.format("|cff9aa0a6%s:|r |cffe8eaed%s|r", lbl, val))
+            end
+        end
+        AddPref("Injury", t.injury)
+        AddPref("Death", t.death)
+        AddPref("Romance", t.romance)
+        AddPref("Criminal", t.criminal)
+        AddPref("Loss of Control", t.lossOfControl)
+        AddPref("Guild Visibility", t.guild)
+        if #prefs > 0 then
+            table.insert(lines, "|cff8ab4f8ROLEPLAY PREFERENCES|r\n" .. table.concat(prefs, "\n"))
+        end
+    end
+
+    if data.CU and strtrim(data.CU) ~= "" then
+        table.insert(lines, "|cff81c995CURRENTLY|r\n" .. strtrim(data.CU))
     end
 
     if #lines == 0 then
-        return "|cff9aa0a6No characteristics fields listed in this profile yet. Try 'Pull Full Bio' below.|r"
+        return "|cff9aa0a6No characteristics fields listed in this profile yet.|r"
     end
     return table.concat(lines, "\n\n")
 end
@@ -107,7 +187,7 @@ local function BuildAboutText(data)
     return table.concat(lines, "\n\n")
 end
 
-local function BuildGlancesStatusText(data)
+local function BuildGlancesStatusText(data, isSelf)
     local lines = {}
     local structured = ns:ParseGlancesStructured(data.PE)
     if #structured > 0 then
@@ -125,16 +205,31 @@ local function BuildGlancesStatusText(data)
     end
 
     if data.CU and strtrim(data.CU) ~= "" then
-        table.insert(lines, "|cff8ab4f8CURRENTLY|r\n" .. data.CU)
+        table.insert(lines, "|cff8ab4f8CURRENTLY|r\n" .. strtrim(data.CU))
     end
-    if data.CO and strtrim(data.CO) ~= "" then
-        table.insert(lines, "|cff81c995OTHER INFORMATION (OOC)|r\n" .. data.CO)
+
+    local oocRaw = (isSelf and ns.profile and (ns.profile.oocNotes or ns.profile.oocInfo)) or data.CO
+    local oocOnly = CleanOOCDisplayText(oocRaw)
+    if oocOnly ~= "" then
+        table.insert(lines, "|cff81c995OTHER INFORMATION (OOC)|r\n" .. oocOnly)
     end
 
     if #lines == 0 then
         return "|cff9aa0a6No First Glances, Currently, or OOC notes found in this profile.|r"
     end
     return table.concat(lines, "\n\n")
+end
+
+function ns:CycleDossierTab(delta)
+    if not dossierFrame or not dossierFrame:IsShown() then return end
+    if activeSubView == "NOTES" then SaveCurrentNotes() end
+    local curIdx = 1
+    for i, v in ipairs(SUB_VIEWS) do
+        if v == activeSubView then curIdx = i break end
+    end
+    local nextIdx = ((curIdx - 1 + (delta or 1)) % #SUB_VIEWS) + 1
+    activeSubView = SUB_VIEWS[nextIdx]
+    ns:RefreshDossierWindow()
 end
 
 function ns:RefreshDossierWindow()
@@ -163,11 +258,17 @@ function ns:RefreshDossierWindow()
     end
 
     selectedDossierKey = key
+    local isSelf = IsPlayerSelfKey(key)
     local isLiveTarget = UnitExists("target") and UnitIsPlayer("target") and (ns:GetUnitKey("target") == key)
     local tHex = "ff8ab4f8"
-    if isLiveTarget then
+    if isSelf and ns.GetPlayerClassColorCode then
+        tHex = ns:GetPlayerClassColorCode()
+    elseif isLiveTarget then
         local _, tClass = UnitClass("target")
         tHex = (tClass and RAID_CLASS_COLORS and RAID_CLASS_COLORS[tClass] and RAID_CLASS_COLORS[tClass].colorStr) or "ffffffff"
+    end
+
+    if isLiveTarget then
         dossierFrame.modeBadge:SetText("|cff81c995[LIVE TARGET DOSSIER]|r  |cff9aa0a6(" .. key .. ")|r")
     else
         dossierFrame.modeBadge:SetText("|cff8ab4f8[CACHED PROFILE DOSSIER]|r  |cff9aa0a6(" .. key .. ")|r")
@@ -176,12 +277,16 @@ function ns:RefreshDossierWindow()
     local data = ns:GetCachedMSP(key)
     local standing, charNote, acctNote, hasNote = ns:GetNoteInfo(key)
 
-    -- Update Notes tab badge indicator
     dossierFrame.tabNotes:SetText(hasNote and "Notes |cff81c995*|r" or "Notes")
 
-    if data and data.IC and strtrim(data.IC) ~= "" then
-        local iconPath = string.find(data.IC, "\\", 1, true) and data.IC or ("Interface\\Icons\\" .. strtrim(data.IC))
-        dossierFrame.portraitTex:SetTexture(iconPath)
+    local activeIcon = (isSelf and ns.profile and ns.profile.icon) or (data and data.IC)
+    if activeIcon and strtrim(tostring(activeIcon)) ~= "" then
+        if ns.ResolveIconTexture then
+            dossierFrame.portraitTex:SetTexture(ns:ResolveIconTexture(activeIcon, "INV_Helmet_46"))
+        else
+            local iconPath = string.find(tostring(activeIcon), "\\", 1, true) and tostring(activeIcon) or ("Interface\\Icons\\" .. strtrim(tostring(activeIcon)))
+            dossierFrame.portraitTex:SetTexture(iconPath)
+        end
     else
         dossierFrame.portraitTex:SetTexture("Interface\\Icons\\INV_Helmet_46")
     end
@@ -192,10 +297,16 @@ function ns:RefreshDossierWindow()
         if ns.IsScanPending and ns:IsScanPending(key) then
             dossierFrame.vitalsText:SetText("|cff8ab4f8Scanning LibMSP profile... Waiting for reply...|r")
         else
-            dossierFrame.vitalsText:SetText("|cff9aa0a6No RP profile cached yet. Press 'Pull Full Bio' below if they are online.|r")
+            dossierFrame.vitalsText:SetText("|cff9aa0a6No RP profile cached yet.|r")
         end
     else
         local displayName = data.NA
+        local embeddedHex = type(displayName) == "string" and string.match(displayName, "^|c(%x%x%x%x%x%x%x%x)")
+        if embeddedHex and not isSelf then
+            tHex = embeddedHex
+        end
+        displayName = StripColorCodes(displayName)
+
         if data.PX and strtrim(data.PX) ~= "" and not string.find(displayName, strtrim(data.PX), 1, true) then
             displayName = strtrim(data.PX) .. " " .. displayName
         end
@@ -205,12 +316,26 @@ function ns:RefreshDossierWindow()
         local icBadge = (data.FC == "2") and "|cff81c995[IC]|r" or "|cfff28b82[OOC]|r"
         local wuBadge = ns:GetTargetWalkUpInfo(data)
         local statusBadges = wuBadge and (icBadge .. " " .. wuBadge) or icBadge
-        local raceClass = strtrim((data.RA or "") .. " " .. (data.RC or ""))
+
+        local racePart = strtrim(data.RA or "")
+        local rawClass = strtrim(tostring(data.RC or ""))
+        local classPart = ""
+        if rawClass ~= "" then
+            if isSelf and ns.GetPlayerClassColorCode then
+                classPart = "|c" .. ns:GetPlayerClassColorCode() .. StripColorCodes(rawClass) .. "|r"
+            elseif string.find(rawClass, "|c", 1, true) then
+                classPart = rawClass
+            else
+                classPart = "|cffe8eaed" .. rawClass .. "|r"
+            end
+        end
+        local raceClass = strtrim((racePart ~= "" and ("|cffe8eaed" .. racePart .. "|r ") or "") .. classPart)
+
         local seenStr = ""
         if data.lastSeen and data.lastSeen > 0 then
             seenStr = "   |cff9aa0a6Seen:|r " .. date("%m/%d %H:%M", data.lastSeen)
         end
-        dossierFrame.vitalsText:SetText(string.format("%s   |cffe8eaed%s|r%s", statusBadges, raceClass, seenStr))
+        dossierFrame.vitalsText:SetText(string.format("%s   %s%s", statusBadges, raceClass, seenStr))
     end
 
     if activeSubView == "NOTES" then
@@ -235,13 +360,13 @@ function ns:RefreshDossierWindow()
         dossierFrame.readerBox:Show()
 
         if not data or not data.NA then
-            dossierFrame.scrollText:SetText("|cff9aa0a6No RP profile loaded for this player. Switch to the Notes tab to keep private notes or click 'Pull Full Bio'.|r")
+            dossierFrame.scrollText:SetText("|cff9aa0a6No RP profile loaded for this player. Switch to the Notes tab to keep private notes.|r")
         elseif activeSubView == "ABOUT" then
             dossierFrame.scrollText:SetText(BuildAboutText(data))
         elseif activeSubView == "GLANCES" then
-            dossierFrame.scrollText:SetText(BuildGlancesStatusText(data))
+            dossierFrame.scrollText:SetText(BuildGlancesStatusText(data, isSelf))
         else
-            dossierFrame.scrollText:SetText(BuildCharacteristicsText(data))
+            dossierFrame.scrollText:SetText(BuildCharacteristicsText(data, isSelf))
         end
 
         local scrollW = dossierFrame.scrollFrame:GetWidth()
@@ -283,6 +408,7 @@ function ns:InitDossierWindow()
     local M3 = ns.M3
 
     dossierFrame = CreateFrame("Frame", "PadRP_DossierWindow", UIParent, "BackdropTemplate")
+    ns.dossierFrame = dossierFrame
     dossierFrame:SetSize(656, 520)
     dossierFrame:SetPoint("CENTER", UIParent, "CENTER", 40, -10)
     dossierFrame:SetFrameStrata("DIALOG")
@@ -319,15 +445,9 @@ function ns:InitDossierWindow()
     closeBtn:ClearAllPoints()
     closeBtn:SetPoint("TOPRIGHT", dossierFrame, "TOPRIGHT", -12, -8)
 
-    local netBtn = ns:CreateMaterialButton(dossierFrame, "Net Console", 88, 24, 0, 0, "AMBER", function()
-        if ns.ToggleNetInspector then ns:ToggleNetInspector() end
-    end)
-    netBtn:ClearAllPoints()
-    netBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
-
     dossierFrame.headerName = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     dossierFrame.headerName:SetPoint("TOPLEFT", 74, -27)
-    dossierFrame.headerName:SetPoint("RIGHT", netBtn, "LEFT", -10, 0)
+    dossierFrame.headerName:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
     dossierFrame.headerName:SetJustifyH("LEFT")
     dossierFrame.headerName:SetWordWrap(false)
 
@@ -360,7 +480,7 @@ function ns:InitDossierWindow()
     -- Reader Panel (Characteristics / About / Glances)
     local readerBox = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
     readerBox:SetPoint("TOPLEFT", 16, -100)
-    readerBox:SetPoint("BOTTOMRIGHT", -16, 102)
+    readerBox:SetPoint("BOTTOMRIGHT", -16, 16)
     ns:ApplySurface(readerBox, M3.surfaceLow, M3.outline)
     ns:EnableClipping(readerBox)
     dossierFrame.readerBox = readerBox
@@ -386,7 +506,7 @@ function ns:InitDossierWindow()
     -- Split Notes Panel (Character-Specific + Account-Wide + Standing)
     local notesPanel = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
     notesPanel:SetPoint("TOPLEFT", 16, -100)
-    notesPanel:SetPoint("BOTTOMRIGHT", -16, 102)
+    notesPanel:SetPoint("BOTTOMRIGHT", -16, 16)
     ns:ApplySurface(notesPanel, M3.surfaceLow, M3.outline)
     ns:EnableClipping(notesPanel)
     notesPanel:Hide()
@@ -425,86 +545,20 @@ function ns:InitDossierWindow()
     dossierFrame.charNoteBox = ns:CreateScrollableTextEditor(
         notesPanel,
         "Private RP notes from this character's perspective (e.g., how you met, debts, impressions)...",
-        12, -62, 600, 108,
+        12, -62, 600, 148,
         function() SaveCurrentNotes() end
     )
 
     local acctLabel = notesPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    acctLabel:SetPoint("TOPLEFT", 12, -178)
+    acctLabel:SetPoint("TOPLEFT", 12, -220)
     acctLabel:SetText("|cff8ab4f8Account-Wide Notes|r  |cff9aa0a6(Shared across all your characters)|r")
 
     dossierFrame.acctNoteBox = ns:CreateScrollableTextEditor(
         notesPanel,
         "OOC / Account-wide notes about this player...",
-        12, -196, 600, 108,
+        12, -238, 600, 148,
         function() SaveCurrentNotes() end
     )
-
-    -- Controller RP Action Deck
-    local deckLabel = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    deckLabel:SetPoint("BOTTOMLEFT", dossierFrame, "BOTTOMLEFT", 16, 82)
-    deckLabel:SetText("|cff8ab4f8TARGET & RP ACTION DECK|r")
-
-    local b1 = ns:CreateMaterialButton(dossierFrame, "Pull Full Bio", 150, 28, 0, 0, "PRIMARY", function()
-        if selectedDossierKey then
-            ns:RequestUnitMSP(selectedDossierKey, true, true)
-            ns:RefreshDossierWindow()
-        end
-    end)
-    b1:ClearAllPoints()
-    b1:SetPoint("BOTTOMLEFT", dossierFrame, "BOTTOMLEFT", 16, 46)
-
-    local b2 = ns:CreateMaterialButton(dossierFrame, "IC Greet (/e)", 150, 28, 0, 0, nil, function()
-        if selectedDossierKey then
-            SendChatMessage("inclines their head toward " .. ns:GetUnitRPName(selectedDossierKey, true) .. " in a polite greeting.", "EMOTE")
-        else
-            SendChatMessage("glances around the room and offers a polite nod.", "EMOTE")
-        end
-    end)
-    b2:ClearAllPoints()
-    b2:SetPoint("LEFT", b1, "RIGHT", 8, 0)
-
-    local b3 = ns:CreateMaterialButton(dossierFrame, "Thank Target", 150, 28, 0, 0, "MINT", function()
-        ns:QuickThankAction()
-    end)
-    b3:ClearAllPoints()
-    b3:SetPoint("LEFT", b2, "RIGHT", 8, 0)
-
-    local b4 = ns:CreateMaterialButton(dossierFrame, "Whisper OOC", 150, 28, 0, 0, nil, function()
-        if selectedDossierKey and ChatFrame_OpenChat then
-            ChatFrame_OpenChat("/w " .. strsplit("-", selectedDossierKey) .. " ")
-        end
-    end)
-    b4:ClearAllPoints()
-    b4:SetPoint("LEFT", b3, "RIGHT", 8, 0)
-
-    local b5 = ns:CreateMaterialButton(dossierFrame, "Sit / Rest (/sit)", 150, 28, 0, 0, "AMBER", function()
-        DoEmote("SIT")
-    end)
-    b5:ClearAllPoints()
-    b5:SetPoint("BOTTOMLEFT", dossierFrame, "BOTTOMLEFT", 16, 12)
-
-    local b6 = ns:CreateMaterialButton(dossierFrame, "Roll 1d20", 150, 28, 0, 0, nil, function()
-        RandomRoll(1, 20)
-    end)
-    b6:ClearAllPoints()
-    b6:SetPoint("LEFT", b5, "RIGHT", 8, 0)
-
-    local b7 = ns:CreateMaterialButton(dossierFrame, "Tavern Drink", 150, 28, 0, 0, nil, function()
-        if selectedDossierKey then
-            SendChatMessage("raises a glass toward " .. ns:GetUnitRPName(selectedDossierKey, true) .. " before taking a slow sip.", "EMOTE")
-        else
-            SendChatMessage("takes a slow sip from their drink, watching the room.", "EMOTE")
-        end
-    end)
-    b7:ClearAllPoints()
-    b7:SetPoint("LEFT", b6, "RIGHT", 8, 0)
-
-    local b8 = ns:CreateMaterialButton(dossierFrame, "Sweep Nearby", 150, 28, 0, 0, nil, function()
-        ns:ScanNearbyPlayers()
-    end)
-    b8:ClearAllPoints()
-    b8:SetPoint("LEFT", b7, "RIGHT", 8, 0)
 
     if ConsolePort and ConsolePort.AddInterfaceCursorFrame then
         ConsolePort:AddInterfaceCursorFrame("PadRP_DossierWindow")
