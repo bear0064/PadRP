@@ -21,6 +21,15 @@ local phrasePage = 1
 local confirmDeleteProfileUntil = 0
 local confirmClearBioUntil = 0
 local confirmClearCacheUntil = 0
+local lastEditFocusTime = 0
+local lastConfirmTime = 0
+local lastConfirmTarget = nil
+local lastBackdoorToggleTime = 0
+local lastPickerApplyTime = 0
+local pickerReopenGuardUntil = 0
+local multiPressCount = 0
+local multiPressWindowUntil = 0
+local leftTriggerHeld = false
 
 local verifiedIconPool = nil
 
@@ -792,7 +801,7 @@ local function GetFilteredKnownProfiles()
                 return a.lastSeen > b.lastSeen
             end
         end
-        return string.lower(a.data.NA or a.key) < string.lower(b.data.NA or b.key)
+        return string.lower(StripColorCodes(a.data.NA or a.key)) < string.lower(StripColorCodes(b.data.NA or b.key))
     end)
 
     return list
@@ -1032,15 +1041,35 @@ end
 function ns:ControllerConfirmAction()
     local scope = ns:GetActiveModalScope()
     if not scope or not ns:CanProcessPadAction() then return end
-    if ns.activeEditBox and ns.activeEditBox:HasFocus() then
-        ns.activeEditBox:ClearFocus()
+
+    local now = (GetTime and GetTime()) or 0
+    local activeBox = ns.activeEditBox
+    if activeBox and activeBox.HasFocus and activeBox:HasFocus() then
+        if (now - (lastEditFocusTime or 0)) < 0.25 then
+            return
+        end
+        activeBox:ClearFocus()
         return
     end
+
     local cur = ns.currentFocus
     if not cur or not cur:IsVisible() then
         ns:FocusFirstInScope()
         return
     end
+
+    if cur == lastConfirmTarget and (now - (lastConfirmTime or 0)) < 0.18 then
+        return
+    end
+    lastConfirmTime = now
+    lastConfirmTarget = cur
+
+    if cur.GetObjectType and cur:GetObjectType() == "EditBox" then
+        lastEditFocusTime = now
+        if cur.SetFocus then cur:SetFocus() end
+        return
+    end
+
     if cur.ActivateFromPad then
         cur:ActivateFromPad()
     elseif cur.Click then
@@ -1665,8 +1694,42 @@ function ns:ToggleMainFrame()
     end
 end
 
+local function PersistColorSelection(mode, hex6, returnWidget)
+    if not ns.profile or not hex6 then return end
+    local now = (GetTime and GetTime()) or 0
+    if (now - (lastPickerApplyTime or 0)) < 0.25 then return end
+    lastPickerApplyTime = now
+    pickerReopenGuardUntil = now + 0.45
+
+    if mode == "EYE" then
+        ns.profile.eyeColorHex = hex6
+        RefreshEyeSwatchBox()
+    else
+        ns.profile.classColorHex = hex6
+        ns.profile.nameColorHex = hex6
+        RefreshClassSwatchBox()
+        RefreshHeaderBanner()
+        SyncSelfColorToLocalCache()
+        ns:RefreshTargetCard()
+        if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
+    end
+    if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+    if ns.SyncMSP then ns:SyncMSP() end
+    local label = (mode == "EYE") and "Eye color" or "Class & Name color"
+    ns:ShowStatusToast(label .. " set to #" .. string.upper(hex6))
+    if returnWidget and returnWidget:IsVisible() then
+        ns:SetControllerFocus(returnWidget)
+    end
+end
+
 local function OpenNativeColorPicker(mode, returnWidget)
     if not ColorPickerFrame or not ns.profile then return end
+    local now = (GetTime and GetTime()) or 0
+    if now < (pickerReopenGuardUntil or 0) or (ColorPickerFrame.IsShown and ColorPickerFrame:IsShown()) then
+        return
+    end
+    pickerReopenGuardUntil = now + 0.25
+
     local prevHex
     if mode == "EYE" then
         prevHex = NormalizeHex6(ns.profile.eyeColorHex or ns.profile.eyeColor)
@@ -1675,16 +1738,22 @@ local function OpenNativeColorPicker(mode, returnWidget)
     end
     local startHex = prevHex or GetWoWClassHex6()
     local r, g, b = HexToRGB(startHex)
+    local liveHex6 = startHex
+    local openedAt = now
+    local userMovedColor = false
     local wasCancelled = false
 
-    local function ApplyLiveRGB(nr, ng, nb)
-        local hex6 = RGBToHex6(nr, ng, nb)
+    local function ApplyLiveRGB(nr, ng, nb, fromUser)
+        if fromUser then
+            userMovedColor = true
+        end
+        liveHex6 = RGBToHex6(nr, ng, nb)
         if mode == "EYE" then
-            ns.profile.eyeColorHex = hex6
+            ns.profile.eyeColorHex = liveHex6
             RefreshEyeSwatchBox()
         else
-            ns.profile.classColorHex = hex6
-            ns.profile.nameColorHex = hex6
+            ns.profile.classColorHex = liveHex6
+            ns.profile.nameColorHex = liveHex6
             RefreshClassSwatchBox()
             RefreshHeaderBanner()
             SyncSelfColorToLocalCache()
@@ -1693,22 +1762,10 @@ local function OpenNativeColorPicker(mode, returnWidget)
         end
     end
 
-    local function FinalizeRGB(nr, ng, nb)
-        if wasCancelled then return end
-        ApplyLiveRGB(nr, ng, nb)
-        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
-        if ns.SyncMSP then ns:SyncMSP() end
-        SyncSelfColorToLocalCache()
-        ns:RefreshControllerUI()
-        local label = (mode == "EYE") and "Eye color" or "Class & Name color"
-        ns:ShowStatusToast(label .. " set to #" .. string.upper(RGBToHex6(nr, ng, nb)))
-        if returnWidget and returnWidget:IsVisible() then
-            ns:SetControllerFocus(returnWidget)
-        end
-    end
-
     local function CancelRGB()
         wasCancelled = true
+        pickerReopenGuardUntil = ((GetTime and GetTime()) or 0) + 0.45
+        ColorPickerFrame._padRPFinalize = nil
         if mode == "EYE" then
             ns.profile.eyeColorHex = prevHex
             RefreshEyeSwatchBox()
@@ -1740,14 +1797,24 @@ local function OpenNativeColorPicker(mode, returnWidget)
 
     if ColorPickerFrame.SetupColorPickerAndShow then
         ColorPickerFrame._padRPFinalize = function()
-            if not wasCancelled and ColorPickerFrame.GetColorRGB then
-                local nr, ng, nb = ColorPickerFrame:GetColorRGB()
-                FinalizeRGB(nr, ng, nb)
+            if wasCancelled then return end
+            local tNow = (GetTime and GetTime()) or 0
+            if not userMovedColor and (tNow - openedAt) < 0.25 then
+                return
             end
+            if ColorPickerFrame.GetColorRGB then
+                local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+                local picked = RGBToHex6(nr, ng, nb)
+                if picked and picked ~= "000000" then
+                    liveHex6 = picked
+                end
+            end
+            PersistColorSelection(mode, liveHex6, returnWidget)
         end
         if not ColorPickerFrame._padRPOnHideHooked and ColorPickerFrame.HookScript then
             ColorPickerFrame._padRPOnHideHooked = true
             ColorPickerFrame:HookScript("OnHide", function(self)
+                pickerReopenGuardUntil = ((GetTime and GetTime()) or 0) + 0.45
                 if self._padRPFinalize then
                     local fn = self._padRPFinalize
                     self._padRPFinalize = nil
@@ -1761,8 +1828,10 @@ local function OpenNativeColorPicker(mode, returnWidget)
             b = b,
             hasOpacity = false,
             swatchFunc = function()
+                local tNow = (GetTime and GetTime()) or 0
+                local fromUser = (tNow - openedAt) > 0.12
                 local nr, ng, nb = ColorPickerFrame:GetColorRGB()
-                ApplyLiveRGB(nr, ng, nb)
+                ApplyLiveRGB(nr, ng, nb, fromUser)
             end,
             cancelFunc = function()
                 CancelRGB()
@@ -1772,8 +1841,10 @@ local function OpenNativeColorPicker(mode, returnWidget)
     else
         ColorPickerFrame:SetColorRGB(r, g, b)
         ColorPickerFrame.func = function()
+            local tNow = (GetTime and GetTime()) or 0
+            local fromUser = (tNow - openedAt) > 0.12
             local nr, ng, nb = ColorPickerFrame:GetColorRGB()
-            ApplyLiveRGB(nr, ng, nb)
+            ApplyLiveRGB(nr, ng, nb, fromUser)
         end
         ColorPickerFrame.cancelFunc = function()
             CancelRGB()
@@ -1806,6 +1877,95 @@ local function CreateColorSwatchButton(parent, x, y, mode, onReset)
         ApplySwatchVisual(self, self.activeHex6, isFocused)
     end)
     return btn
+end
+
+local function TriggerBackdoorToggle()
+    local now = (GetTime and GetTime()) or 0
+    if (now - (lastBackdoorToggleTime or 0)) < 0.35 then return end
+    lastBackdoorToggleTime = now
+    ns:ToggleMainFrame()
+end
+
+local function RegisterMultiPressBackdoor()
+    local now = (GetTime and GetTime()) or 0
+    if now > (multiPressWindowUntil or 0) then
+        multiPressCount = 0
+    end
+    multiPressCount = multiPressCount + 1
+    multiPressWindowUntil = now + 0.45
+    if multiPressCount >= 2 then
+        multiPressCount = 0
+        multiPressWindowUntil = 0
+        TriggerBackdoorToggle()
+    end
+end
+
+function PadRP_ActionBarToggle()
+    RegisterMultiPressBackdoor()
+end
+
+local function InitControllerBackdoorChord()
+    if mainFrame and mainFrame._padRPBackdoorHooked then return end
+    if mainFrame then mainFrame._padRPBackdoorHooked = true end
+
+    SLASH_PADRP1 = "/padrp"
+    SLASH_PADRP2 = "/padtoggle"
+    SlashCmdList["PADRP"] = function()
+        TriggerBackdoorToggle()
+    end
+
+    if _G.PadRP_ToggleUIButton then
+        local origPostClick = _G.PadRP_ToggleUIButton:GetScript("OnClick")
+        _G.PadRP_ToggleUIButton:SetScript("OnClick", function(self, ...)
+            if origPostClick then origPostClick(self, ...) end
+        end)
+    end
+
+    local watcher = CreateFrame("Frame")
+    watcher:RegisterEvent("MODIFIER_STATE_CHANGED")
+    pcall(function() watcher:RegisterEvent("GAME_PAD_AXIS_MOTION") end)
+    pcall(function() watcher:RegisterEvent("GAME_PAD_BUTTON_DOWN") end)
+    pcall(function() watcher:RegisterEvent("GAME_PAD_BUTTON_UP") end)
+
+    watcher:SetScript("OnEvent", function(_, event, arg1, arg2)
+        if event == "MODIFIER_STATE_CHANGED" then
+            if arg1 == "LCTRL" or arg1 == "LALT" or arg1 == "LSHIFT" then
+                leftTriggerHeld = (arg2 == 1)
+            end
+        elseif event == "GAME_PAD_AXIS_MOTION" then
+            if type(arg1) == "string" then
+                local up = string.upper(arg1)
+                if string.find(up, "LTRIGGER") or string.find(up, "LT") or string.find(up, "PADL2") then
+                    leftTriggerHeld = (tonumber(arg2) or 0) > 0.35
+                end
+            end
+        elseif event == "GAME_PAD_BUTTON_DOWN" then
+            local btnName = string.upper(tostring(arg1 or ""))
+            if string.find(btnName, "LTRIGGER") or string.find(btnName, "PADL2") then
+                leftTriggerHeld = true
+            end
+            local isFocusBtn = string.find(btnName, "BACK")
+                or string.find(btnName, "VIEW")
+                or string.find(btnName, "SHARE")
+                or string.find(btnName, "CURSOR")
+                or string.find(btnName, "L3")
+                or string.find(btnName, "STICK")
+            if isFocusBtn and (leftTriggerHeld or IsLeftControlKeyDown() or IsLeftAltKeyDown()) then
+                TriggerBackdoorToggle()
+            end
+        elseif event == "GAME_PAD_BUTTON_UP" then
+            local btnName = string.upper(tostring(arg1 or ""))
+            if string.find(btnName, "LTRIGGER") or string.find(btnName, "PADL2") then
+                leftTriggerHeld = false
+            end
+        end
+    end)
+
+    if _G.SetOverrideBindingClick and _G.PadRP_ToggleUIButton then
+        pcall(function()
+            _G.SetOverrideBindingClick(mainFrame, false, "F12", "PadRP_ToggleUIButton", "LeftButton")
+        end)
+    end
 end
 
 function ns:InitControllerUI()
@@ -3076,6 +3236,7 @@ function ns:InitControllerUI()
 
     ns:LoadProfileIntoUI()
     ns:SelectTab(1)
+    InitControllerBackdoorChord()
 
     if ConsolePort and ConsolePort.AddInterfaceCursorFrame then
         ConsolePort:AddInterfaceCursorFrame("PadRP_MainFrame")
