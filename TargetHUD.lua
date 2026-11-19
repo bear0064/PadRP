@@ -59,6 +59,10 @@ local function GetActiveOtherPlayerUnit()
     return nil
 end
 
+local function IsHardTargetedOtherPlayer()
+    return UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player")
+end
+
 local function RegisterHUDWithConsolePort()
     if not hudFrame or not ConsolePort then return end
     pcall(function()
@@ -76,6 +80,7 @@ end
 function ns:DismissTargetHUDFocus()
     if hudFrame then
         hudDismissedKey = hudFrame.inspectedKey or "__ACTIVE__"
+        hudFrame:Hide()
     end
     if ns.SetControllerFocus then
         ns:SetControllerFocus(nil)
@@ -434,7 +439,20 @@ local function SyncHUDFocusState(shouldShow, activeKey)
         hudDismissedKey = nil
     end
 
-    if shouldShow and not modalOpen and hudDismissedKey ~= curKey then
+    if shouldShow and hudDismissedKey == curKey then
+        hudFrame:Hide()
+        if ns.currentFocus == hudFrame and ns.SetControllerFocus then
+            ns:SetControllerFocus(nil)
+        end
+        if ns.UpdateControllerBindings then
+            ns:UpdateControllerBindings()
+        end
+        return
+    end
+
+    local shouldAutoFocus = shouldShow and IsHardTargetedOtherPlayer() and not modalOpen
+
+    if shouldAutoFocus then
         RegisterHUDWithConsolePort()
         if ns.SetControllerFocus then
             ns:SetControllerFocus(hudFrame)
@@ -475,6 +493,12 @@ function ns:RefreshTargetHUD()
 
     local data, activeKey = ns:GetCachedMSP(activeUnit)
     if ns.db.ui.hudOnlyRP and (not data or not data.NA) then
+        hudFrame:Hide()
+        SyncHUDFocusState(false, activeKey)
+        return
+    end
+
+    if hudDismissedKey and hudDismissedKey == (activeKey or "__ACTIVE__") then
         hudFrame:Hide()
         SyncHUDFocusState(false, activeKey)
         return
@@ -561,9 +585,6 @@ function ns:InitTargetHUD()
     hudFrame:SetScript("OnEnter", function(self)
         self:SetBackdropBorderColor(0.54, 0.71, 0.97, 1.0)
         RegisterHUDWithConsolePort()
-        if ns.SetControllerFocus then
-            ns:SetControllerFocus(self)
-        end
     end)
     hudFrame:SetScript("OnLeave", function(self)
         self:SetBackdropBorderColor(0.20, 0.24, 0.31, 0.85)

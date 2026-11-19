@@ -36,7 +36,7 @@ local SOLID_BACKDROP = {
 local function ScrollFrameByDelta(scrollFrame, deltaPixels)
     if not scrollFrame or not scrollFrame.GetVerticalScroll or not scrollFrame.SetVerticalScroll then return false end
     local cur = scrollFrame:GetVerticalScroll() or 0
-    local maxS = (scrollFrame.GetVerticalScrollRange and scrollFrame:GetVerticalScrollRange()) or 0
+    local maxS = (scrollFrame.GetVerticalScrollRange and scrollFrame.GetVerticalScrollRange()) or 0
     if maxS <= 2 then return false end
     local nextVal = math.max(0, math.min(maxS, cur + deltaPixels))
     if math.abs(nextVal - cur) < 0.5 then return false end
@@ -123,9 +123,8 @@ function ns:UpdateControllerBindings()
     local modalOpen = (ns.dossierFrame and ns.dossierFrame:IsShown())
         or (ns.mainFrame and ns.mainFrame:IsShown())
     local hudFocused = (ns.hudFrame and ns.hudFrame:IsShown() and ns.currentFocus == ns.hudFrame)
-    local anyOpen = modalOpen or hudFocused
 
-    if not anyOpen then
+    if not modalOpen and not hudFocused then
         ns:SetControllerFocus(nil)
     end
 
@@ -134,7 +133,9 @@ function ns:UpdateControllerBindings()
         return
     end
 
-    if anyOpen then
+    ClearOverrideBindings(owner)
+
+    if modalOpen then
         SetOverrideBindingClick(owner, true, "PADLSHOULDER", "PadRP_PrevTabBtn")
         SetOverrideBindingClick(owner, true, "PADRSHOULDER", "PadRP_NextTabBtn")
         SetOverrideBindingClick(owner, true, "PADDUP",       "PadRP_PadUpBtn")
@@ -143,9 +144,12 @@ function ns:UpdateControllerBindings()
         SetOverrideBindingClick(owner, true, "PADDRIGHT",    "PadRP_PadRightBtn")
         SetOverrideBindingClick(owner, true, "PAD1",         "PadRP_PadConfirmBtn")
         SetOverrideBindingClick(owner, true, "PAD2",         "PadRP_PadCancelBtn")
-    else
-        ClearOverrideBindings(owner)
+    elseif hudFocused then
+        -- Keep D-pad free for normal gameplay while only the top notifier bar is focused
+        SetOverrideBindingClick(owner, true, "PAD1", "PadRP_PadConfirmBtn")
+        SetOverrideBindingClick(owner, true, "PAD2", "PadRP_PadCancelBtn")
     end
+
     pendingBindingSync = false
 end
 
