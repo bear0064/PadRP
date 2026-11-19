@@ -88,7 +88,6 @@ local function GetOrCreateFocusRing()
     return focusRing
 end
 
--- Centralized controller override-binding coordinator shared by MainFrame & DossierWindow
 local function EnsureBindingOwner()
     if bindingOwner then return bindingOwner end
     bindingOwner = CreateFrame("Frame", "PadRP_PadBindingOwner", UIParent)
@@ -292,7 +291,6 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
     ns:EnableClipping(box)
     box.isDirty = false
 
-    -- Anchor label directly to the EditBox so responsive resizing moves & clips it automatically
     if hasLabel then
         local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         label:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 0, 3)
@@ -319,7 +317,7 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
     local padBtn = CreateFrame("Button", nil, box)
     padBtn:SetAllPoints(box)
     padBtn:SetFrameLevel(box:GetFrameLevel() + 2)
-    padBtn:RegisterForClicks("AnyUp")
+    padBtn:RegisterForClicks("LeftButtonUp")
     padBtn:SetScript("OnEnter", function() ns:SetControllerFocus(box) end)
     padBtn:SetScript("OnClick", function()
         ns:PlayUISound()
@@ -428,7 +426,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     local padBtn = CreateFrame("Button", nil, container)
     padBtn:SetAllPoints(container)
     padBtn:SetFrameLevel(container:GetFrameLevel() + 4)
-    padBtn:RegisterForClicks("AnyUp")
+    padBtn:RegisterForClicks("LeftButtonUp")
     padBtn:SetScript("OnEnter", function() ns:SetControllerFocus(container) end)
     padBtn:SetScript("OnClick", function()
         ns:PlayUISound()

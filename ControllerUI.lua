@@ -289,26 +289,64 @@ local function IsPlayerSelfKey(k)
     return false
 end
 
+local function BuildSelfFullName()
+    local p = ns.profile
+    if not p then return UnitName("player") or "" end
+    local parts = {}
+    local baseFirst = (p.firstName and strtrim(p.firstName) ~= "") and strtrim(p.firstName) or (UnitName("player") or "")
+    if baseFirst ~= "" then table.insert(parts, baseFirst) end
+    if p.lastName and strtrim(p.lastName) ~= "" then table.insert(parts, strtrim(p.lastName)) end
+    return table.concat(parts, " ")
+end
+
 local function SyncSelfProfileToLocalCache()
-    if type(ns.mspCache) ~= "table" or not ns.profile then return end
-    local custom = NormalizeHex6(ns.profile and (ns.profile.classColorHex or ns.profile.nameColorHex))
-    local cuText = tostring(ns.profile.currently or "")
+    if not ns.profile then return end
+    ns.mspCache = ns.mspCache or {}
+    local p = ns.profile
+    local custom = NormalizeHex6(p.classColorHex or p.nameColorHex)
+    local cuText = tostring(p.currently or "")
+    local fullName = BuildSelfFullName()
+    local matchedAny = false
+
     for k, rec in pairs(ns.mspCache) do
         if type(rec) == "table" and IsPlayerSelfKey(k) then
+            matchedAny = true
             rec.CU = cuText
+            if p.title and p.title ~= "" then rec.NT = p.title end
+            if p.houseName and p.houseName ~= "" then rec.NH = p.houseName end
+            if p.race and p.race ~= "" then rec.RA = p.race end
+            rec.FC = p.isIC and "2" or "1"
             if rec.RC and strtrim(StripColorCodes(rec.RC)) ~= "" then
                 local plainRC = StripColorCodes(rec.RC)
                 rec.RC = custom and ("|cff" .. custom .. plainRC .. "|r") or plainRC
+            elseif p.class and strtrim(p.class) ~= "" then
+                rec.RC = custom and ("|cff" .. custom .. strtrim(p.class) .. "|r") or strtrim(p.class)
             end
-            if rec.NA and strtrim(StripColorCodes(rec.NA)) ~= "" then
-                local plainNA = StripColorCodes(rec.NA)
-                rec.NA = custom and ("|cff" .. custom .. plainNA .. "|r") or plainNA
+            if fullName ~= "" then
+                rec.NA = custom and ("|cff" .. custom .. fullName .. "|r") or fullName
             end
+            rec.lastSeen = (time and time()) or rec.lastSeen or 0
         end
     end
+
+    if not matchedAny and fullName ~= "" then
+        local selfKey = (ns.GetUnitKey and ns:GetUnitKey("player")) or fullName
+        ns.mspCache[selfKey] = {
+            NA = custom and ("|cff" .. custom .. fullName .. "|r") or fullName,
+            NT = p.title or "",
+            NH = p.houseName or "",
+            RA = p.race or "",
+            RC = (p.class and strtrim(p.class) ~= "") and (custom and ("|cff" .. custom .. strtrim(p.class) .. "|r") or strtrim(p.class)) or "",
+            CU = cuText,
+            FC = p.isIC and "2" or "1",
+            lastSeen = (time and time()) or 0,
+        }
+    end
+
     if ns.RefreshTargetHUD then ns:RefreshTargetHUD() end
     if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
     if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
+    if ns.RefreshTargetCard then ns:RefreshTargetCard() end
 end
 
 local function ApplySwatchVisual(swatch, hex6, isFocused)
@@ -394,7 +432,6 @@ local function ApplyRPExperienceSelection(code)
     ns:ShowStatusToast("RP Experience: " .. GetRPExperienceLabelText(ns.profile.rpStyle))
 end
 
--- Proportional horizontal row layout helper (supports mixed fixed + flex columns)
 local function LayoutRow(parent, y, items, padLeft, padRight, gap)
     if not parent then return end
     local parentW = parent:GetWidth()
@@ -451,7 +488,6 @@ end
 local function UpdateResponsiveLayouts()
     if not mainFrame or not tabPanels[1] then return end
 
-    -- Tab 1: Identity & Vitals
     local p1 = tabPanels[1]
     if p1 and p1.coreSubBtn then
         LayoutRow(p1, -10, {
@@ -543,7 +579,6 @@ local function UpdateResponsiveLayouts()
         end
     end
 
-    -- Tab 2: First Glances
     local p2 = tabPanels[2]
     if p2 and p2.cards then
         for i = 1, 3 do
@@ -558,7 +593,6 @@ local function UpdateResponsiveLayouts()
         end
     end
 
-    -- Tab 3: Bio & Lore
     local p3 = tabPanels[3]
     if p3 and p3.appTabBtn then
         LayoutRow(p3, -12, {
@@ -568,7 +602,6 @@ local function UpdateResponsiveLayouts()
         }, 16, 16, 8)
     end
 
-    -- Tab 4: Directory
     local p4 = tabPanels[4]
     if p4 and p4.searchBox then
         LayoutRow(p4, -38, {
@@ -581,7 +614,6 @@ local function UpdateResponsiveLayouts()
         }, 16, 16, 6)
     end
 
-    -- Tab 5: Gratitude Studio
     local p5 = tabPanels[5]
     if p5 and p5.modeBtn then
         LayoutRow(p5, -10, {
@@ -635,7 +667,6 @@ local function UpdateResponsiveLayouts()
         LayoutRow(p5, -284, tokRow, 16, 16, 6)
     end
 
-    -- Tab 6: Settings
     local p6 = tabPanels[6]
     if p6 and p6.minimapBtn then
         LayoutRow(p6, -14, {
@@ -664,7 +695,6 @@ local function UpdateResponsiveLayouts()
         end
     end
 
-    -- Tab 7: Dev Tab
     local p7 = tabPanels[7]
     if p7 and p7.chkDebug then
         LayoutRow(p7, -34, {
@@ -763,7 +793,16 @@ local function GetFilteredKnownProfiles()
             seen[k] = true
             local standing, charNote, acctNote, hasNote = CheckNoteStatus(k)
             if not knownNotesOnly or hasNote then
-                local hay = string.lower(k .. " " .. v.NA .. " " .. (v.NT or "") .. " " .. (v.NH or "") .. " " .. (v.CU or "") .. " " .. standing .. " " .. charNote .. " " .. acctNote)
+                local hay = string.lower(table.concat({
+                    tostring(k or ""),
+                    StripColorCodes(v.NA or ""),
+                    StripColorCodes(v.NT or ""),
+                    StripColorCodes(v.NH or ""),
+                    StripColorCodes(v.CU or ""),
+                    tostring(standing or ""),
+                    tostring(charNote or ""),
+                    tostring(acctNote or ""),
+                }, " "))
                 if q == "" or string.find(hay, q, 1, true) then
                     table.insert(list, {
                         key = k,
@@ -782,7 +821,12 @@ local function GetFilteredKnownProfiles()
             seen[k] = true
             local standing, charNote, acctNote, hasNote = CheckNoteStatus(k)
             if not knownNotesOnly or hasNote then
-                local hay = string.lower(k .. " " .. standing .. " " .. charNote .. " " .. acctNote)
+                local hay = string.lower(table.concat({
+                    tostring(k or ""),
+                    tostring(standing or ""),
+                    tostring(charNote or ""),
+                    tostring(acctNote or ""),
+                }, " "))
                 if q == "" or string.find(hay, q, 1, true) then
                     table.insert(list, {
                         key = k,
@@ -835,9 +879,6 @@ local function UpdateTabBarLayout()
     end
 end
 
--- =========================================================
--- DEDICATED FLOATING NETWORK INSPECTOR WINDOW
--- =========================================================
 function ns:RefreshNetInspector(newLine)
     if not inspectorFrame then return end
 
@@ -996,9 +1037,6 @@ function ns:ToggleNetInspector(forceShow)
     end
 end
 
--- =========================================================
--- CONTROLLER ACTIONS & PROFILE SYNC (MAIN + DOSSIER AWARE)
--- =========================================================
 local function CloseAnyOpenPopup()
     if not mainFrame then return false end
     if mainFrame.expDropdown and mainFrame.expDropdown:IsShown() then
@@ -1319,9 +1357,24 @@ local function RefreshHeaderBanner()
     local fullName = table.concat(nameParts, " ")
 
     mainFrame.bannerName:SetText("|c" .. activeHex .. fullName .. "|r")
-    local titlePart = (p.title and p.title ~= "") and ("|cfffdd663<" .. p.title .. ">|r") or "|cff9aa0a6No RP Title|r"
-    local housePart = (p.houseName and p.houseName ~= "") and ("  |cff8ab4f8-  " .. p.houseName .. "|r") or ""
-    mainFrame.bannerTitle:SetText(titlePart .. housePart)
+
+    local guildVis = GetTopicConsentValue("guild", "Do not show")
+    local showHouse = (guildVis ~= "Do not show") and p.houseName and strtrim(p.houseName) ~= ""
+    local titlePart = (p.title and strtrim(p.title) ~= "") and ("|cfffdd663<" .. strtrim(p.title) .. ">|r") or ""
+    local housePart = showHouse and ("  |cff8ab4f8-  " .. strtrim(p.houseName) .. "|r") or ""
+    local curClean = p.currently and strtrim(StripColorCodes(p.currently)) or ""
+    local curPart = ""
+    if curClean ~= "" then
+        local shortCur = string.sub(curClean, 1, 34)
+        if #curClean > 34 then shortCur = shortCur .. "..." end
+        local joiner = (titlePart ~= "" or housePart ~= "") and "  |cff5f6368•|r  " or ""
+        curPart = joiner .. "|cff81c995\"" .. shortCur .. "\"|r"
+    end
+    local subtitleText = titlePart .. housePart .. curPart
+    if subtitleText == "" then
+        subtitleText = "|cff9aa0a6No RP Title|r"
+    end
+    mainFrame.bannerTitle:SetText(subtitleText)
     mainFrame.profChip:SetText(p.profileName or "Default")
 
     if mainFrame.bannerExpBtn then
@@ -1420,16 +1473,17 @@ local function FormatDirectoryRowText(k, d, item)
         table.insert(parts, table.concat(statusBadges, " "))
     end
 
-    local titleClean = d.NT and strtrim(d.NT) or ""
-    local guildClean = d.NH and strtrim(d.NH) or ""
-    local curClean = d.CU and strtrim(d.CU) or ""
+    local titleClean = d.NT and strtrim(StripColorCodes(d.NT)) or ""
+    local guildClean = d.NH and strtrim(StripColorCodes(d.NH)) or ""
+    local curClean = d.CU and strtrim(StripColorCodes(d.CU)) or ""
 
     if titleClean ~= "" then
         table.insert(parts, "|cfffdd663<" .. titleClean .. ">|r")
     end
     if guildClean ~= "" then
         table.insert(parts, "|cff8ab4f8{" .. guildClean .. "}|r")
-    elseif titleClean == "" and curClean ~= "" then
+    end
+    if curClean ~= "" then
         local shortCur = string.sub(curClean, 1, 36)
         if #curClean > 36 then shortCur = shortCur .. "..." end
         table.insert(parts, "|cff9aa0a6\"" .. shortCur .. "\"|r")
@@ -2023,9 +2077,6 @@ function ns:InitControllerUI()
         end
     end)
 
-    -- =========================================================
-    -- SEARCHABLE NATIVE ICON BROWSER (CURATED RP + VERIFIED POOL)
-    -- =========================================================
     local picker = CreateFrame("Frame", "PadRP_IconPicker", mainFrame, "BackdropTemplate")
     picker:SetSize(512, 412)
     picker:SetPoint("CENTER", mainFrame, "CENTER", 0, -4)
@@ -2258,9 +2309,6 @@ function ns:InitControllerUI()
     end
     mainFrame.iconPicker = picker
 
-    -- =========================================================
-    -- HEADER BAR (RIGHT-ANCHORED CONTROLS SO NAME/TITLE EXPAND)
-    -- =========================================================
     local banner = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
     banner:SetHeight(56)
     banner:SetPoint("TOPLEFT", 12, -12)
@@ -2391,7 +2439,6 @@ function ns:InitControllerUI()
     mainFrame.bannerTitle:SetJustifyH("LEFT")
     mainFrame.bannerTitle:SetWordWrap(false)
 
-    -- 6 CORE TABS + CONDITIONAL 7TH DEV TAB
     local tabTitles = { "[LB] Identity", "First Glances", "Bio & Lore", "Directory", "Gratitude", "Settings [RB]", "Dev" }
     for i, title in ipairs(tabTitles) do
         local tb = CreateFrame("Button", nil, mainFrame, "BackdropTemplate")
@@ -2421,9 +2468,6 @@ function ns:InitControllerUI()
         tabPanels[i] = panel
     end
 
-    -- =========================================================
-    -- TAB 1: IDENTITY (2 SUB-PAGES: CORE IDENTITY + VITALS/LORE)
-    -- =========================================================
     local p1 = tabPanels[1]
     local function AutoCommitTab1()
         CommitModifiedBoxesToProfile(false)
@@ -2658,6 +2702,7 @@ function ns:InitControllerUI()
         local tBtn = ns:CreateMaterialButton(pageDetails, "", 202, 26, btnX, btnY, nil, function(self)
             local updated = CycleTopicConsent(t.key, t.defaultVal)
             self:SetText(FormatTopicButtonText(t.label, updated))
+            RefreshHeaderBanner()
             ns:ShowStatusToast(t.label .. ": " .. updated)
         end)
         tBtn.label:SetJustifyH("LEFT")
@@ -2694,9 +2739,6 @@ function ns:InitControllerUI()
     revertBtn:ClearAllPoints()
     revertBtn:SetPoint("BOTTOMRIGHT", p1, "BOTTOMRIGHT", -16, 14)
 
-    -- =========================================================
-    -- TAB 2: FIRST GLANCES (5 SLOTS PAGED 1-3 & 4-5)
-    -- =========================================================
     local p2 = tabPanels[2]
     p2.page1Btn = ns:CreateMaterialButton(p2, "Glances 1 - 3", 170, 26, 16, -10, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
@@ -2771,7 +2813,6 @@ function ns:InitControllerUI()
     saveGlanceBtn:SetPoint("BOTTOMLEFT", p2, "BOTTOMLEFT", 16, 14)
     saveGlanceBtn:SetPoint("BOTTOMRIGHT", p2, "BOTTOMRIGHT", -16, 14)
 
-    -- TAB 3: BIO & LORE
     local p3 = tabPanels[3]
     p3.appTabBtn = ns:CreateMaterialButton(p3, "1. Physical Appearance & Attire", 254, 32, 16, -12, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
@@ -2811,9 +2852,6 @@ function ns:InitControllerUI()
     saveBioBtn:SetPoint("BOTTOMLEFT", p3, "BOTTOMLEFT", 16, 14)
     saveBioBtn:SetPoint("BOTTOMRIGHT", p3, "BOTTOMRIGHT", -16, 14)
 
-    -- =========================================================
-    -- TAB 4: RP DIRECTORY (LAST SEEN, SORT, NOTES-ONLY FILTER)
-    -- =========================================================
     local p4 = tabPanels[4]
     p4.countLabel = p4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     p4.countLabel:SetPoint("TOPLEFT", 16, -12)
@@ -2893,7 +2931,6 @@ function ns:InitControllerUI()
         p4.knownRows[i] = rowBtn
     end
 
-    -- TAB 5: GRATITUDE STUDIO
     local p5 = tabPanels[5]
     p5.modeBtn = ns:CreateMaterialButton(p5, "Gratitude Mode [v]", 624, 30, 16, -10, "PRIMARY", function()
         if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
@@ -3083,7 +3120,6 @@ function ns:InitControllerUI()
     quickThankBottom:SetPoint("BOTTOMLEFT", p5, "BOTTOMLEFT", 16, 14)
     quickThankBottom:SetPoint("BOTTOMRIGHT", p5, "BOTTOMRIGHT", -16, 14)
 
-    -- TAB 6: SETTINGS
     local p6 = tabPanels[6]
     p6.scaleMinusBtn = ns:CreateMaterialButton(p6, "Scale -", 68, 28, 16, -14, nil, function() ns.db.ui.scale = math.max(0.8, (ns.db.ui.scale or 1.0) - 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
     p6.scaleLabel = p6:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -3146,7 +3182,6 @@ function ns:InitControllerUI()
     end)
     mainFrame.exportModal = expModal
 
-    -- TAB 7: DEV TAB (HIDDEN UNLESS DEVELOPER MODE IS CHECKED)
     local p7 = tabPanels[7]
     p7.diagText = p7:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     p7.diagText:SetPoint("TOPLEFT", 16, -12)
@@ -3198,7 +3233,6 @@ function ns:InitControllerUI()
     p7.logEditor = ns:CreateScrollableTextEditor(p7, "Network & wire logs appear here when Debug Events or Wire Sniffer are checked...", 16, -104, 624, 240)
     p7.logEditor:SetPoint("BOTTOMRIGHT", p7, "BOTTOMRIGHT", -16, 14)
 
-    -- FOOTER
     local footer = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
     footer:SetHeight(26)
     footer:SetPoint("BOTTOMLEFT", 12, 10)

@@ -29,7 +29,7 @@ local function SaveCurrentNotes()
     local acctTxt = dossierFrame.acctNoteBox:GetText() or ""
     rec.charNotes[charKey] = charTxt
     rec.accountNote = acctTxt
-    rec.note = acctTxt -- Keep legacy field synced for backward compatibility
+    rec.note = acctTxt
     dossierFrame.charNoteBox.isDirty = false
     dossierFrame.acctNoteBox.isDirty = false
     if ns.RefreshTargetHUD then ns:RefreshTargetHUD() end
@@ -148,7 +148,7 @@ local function BuildCharacteristicsText(data, isSelf)
         local t = ns.profile.rpStyleTopics
         local prefs = {}
         local function AddPref(lbl, val)
-            if val and val ~= "" then
+            if val and val ~= "" and val ~= "Do not show" then
                 table.insert(prefs, string.format("|cff9aa0a6%s:|r |cffe8eaed%s|r", lbl, val))
             end
         end
@@ -163,8 +163,9 @@ local function BuildCharacteristicsText(data, isSelf)
         end
     end
 
-    if data.CU and strtrim(data.CU) ~= "" then
-        table.insert(lines, "|cff81c995CURRENTLY|r\n" .. strtrim(data.CU))
+    local cuVal = (isSelf and ns.profile and ns.profile.currently) or data.CU
+    if cuVal and strtrim(cuVal) ~= "" then
+        table.insert(lines, "|cff81c995CURRENTLY|r\n" .. strtrim(cuVal))
     end
 
     if #lines == 0 then
@@ -204,8 +205,9 @@ local function BuildGlancesStatusText(data, isSelf)
         table.insert(lines, "|cfffdd663AT FIRST GLANCE|r\n" .. table.concat(gLines, "\n\n"))
     end
 
-    if data.CU and strtrim(data.CU) ~= "" then
-        table.insert(lines, "|cff8ab4f8CURRENTLY|r\n" .. strtrim(data.CU))
+    local cuVal = (isSelf and ns.profile and ns.profile.currently) or data.CU
+    if cuVal and strtrim(cuVal) ~= "" then
+        table.insert(lines, "|cff8ab4f8CURRENTLY|r\n" .. strtrim(cuVal))
     end
 
     local oocRaw = (isSelf and ns.profile and (ns.profile.oocNotes or ns.profile.oocInfo)) or data.CO
@@ -426,7 +428,6 @@ function ns:InitDossierWindow()
     dossierFrame:Hide()
     tinsert(UISpecialFrames, "PadRP_DossierWindow")
 
-    -- Portrait Box
     local portraitBox = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
     portraitBox:SetSize(48, 48)
     portraitBox:SetPoint("TOPLEFT", 16, -12)
@@ -457,7 +458,6 @@ function ns:InitDossierWindow()
     dossierFrame.vitalsText:SetJustifyH("LEFT")
     dossierFrame.vitalsText:SetWordWrap(false)
 
-    -- 4 TRP3-Style Sub-Tabs
     local function SwitchSubView(viewName)
         if activeSubView == "NOTES" then SaveCurrentNotes() end
         activeSubView = viewName
@@ -477,7 +477,6 @@ function ns:InitDossierWindow()
         SwitchSubView("NOTES")
     end)
 
-    -- Reader Panel (Characteristics / About / Glances)
     local readerBox = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
     readerBox:SetPoint("TOPLEFT", 16, -100)
     readerBox:SetPoint("BOTTOMRIGHT", -16, 16)
@@ -503,7 +502,6 @@ function ns:InitDossierWindow()
     dossierFrame.scrollText:SetWordWrap(true)
     dossierFrame.scrollText:SetSpacing(3)
 
-    -- Split Notes Panel (Character-Specific + Account-Wide + Standing)
     local notesPanel = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
     notesPanel:SetPoint("TOPLEFT", 16, -100)
     notesPanel:SetPoint("BOTTOMRIGHT", -16, 16)

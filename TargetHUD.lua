@@ -16,6 +16,20 @@ local STANDING_COLORS = {
     Marked       = "|cfffdd663[MARKED]|r ",
 }
 
+local function HexToRGB(hex)
+    if type(hex) ~= "string" then return nil end
+    local clean = hex:gsub("^|c", ""):gsub("^#", "")
+    if #clean == 8 then
+        clean = clean:sub(3, 8)
+    end
+    if #clean ~= 6 or not clean:match("^%x%x%x%x%x%x$") then
+        return nil
+    end
+    return tonumber(clean:sub(1, 2), 16) / 255,
+           tonumber(clean:sub(3, 4), 16) / 255,
+           tonumber(clean:sub(5, 6), 16) / 255
+end
+
 function ns:GetNoteInfo(key)
     if not key or not ns.db or not ns.db.notes then
         return "None", "", "", false
@@ -85,15 +99,15 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
     end
     if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then return end
 
-    if not skipRequest and not UnitIsUnit(unit, "player") and ns.RequestUnitMSP then
-        ns:RequestUnitMSP(unit, false, false)
+    local isSelf = UnitIsUnit(unit, "player")
+    if not skipRequest and not isSelf and ns.RequestUnitMSP then
+        ns:RequestUnitMSP(unit, false, false, true)
     end
 
     local data, key = ns:GetCachedMSP(unit)
     local standing, charNote, acctNote, hasNote = ns:GetNoteInfo(key)
 
-    -- Even if a player has no RP profile, still show a saved note icon/preview if you wrote a note on them
-    if (not data or not data.NA or data.NA == "") and not hasNote and standing == "None" then
+    if (not data or not data.NA or data.NA == "") and not hasNote and standing == "None" and not isSelf then
         return
     end
 
@@ -106,6 +120,10 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
     local r, g, b = 0.54, 0.71, 0.97
     if classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] then
         r, g, b = RAID_CLASS_COLORS[classFile].r, RAID_CLASS_COLORS[classFile].g, RAID_CLASS_COLORS[classFile].b
+    end
+    if isSelf and ns.GetPlayerClassColorCode then
+        local cr, cg, cb = HexToRGB(ns:GetPlayerClassColorCode())
+        if cr then r, g, b = cr, cg, cb end
     end
 
     local standingTag = (standing and STANDING_COLORS[standing]) or ""
@@ -124,7 +142,7 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
             portraitTag = string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", iconPath)
         end
 
-        local displayName = data.NA
+        local displayName = data.NA:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
         if data.PX and strtrim(data.PX) ~= "" and not string.find(displayName, strtrim(data.PX), 1, true) then
             displayName = strtrim(data.PX) .. " " .. displayName
         end
@@ -139,9 +157,9 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
             tooltip:AddLine("< " .. data.NT .. " >", 0.99, 0.84, 0.39, true)
         end
 
-        local raceClass = strtrim((data.RA or "") .. " " .. (data.RC or ""))
+        local raceClass = strtrim((data.RA or "") .. " " .. (data.RC and data.RC:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") or ""))
         if raceClass ~= "" then
-            tooltip:AddLine(raceClass, 0.91, 0.92, 0.93, false)
+            tooltip:AddLine(raceClass, r, g, b, false)
         end
         if data.NH and data.NH ~= "" then
             tooltip:AddLine("House / Clan: |cfffdd663" .. data.NH .. "|r", 0.80, 0.84, 0.90, false)
@@ -150,16 +168,18 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
             tooltip:AddLine("\"" .. data.MO .. "\"", 0.72, 0.78, 0.86, true)
         end
 
-        if data.CU and data.CU ~= "" then
+        local cuVal = (isSelf and ns.profile and ns.profile.currently) or data.CU
+        if cuVal and strtrim(cuVal) ~= "" then
             tooltip:AddLine(" ")
             tooltip:AddLine("Currently", 1.0, 1.0, 1.0, false)
-            tooltip:AddLine(data.CU, 0.99, 0.84, 0.39, true)
+            tooltip:AddLine(strtrim(cuVal), 0.99, 0.84, 0.39, true)
         end
 
-        if data.CO and data.CO ~= "" then
+        local oocVal = (isSelf and ns.profile and (ns.profile.oocNotes or ns.profile.oocInfo)) or data.CO
+        if oocVal and strtrim(oocVal) ~= "" then
             tooltip:AddLine(" ")
             tooltip:AddLine("Other information (OOC)", 1.0, 1.0, 1.0, false)
-            tooltip:AddLine(data.CO, 0.99, 0.84, 0.39, true)
+            tooltip:AddLine(strtrim(oocVal), 0.99, 0.84, 0.39, true)
         end
 
         local glances = ns:ParseGlances(data.PE)
@@ -366,13 +386,14 @@ function ns:RefreshTargetHUD()
     local noteTag = hasNote and " |TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t" or ""
 
     if data and data.NA and data.NA ~= "" then
+        local cleanNA = data.NA:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
         local titleStr = (data.NT and data.NT ~= "") and ("  |cfffdd663<" .. data.NT .. ">|r") or ""
-        hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. data.NA .. "|r" .. titleStr .. noteTag)
+        hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. cleanNA .. "|r" .. titleStr .. noteTag)
         local isIC = (data.FC == "2")
         local icDot = isIC and "|cff81c995[IC]|r" or "|cfff28b82[OOC]|r"
         local wuBadge = ns:GetTargetWalkUpInfo(data)
         local prefixBadges = wuBadge and (icDot .. " " .. wuBadge) or icDot
-        local cuStr = (data.CU and data.CU ~= "") and data.CU or "|cff9aa0a6Click to open Dossier & Action Deck|r"
+        local cuStr = (data.CU and data.CU ~= "") and data.CU or "|cff9aa0a6Click to open Dossier|r"
         hudFrame.subText:SetText(prefixBadges .. "  |cffe8eaed" .. cuStr .. "|r")
         hudFrame.hintText:SetText("|cff81c995Click to Open Dossier Window|r")
         hudFrame.accentBar:SetColorTexture(isIC and 0.51 or 0.95, isIC and 0.79 or 0.55, isIC and 0.58 or 0.51, 1)
