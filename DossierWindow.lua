@@ -167,7 +167,7 @@ local function BuildCharacteristicsText(data, isSelf)
         if type(ns.profile.rpStyleTopics) == "table" then
             local t = ns.profile.rpStyleTopics
             local function AddStyleRow(lbl, val)
-                if val and val ~= "" then
+                if val and val ~= "" and val ~= "Do not show" then
                     table.insert(styleLines, string.format("|cff9aa0a6%s:|r |cffe8eaed%s|r", lbl, val))
                 end
             end
@@ -179,7 +179,7 @@ local function BuildCharacteristicsText(data, isSelf)
             if t.guild == "Yes" then
                 local wowGuild = (GetGuildInfo and GetGuildInfo("player")) or ""
                 AddStyleRow("Guild membership", wowGuild ~= "" and wowGuild or "Yes")
-            elseif t.guild and t.guild ~= "" then
+            elseif t.guild and t.guild ~= "" and t.guild ~= "Do not show" then
                 AddStyleRow("Guild membership", t.guild)
             end
         end

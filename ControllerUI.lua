@@ -13,6 +13,7 @@ local knownListPage = 1
 local knownSearchFilter = ""
 local knownNotesOnly = false
 local knownSortMode = "RECENT"
+local profileListPage = 1
 
 local editPoolIdx = 1
 local editPhraseIdx = 1
@@ -572,39 +573,32 @@ local function UpdateResponsiveLayouts()
     if not mainFrame or not tabPanels[1] then return end
     UpdateControlStripLayout()
 
+    -- Tab 1: Core, Details, Extras/RP options
     local p1 = tabPanels[1]
-    if p1 and p1.coreSubBtn then
+    if p1 and p1.subTabCore then
         LayoutRow(p1, -10, {
-            { w = p1.coreSubBtn,   weight = 1 },
-            { w = p1.detailSubBtn, weight = 1 },
+            { w = p1.subTabCore,   weight = 1 },
+            { w = p1.subTabVitals, weight = 1 },
+            { w = p1.subTabExtras, weight = 1.15 },
         }, 16, 16, 8)
 
         local pc = p1.pageCore
         if pc then
-            LayoutRow(pc, -21, {
-                { w = p1.pxBox, weight = 0.15 },
-                { w = p1.fnBox, weight = 0.24 },
-                { w = p1.lnBox, weight = 0.24 },
-                { w = p1.tiBox, weight = 0.37 },
+            LayoutRow(pc, -22, {
+                { w = p1.pxBox, weight = 0.16 },
+                { w = p1.fnBox, weight = 0.25 },
+                { w = p1.lnBox, weight = 0.25 },
+                { w = p1.tiBox, weight = 0.34 },
             }, 16, 16, 10)
 
-            LayoutRow(pc, -73, {
-                { w = p1.raBox,          weight = 0.30 },
-                { w = p1.clBox,          weight = 0.34 },
+            LayoutRow(pc, -76, {
+                { w = p1.raBox,          weight = 0.32 },
+                { w = p1.clBox,          weight = 0.36 },
                 { w = p1.classSwatchBtn, fixed = 28 },
-                { w = p1.gnBox,          weight = 0.18 },
-                { w = p1.prBox,          weight = 0.18 },
+                { w = p1.prBox,          weight = 0.32 },
             }, 16, 16, 8)
 
-            LayoutRow(pc, -125, {
-                { w = p1.agBox,        weight = 0.18 },
-                { w = p1.htBox,        weight = 0.24 },
-                { w = p1.wtBox,        weight = 0.28 },
-                { w = p1.eyBox,        weight = 0.30 },
-                { w = p1.eyeSwatchBtn, fixed = 28 },
-            }, 16, 16, 8)
-
-            LayoutRow(pc, -177, {
+            LayoutRow(pc, -132, {
                 { w = p1.cuBox,         weight = 1 },
                 { w = p1.presetBtn,     fixed = 82 },
                 { w = p1.cycleCuBtn,    fixed = 58 },
@@ -612,67 +606,94 @@ local function UpdateResponsiveLayouts()
                 { w = p1.clearCuBtn,    fixed = 54 },
             }, 16, 16, 6)
 
-            LayoutRow(pc, -233, {
+            LayoutRow(pc, -190, {
                 { w = p1.oocNotesBox, weight = 1 },
             }, 16, 16, 0)
         end
 
-        local pd = p1.pageDetails
-        if pd then
-            LayoutRow(pd, -16, {
+        local pv = p1.pageVitals
+        if pv then
+            LayoutRow(pv, -20, {
                 { w = p1.niBox, weight = 0.28 },
                 { w = p1.hoBox, weight = 0.32 },
                 { w = p1.moBox, weight = 0.40 },
             }, 16, 16, 10)
 
-            LayoutRow(pd, -62, {
-                { w = p1.hbBox, weight = 1 },
-                { w = p1.hhBox, weight = 1 },
+            LayoutRow(pv, -68, {
+                { w = p1.gnBox, weight = 0.22 },
+                { w = p1.agBox, weight = 0.18 },
+                { w = p1.htBox, weight = 0.28 },
+                { w = p1.wtBox, weight = 0.32 },
             }, 16, 16, 10)
 
-            LayoutRow(pd, -104, {
+            LayoutRow(pv, -116, {
+                { w = p1.eyBox,           weight = 1 },
+                { w = p1.eyeSwatchBtn,    fixed = 28 },
+                { w = p1.portraitPickBtn, fixed = 140 },
+            }, 16, 16, 8)
+
+            LayoutRow(pv, -162, {
                 { w = p1.faceBox,  weight = 0.34 },
                 { w = p1.tatBox,   weight = 0.33 },
                 { w = p1.voiceBox, weight = 0.33 },
             }, 16, 16, 10)
 
-            LayoutRow(pd, -142, {
-                { w = p1.relBtn,          weight = 0.34 },
-                { w = p1.styleBtn,        weight = 0.33 },
-                { w = p1.portraitPickBtn, weight = 0.33 },
+            LayoutRow(pv, -208, {
+                { w = p1.hbBox, weight = 1 },
+                { w = p1.hhBox, weight = 1 },
+            }, 16, 16, 10)
+        end
+
+        local pe = p1.pageExtras
+        if pe then
+            LayoutRow(pe, -22, {
+                { w = p1.relBtn,   weight = 1 },
+                { w = p1.styleBtn, weight = 1 },
             }, 16, 16, 10)
 
             if p1.topicBtns then
-                LayoutRow(pd, -174, {
+                LayoutRow(pe, -68, {
                     { w = p1.topicBtns.injury,  weight = 1 },
                     { w = p1.topicBtns.death,   weight = 1 },
                     { w = p1.topicBtns.romance, weight = 1 },
                 }, 16, 16, 8)
 
-                LayoutRow(pd, -204, {
+                LayoutRow(pe, -104, {
                     { w = p1.topicBtns.criminal,      weight = 1 },
                     { w = p1.topicBtns.lossOfControl, weight = 1 },
                     { w = p1.topicBtns.guild,         weight = 1 },
                 }, 16, 16, 8)
             end
 
-            LayoutRow(pd, -232, {
+            LayoutRow(pe, -148, {
                 { w = p1.lgbtqBtn, weight = 1 },
                 { w = p1.erpBtn,   weight = 1 },
             }, 16, 16, 8)
-
-            LayoutRow(pd, -278, {
-                { w = p1.profNameBox, weight = 1 },
-                { w = p1.newProfBtn,  fixed = 148 },
-                { w = p1.delProfBtn,  fixed = 166 },
-            }, 16, 16, 10)
         end
     end
 
-    local p2 = tabPanels[2]
-    if p2 and p2.cards then
+    -- Tab 2: Profiles
+    local pProf = tabPanels[2]
+    if pProf and pProf.profNameBox then
+        LayoutRow(pProf, -26, {
+            { w = pProf.profNameBox, weight = 1 },
+            { w = pProf.newProfBtn,  fixed = 148 },
+            { w = pProf.delProfBtn,  fixed = 166 },
+        }, 16, 16, 10)
+
+        LayoutRow(pProf, -62, {
+            { w = pProf.exportBtn, weight = 1 },
+            { w = pProf.prevBtn,   fixed = 60 },
+            { w = pProf.pageLabel, fixed = 78, yOffset = -6 },
+            { w = pProf.nextBtn,   fixed = 60 },
+        }, 16, 16, 8)
+    end
+
+    -- Tab 3: First Glances
+    local p3 = tabPanels[3]
+    if p3 and p3.cards then
         for i = 1, 3 do
-            local card = p2.cards[i]
+            local card = p3.cards[i]
             if card then
                 LayoutRow(card, -27, {
                     { w = card.titleBox,  weight = 0.36 },
@@ -683,34 +704,37 @@ local function UpdateResponsiveLayouts()
         end
     end
 
-    local p3 = tabPanels[3]
-    if p3 and p3.appTabBtn then
-        LayoutRow(p3, -12, {
-            { w = p3.appTabBtn,   weight = 1 },
-            { w = p3.hisTabBtn,   weight = 1 },
-            { w = p3.clearBioBtn, fixed = 104 },
+    -- Tab 4: Bio & Lore
+    local p4 = tabPanels[4]
+    if p4 and p4.appTabBtn then
+        LayoutRow(p4, -12, {
+            { w = p4.appTabBtn,   weight = 1 },
+            { w = p4.hisTabBtn,   weight = 1 },
+            { w = p4.clearBioBtn, fixed = 104 },
         }, 16, 16, 8)
     end
 
-    local p4 = tabPanels[4]
-    if p4 and p4.searchBox then
-        LayoutRow(p4, -38, {
-            { w = p4.searchBox,    weight = 1 },
-            { w = p4.notesOnlyBtn, fixed = 102 },
-            { w = p4.sortBtn,      fixed = 90 },
-            { w = p4.prevPageBtn,  fixed = 54 },
-            { w = p4.pageLabel,    fixed = 74, yOffset = -6 },
-            { w = p4.nextPageBtn,  fixed = 54 },
+    -- Tab 5: Directory
+    local p5 = tabPanels[5]
+    if p5 and p5.searchBox then
+        LayoutRow(p5, -38, {
+            { w = p5.searchBox,    weight = 1 },
+            { w = p5.notesOnlyBtn, fixed = 102 },
+            { w = p5.sortBtn,      fixed = 90 },
+            { w = p5.prevPageBtn,  fixed = 54 },
+            { w = p5.pageLabel,    fixed = 74, yOffset = -6 },
+            { w = p5.nextPageBtn,  fixed = 54 },
         }, 16, 16, 6)
     end
 
-    local p5 = tabPanels[5]
-    if p5 and p5.modeBtn then
-        LayoutRow(p5, -10, {
-            { w = p5.modeBtn, weight = 1 },
+    -- Tab 6: Gratitude Studio
+    local p6 = tabPanels[6]
+    if p6 and p6.modeBtn then
+        LayoutRow(p6, -10, {
+            { w = p6.modeBtn, weight = 1 },
         }, 16, 16, 0)
         if mainFrame.modeDropdown then
-            local mw = p5.modeBtn:GetWidth()
+            local mw = p6.modeBtn:GetWidth()
             if mw and mw > 200 then
                 mainFrame.modeDropdown:SetWidth(mw)
                 for _, r in ipairs(mainFrame.modeDropdown.rows or {}) do
@@ -719,84 +743,86 @@ local function UpdateResponsiveLayouts()
             end
         end
 
-        LayoutRow(p5, -46, {
-            { w = p5.buffBtn,    weight = 1 },
-            { w = p5.healBtn,    weight = 1 },
-            { w = p5.resBtn,     weight = 1 },
-            { w = p5.specialBtn, weight = 1.1 },
-            { w = p5.sessionBtn, weight = 1 },
+        LayoutRow(p6, -46, {
+            { w = p6.buffBtn,    weight = 1 },
+            { w = p6.healBtn,    weight = 1 },
+            { w = p6.resBtn,     weight = 1 },
+            { w = p6.specialBtn, weight = 1.1 },
+            { w = p6.sessionBtn, weight = 1 },
         }, 16, 16, 6)
 
-        LayoutRow(p5, -78, {
-            { w = p5.cdMinusBtn,   fixed = 52 },
-            { w = p5.cdLabel,      weight = 1, yOffset = -5 },
-            { w = p5.cdPlusBtn,    fixed = 52 },
-            { w = p5.healMinusBtn, fixed = 52 },
-            { w = p5.healPctLabel, weight = 1, yOffset = -5 },
-            { w = p5.healPlusBtn,  fixed = 52 },
+        LayoutRow(p6, -78, {
+            { w = p6.cdMinusBtn,   fixed = 52 },
+            { w = p6.cdLabel,      weight = 1, yOffset = -5 },
+            { w = p6.cdPlusBtn,    fixed = 52 },
+            { w = p6.healMinusBtn, fixed = 52 },
+            { w = p6.healPctLabel, weight = 1, yOffset = -5 },
+            { w = p6.healPlusBtn,  fixed = 52 },
         }, 16, 16, 8)
 
-        LayoutRow(p5, -110, {
-            { w = p5.poolToggleBtn,   weight = 1 },
-            { w = p5.addPhraseBtn,    fixed = 100 },
-            { w = p5.prevPhraseBtn,   fixed = 28 },
-            { w = p5.phrasePageLabel, fixed = 86, yOffset = -6 },
-            { w = p5.nextPhraseBtn,   fixed = 28 },
+        LayoutRow(p6, -110, {
+            { w = p6.poolToggleBtn,   weight = 1 },
+            { w = p6.addPhraseBtn,    fixed = 100 },
+            { w = p6.prevPhraseBtn,   fixed = 28 },
+            { w = p6.phrasePageLabel, fixed = 86, yOffset = -6 },
+            { w = p6.nextPhraseBtn,   fixed = 28 },
         }, 16, 16, 6)
 
-        LayoutRow(p5, -247, {
-            { w = p5.phraseBox, weight = 1 },
+        LayoutRow(p6, -247, {
+            { w = p6.phraseBox, weight = 1 },
         }, 16, 16, 0)
 
         local tokRow = {}
-        for _, tb in ipairs(p5.tokenBtns or {}) do
+        for _, tb in ipairs(p6.tokenBtns or {}) do
             table.insert(tokRow, { w = tb, weight = 1 })
         end
-        table.insert(tokRow, { w = p5.savePhraseBtn, fixed = 90 })
-        table.insert(tokRow, { w = p5.previewBtn,    fixed = 84 })
-        LayoutRow(p5, -284, tokRow, 16, 16, 6)
+        table.insert(tokRow, { w = p6.savePhraseBtn, fixed = 90 })
+        table.insert(tokRow, { w = p6.previewBtn,    fixed = 84 })
+        LayoutRow(p6, -284, tokRow, 16, 16, 6)
     end
 
-    local p6 = tabPanels[6]
-    if p6 and p6.minimapBtn then
-        LayoutRow(p6, -14, {
-            { w = p6.scaleMinusBtn, fixed = 68 },
-            { w = p6.scaleLabel,    weight = 1, yOffset = -7 },
-            { w = p6.scalePlusBtn,  fixed = 68 },
-            { w = p6.stdSizeBtn,    fixed = 88 },
-            { w = p6.wideSizeBtn,   fixed = 80 },
-            { w = p6.largeSizeBtn,  fixed = 80 },
+    -- Tab 7: Settings
+    local p7 = tabPanels[7]
+    if p7 and p7.minimapBtn then
+        LayoutRow(p7, -14, {
+            { w = p7.scaleMinusBtn, fixed = 68 },
+            { w = p7.scaleLabel,    weight = 1, yOffset = -7 },
+            { w = p7.scalePlusBtn,  fixed = 68 },
+            { w = p7.stdSizeBtn,    fixed = 88 },
+            { w = p7.wideSizeBtn,   fixed = 80 },
+            { w = p7.largeSizeBtn,  fixed = 80 },
         }, 16, 16, 6)
 
-        local pairs6 = {
-            { -50,  p6.minimapBtn, p6.hudBtn },
-            { -84,  p6.hudRPBtn,   p6.npClassBtn },
-            { -118, p6.npTagBtn,   p6.npRPNameBtn },
-            { -152, p6.combatBtn,  p6.soundBtn },
-            { -186, p6.partyBtn,   p6.rpNameBtn },
-            { -220, p6.chatRPBtn,  p6.afkOOCBtn },
-            { -260, p6.openExpBtn, p6.devModeBtn },
+        local pairs7 = {
+            { -50,  p7.minimapBtn, p7.hudBtn },
+            { -84,  p7.hudRPBtn,   p7.npClassBtn },
+            { -118, p7.npTagBtn,   p7.npRPNameBtn },
+            { -152, p7.combatBtn,  p7.soundBtn },
+            { -186, p7.partyBtn,   p7.rpNameBtn },
+            { -220, p7.chatRPBtn,  p7.afkOOCBtn },
+            { -260, p7.openExpBtn, p7.devModeBtn },
         }
-        for _, row in ipairs(pairs6) do
-            LayoutRow(p6, row[1], {
+        for _, row in ipairs(pairs7) do
+            LayoutRow(p7, row[1], {
                 { w = row[2], weight = 1 },
                 { w = row[3], weight = 1 },
             }, 16, 16, 12)
         end
     end
 
-    local p7 = tabPanels[7]
-    if p7 and p7.chkDebug then
-        LayoutRow(p7, -34, {
-            { w = p7.chkDebug, weight = 1 },
-            { w = p7.chkSniff, weight = 1 },
-            { w = p7.chkEcho,  weight = 1 },
+    -- Tab 8: Dev Tab
+    local p8 = tabPanels[8]
+    if p8 and p8.chkDebug then
+        LayoutRow(p8, -34, {
+            { w = p8.chkDebug, weight = 1 },
+            { w = p8.chkSniff, weight = 1 },
+            { w = p8.chkEcho,  weight = 1 },
         }, 16, 16, 8)
 
-        LayoutRow(p7, -68, {
-            { w = p7.popOutBtn,     weight = 1 },
-            { w = p7.selfTestBtn,   weight = 1 },
-            { w = p7.clearCacheBtn, weight = 1 },
+        LayoutRow(p8, -68, {
+            { w = p8.popOutBtn,     weight = 1 },
+            { w = p8.selfTestBtn,   weight = 1 },
+            { w = p8.clearCacheBtn, weight = 1 },
         }, 16, 16, 8)
     end
 end
@@ -942,18 +968,61 @@ local function GetFilteredKnownProfiles()
     return list
 end
 
+local function RefreshProfilesTab()
+    local pProf = tabPanels[2]
+    if not pProf or not pProf.rows or not ns.db or not ns.db.profiles then return end
+
+    local ids = {}
+    for id in pairs(ns.db.profiles) do
+        table.insert(ids, id)
+    end
+    table.sort(ids, function(a, b)
+        local na = string.lower((ns.db.profiles[a] and ns.db.profiles[a].profileName) or a)
+        local nb = string.lower((ns.db.profiles[b] and ns.db.profiles[b].profileName) or b)
+        return na < nb
+    end)
+
+    local perPage = 6
+    local totalPages = math.max(1, math.ceil(#ids / perPage))
+    profileListPage = math.max(1, math.min(totalPages, profileListPage))
+    pProf.pageLabel:SetText(string.format("Page %d / %d", profileListPage, totalPages))
+
+    local startIdx = (profileListPage - 1) * perPage
+    for i = 1, perPage do
+        local row = pProf.rows[i]
+        local profId = ids[startIdx + i]
+        if profId and ns.db.profiles[profId] then
+            local prof = ns.db.profiles[profId]
+            local isActive = (profId == ns.activeProfileId)
+            local pLabel = prof.profileName or profId
+            local charLine = strtrim(((prof.firstName or "") .. " " .. (prof.lastName or "")))
+            local summary = isActive and ("|cff81c995[ACTIVE]|r  |cfffdd663" .. pLabel .. "|r") or ("|cffe8eaed" .. pLabel .. "|r")
+            if charLine ~= "" then
+                summary = summary .. "  |cff9aa0a6(" .. charLine .. ")|r"
+            end
+            row.selectBtn.profileId = profId
+            row.selectBtn:SetText(summary)
+            row.selectBtn:SetTone(isActive and "MINT" or nil)
+            row.selectBtn:Show()
+        else
+            row.selectBtn.profileId = nil
+            row.selectBtn:Hide()
+        end
+    end
+end
+
 local function UpdateTabBarLayout()
     if not mainFrame or not tabButtons[1] then return end
     local showDev = (ns.db and ns.db.ui and ns.db.ui.devMode) and true or false
-    local visibleCount = showDev and 7 or 6
+    local visibleCount = showDev and 8 or 7
     local totalWidth = mainFrame:GetWidth() - 24
-    local gap = 4
+    local gap = 3
     local btnW = math.floor((totalWidth - (gap * (visibleCount - 1))) / visibleCount)
 
-    for i = 1, 7 do
+    for i = 1, 8 do
         local tb = tabButtons[i]
         if tb then
-            if i == 7 and not showDev then
+            if i == 8 and not showDev then
                 tb:Hide()
             else
                 tb:SetWidth(btnW)
@@ -964,8 +1033,8 @@ local function UpdateTabBarLayout()
         end
     end
 
-    if not showDev and activeTab == 7 then
-        ns:SelectTab(6)
+    if not showDev and activeTab == 8 then
+        ns:SelectTab(7)
     end
 end
 
@@ -1141,12 +1210,12 @@ local function CloseAnyOpenPopup()
     end
     if mainFrame.modeDropdown and mainFrame.modeDropdown:IsShown() then
         mainFrame.modeDropdown:Hide()
-        if tabPanels[5] and tabPanels[5].modeBtn then ns:SetControllerFocus(tabPanels[5].modeBtn) end
+        if tabPanels[6] and tabPanels[6].modeBtn then ns:SetControllerFocus(tabPanels[6].modeBtn) end
         return true
     end
     if mainFrame.poolDropdown and mainFrame.poolDropdown:IsShown() then
         mainFrame.poolDropdown:Hide()
-        if tabPanels[5] and tabPanels[5].poolToggleBtn then ns:SetControllerFocus(tabPanels[5].poolToggleBtn) end
+        if tabPanels[6] and tabPanels[6].poolToggleBtn then ns:SetControllerFocus(tabPanels[6].poolToggleBtn) end
         return true
     end
     if mainFrame.iconPicker and mainFrame.iconPicker:IsShown() then
@@ -1237,7 +1306,7 @@ function ns:CycleTab(delta)
         mainFrame.iconPicker:StepPage(delta)
         return
     end
-    local maxTabs = (ns.db and ns.db.ui and ns.db.ui.devMode) and 7 or 6
+    local maxTabs = (ns.db and ns.db.ui and ns.db.ui.devMode) and 8 or 7
     local nextTab = ((activeTab - 1 + delta) % maxTabs) + 1
     ns:SelectTab(nextTab)
 end
@@ -1254,8 +1323,8 @@ local function GetActiveGratitudePool()
 end
 
 local function LoadGlancesPageIntoUI()
-    local p2 = tabPanels[2]
-    if not p2 or not p2.cards or not ns.profile then return end
+    local p3 = tabPanels[3]
+    if not p3 or not p3.cards or not ns.profile then return end
     local p = ns.profile
     local baseOffset = (activeGlancePage == 2) and 3 or 0
     local placeholders = {
@@ -1268,7 +1337,7 @@ local function LoadGlancesPageIntoUI()
 
     for i = 1, 3 do
         local slot = baseOffset + i
-        local card = p2.cards[i]
+        local card = p3.cards[i]
         if slot <= 5 then
             local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
             card.slotIndex = slot
@@ -1315,14 +1384,16 @@ function ns:LoadProfileIntoUI()
         p1.faceBox:SetCleanText(p.facialFeatures)
         p1.tatBox:SetCleanText(p.tattoos)
         p1.voiceBox:SetCleanText(p.voiceReference)
-        p1.profNameBox:SetCleanText(p.profileName)
+    end
+    if tabPanels[2] and tabPanels[2].profNameBox then
+        tabPanels[2].profNameBox:SetCleanText(p.profileName)
     end
     RefreshEyeSwatchBox()
     RefreshClassSwatchBox()
     LoadGlancesPageIntoUI()
-    local p3 = tabPanels[3]
-    if p3 and p3.bioEditor then
-        p3.bioEditor:SetCleanText(activeBioMode == "APPEARANCE" and p.description or p.history)
+    local p4 = tabPanels[4]
+    if p4 and p4.bioEditor then
+        p4.bioEditor:SetCleanText(activeBioMode == "APPEARANCE" and p.description or p.history)
     end
 end
 
@@ -1363,18 +1434,20 @@ local function CommitModifiedBoxesToProfile(forceAll)
         CheckBox(p1.faceBox, "facialFeatures")
         CheckBox(p1.tatBox, "tattoos")
         CheckBox(p1.voiceBox, "voiceReference")
-
-        if forceAll or p1.profNameBox.isDirty then
-            local pName = strtrim(p1.profNameBox:GetText() or "")
-            if pName ~= "" then p.profileName = pName end
-            p1.profNameBox.isDirty = false
-            changed = true
-        end
     end
-    local p2 = tabPanels[2]
-    if p2 and p2.cards then
+
+    local pProf = tabPanels[2]
+    if pProf and pProf.profNameBox and (forceAll or pProf.profNameBox.isDirty) then
+        local pName = strtrim(pProf.profNameBox:GetText() or "")
+        if pName ~= "" then p.profileName = pName end
+        pProf.profNameBox.isDirty = false
+        changed = true
+    end
+
+    local p3 = tabPanels[3]
+    if p3 and p3.cards then
         for i = 1, 3 do
-            local card = p2.cards[i]
+            local card = p3.cards[i]
             local slot = card and card.slotIndex
             if card and slot and card:IsShown() and p.glances[slot] then
                 if forceAll or card.titleBox.isDirty then
@@ -1390,13 +1463,15 @@ local function CommitModifiedBoxesToProfile(forceAll)
             end
         end
     end
-    local p3 = tabPanels[3]
-    if p3 and p3.bioEditor and (forceAll or p3.bioEditor.isDirty) then
-        local text = p3.bioEditor:GetText()
+
+    local p4 = tabPanels[4]
+    if p4 and p4.bioEditor and (forceAll or p4.bioEditor.isDirty) then
+        local text = p4.bioEditor:GetText()
         if activeBioMode == "APPEARANCE" then p.description = text else p.history = text end
-        p3.bioEditor.isDirty = false
+        p4.bioEditor.isDirty = false
         changed = true
     end
+
     if changed then
         ns:SnapshotActiveProfile()
         ns:SyncMSP()
@@ -1591,8 +1666,8 @@ local function FormatDirectoryRowText(k, d, item)
 end
 
 function ns:RefreshTargetCard()
-    if not mainFrame or not tabPanels[4] then return end
-    local p4 = tabPanels[4]
+    if not mainFrame or not tabPanels[5] then return end
+    local p5 = tabPanels[5]
 
     local entries = GetFilteredKnownProfiles()
     local perPage = 8
@@ -1600,17 +1675,17 @@ function ns:RefreshTargetCard()
     if knownListPage > totalPages then knownListPage = totalPages end
     if knownListPage < 1 then knownListPage = 1 end
 
-    p4.countLabel:SetText(string.format("|cff8ab4f8RP DIRECTORY (%d)|r  -  Select any player to open Dossier & Notes", #entries))
-    p4.pageLabel:SetText(string.format("Page %d / %d", knownListPage, totalPages))
+    p5.countLabel:SetText(string.format("|cff8ab4f8RP DIRECTORY (%d)|r  -  Select any player to open Dossier & Notes", #entries))
+    p5.pageLabel:SetText(string.format("Page %d / %d", knownListPage, totalPages))
 
-    p4.notesOnlyBtn:SetText(FormatCheckbox("Notes Only", knownNotesOnly, "ff81c995"))
-    p4.notesOnlyBtn:SetTone(knownNotesOnly and "MINT" or nil)
-    p4.sortBtn:SetText(knownSortMode == "RECENT" and "Sort: Recent" or "Sort: A-Z")
-    p4.sortBtn:SetTone(knownSortMode == "RECENT" and "PRIMARY" or nil)
+    p5.notesOnlyBtn:SetText(FormatCheckbox("Notes Only", knownNotesOnly, "ff81c995"))
+    p5.notesOnlyBtn:SetTone(knownNotesOnly and "MINT" or nil)
+    p5.sortBtn:SetText(knownSortMode == "RECENT" and "Sort: Recent" or "Sort: A-Z")
+    p5.sortBtn:SetTone(knownSortMode == "RECENT" and "PRIMARY" or nil)
 
     local startIdx = (knownListPage - 1) * perPage
     for i = 1, perPage do
-        local rowBtn = p4.knownRows[i]
+        local rowBtn = p5.knownRows[i]
         local item = entries[startIdx + i]
         if item then
             local k = item.key
@@ -1630,9 +1705,9 @@ function ns:RefreshTargetCard()
 end
 
 function ns:TrySeamlessDirectoryStep(rowIndex, dir)
-    if activeTab ~= 4 then return false end
-    local p4 = tabPanels[4]
-    if not p4 or not p4:IsShown() or not p4.knownRows then return false end
+    if activeTab ~= 5 then return false end
+    local p5 = tabPanels[5]
+    if not p5 or not p5:IsShown() or not p5.knownRows then return false end
 
     local entries = GetFilteredKnownProfiles()
     local perPage = 8
@@ -1640,7 +1715,7 @@ function ns:TrySeamlessDirectoryStep(rowIndex, dir)
 
     local lastShownIdx = 0
     for i = 1, perPage do
-        if p4.knownRows[i] and p4.knownRows[i]:IsShown() then
+        if p5.knownRows[i] and p5.knownRows[i]:IsShown() then
             lastShownIdx = i
         end
     end
@@ -1650,15 +1725,15 @@ function ns:TrySeamlessDirectoryStep(rowIndex, dir)
         knownListPage = knownListPage + 1
         ns:RefreshTargetCard()
         ns:PlayUISound()
-        if p4.knownRows[1] and p4.knownRows[1]:IsShown() then
-            ns:SetControllerFocus(p4.knownRows[1])
+        if p5.knownRows[1] and p5.knownRows[1]:IsShown() then
+            ns:SetControllerFocus(p5.knownRows[1])
         end
         return true
     elseif dir == "UP" and rowIndex <= 1 and knownListPage > 1 then
         knownListPage = knownListPage - 1
         ns:RefreshTargetCard()
         ns:PlayUISound()
-        local targetRow = p4.knownRows[perPage]
+        local targetRow = p5.knownRows[perPage]
         if targetRow and targetRow:IsShown() then
             ns:SetControllerFocus(targetRow)
         end
@@ -1668,18 +1743,18 @@ function ns:TrySeamlessDirectoryStep(rowIndex, dir)
 end
 
 local function RefreshGratitudeStudio()
-    local p5 = tabPanels[5]
-    if not p5 then return end
+    local p6 = tabPanels[6]
+    if not p6 then return end
     local g = ns.db.gratitude
 
-    p5.modeBtn:SetText("|cff9aa0a6GRATITUDE MODE:|r   |cff8ab4f8" .. ns:GetGratitudeModeLabel() .. "|r   |cfffdd663[Open Dropdown v]|r")
-    p5.buffBtn:SetText("Buffs: " .. (g.thankBuffs and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
-    p5.healBtn:SetText("Heals: " .. (g.thankHeals and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
-    p5.resBtn:SetText("Res: " .. (g.thankRes and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
-    p5.specialBtn:SetText("Portals/CDs: " .. (g.thankSpecial and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
-    p5.sessionBtn:SetText("1x/Session: " .. (g.oncePerSession and "|cff81c995ON|r" or "|cff9aa0a6OFF|r"))
-    p5.cdLabel:SetText(string.format("Cooldown: |cfffdd663%ds|r", g.cooldown or 60))
-    p5.healPctLabel:SetText(string.format("Min Heal: |cfffdd663%d%% HP|r", g.minHealPercent or 15))
+    p6.modeBtn:SetText("|cff9aa0a6GRATITUDE MODE:|r   |cff8ab4f8" .. ns:GetGratitudeModeLabel() .. "|r   |cfffdd663[Open Dropdown v]|r")
+    p6.buffBtn:SetText("Buffs: " .. (g.thankBuffs and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
+    p6.healBtn:SetText("Heals: " .. (g.thankHeals and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
+    p6.resBtn:SetText("Res: " .. (g.thankRes and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
+    p6.specialBtn:SetText("Portals/CDs: " .. (g.thankSpecial and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
+    p6.sessionBtn:SetText("1x/Session: " .. (g.oncePerSession and "|cff81c995ON|r" or "|cff9aa0a6OFF|r"))
+    p6.cdLabel:SetText(string.format("Cooldown: |cfffdd663%ds|r", g.cooldown or 60))
+    p6.healPctLabel:SetText(string.format("Min Heal: |cfffdd663%d%% HP|r", g.minHealPercent or 15))
 
     local pool = GetActiveGratitudePool()
     if #pool == 0 then table.insert(pool, "thanks %name for the %spell.") end
@@ -1690,13 +1765,13 @@ local function RefreshGratitudeStudio()
     phrasePage = math.min(totalPages, math.ceil(editPhraseIdx / 3))
 
     local poolItem = POOL_LIST[editPoolIdx] or POOL_LIST[1]
-    p5.poolToggleBtn:SetText("|cff9aa0a6PHRASE POOL:|r  |cfffdd663" .. poolItem.label .. "|r  |cff8ab4f8[v]|r")
-    p5.phrasePageLabel:SetText(string.format("Page %d/%d (%d)", phrasePage, totalPages, #pool))
+    p6.poolToggleBtn:SetText("|cff9aa0a6PHRASE POOL:|r  |cfffdd663" .. poolItem.label .. "|r  |cff8ab4f8[v]|r")
+    p6.phrasePageLabel:SetText(string.format("Page %d/%d (%d)", phrasePage, totalPages, #pool))
 
     local startIdx = (phrasePage - 1) * 3
     for i = 1, 3 do
         local actualIdx = startIdx + i
-        local row = p5.phraseRows[i]
+        local row = p6.phraseRows[i]
         local phraseStr = pool[actualIdx]
         if phraseStr then
             row.phraseIndex = actualIdx
@@ -1712,8 +1787,8 @@ local function RefreshGratitudeStudio()
         end
     end
 
-    if not p5.phraseBox:HasFocus() then
-        p5.phraseBox:SetCleanText(pool[editPhraseIdx] or "")
+    if not p6.phraseBox:HasFocus() then
+        p6.phraseBox:SetCleanText(pool[editPhraseIdx] or "")
     end
 end
 
@@ -1727,17 +1802,12 @@ function ns:RefreshControllerUI()
     local p = ns.profile
     EnsureTopicConsentTable()
     local p1 = tabPanels[1]
-    if activeIdentityPage == 1 then
-        p1.coreSubBtn:SetTone("PRIMARY")
-        p1.detailSubBtn:SetTone(nil)
-        p1.pageCore:Show()
-        p1.pageDetails:Hide()
-    else
-        p1.coreSubBtn:SetTone(nil)
-        p1.detailSubBtn:SetTone("PRIMARY")
-        p1.pageCore:Hide()
-        p1.pageDetails:Show()
-    end
+    p1.subTabCore:SetTone(activeIdentityPage == 1 and "PRIMARY" or nil)
+    p1.subTabVitals:SetTone(activeIdentityPage == 2 and "PRIMARY" or nil)
+    p1.subTabExtras:SetTone(activeIdentityPage == 3 and "PRIMARY" or nil)
+    p1.pageCore:SetShown(activeIdentityPage == 1)
+    p1.pageVitals:SetShown(activeIdentityPage == 2)
+    p1.pageExtras:SetShown(activeIdentityPage == 3)
 
     local function SyncBox(box, val)
         if box and not box:HasFocus() and not box.isDirty then
@@ -1770,7 +1840,10 @@ function ns:RefreshControllerUI()
     SyncBox(p1.faceBox, p.facialFeatures)
     SyncBox(p1.tatBox, p.tattoos)
     SyncBox(p1.voiceBox, p.voiceReference)
-    SyncBox(p1.profNameBox, p.profileName)
+
+    if tabPanels[2] and tabPanels[2].profNameBox then
+        SyncBox(tabPanels[2].profNameBox, p.profileName)
+    end
 
     p1.relBtn:SetText("Relationship: |cfffdd663" .. ns:GetRelationshipLabel(p.relationship) .. "|r")
     p1.styleBtn:SetText("RP Style: |cff8ab4f8" .. GetRPExperienceLabelText(p.rpStyle) .. "|r")
@@ -1798,11 +1871,13 @@ function ns:RefreshControllerUI()
         p1.erpBtn:SetTone(p.erpFriendly and "AMBER" or nil)
     end
 
-    local p2 = tabPanels[2]
-    p2.page1Btn:SetTone(activeGlancePage == 1 and "PRIMARY" or nil)
-    p2.page2Btn:SetTone(activeGlancePage == 2 and "PRIMARY" or nil)
+    RefreshProfilesTab()
+
+    local p3 = tabPanels[3]
+    p3.page1Btn:SetTone(activeGlancePage == 1 and "PRIMARY" or nil)
+    p3.page2Btn:SetTone(activeGlancePage == 2 and "PRIMARY" or nil)
     for i = 1, 3 do
-        local card = p2.cards[i]
+        local card = p3.cards[i]
         local slot = card.slotIndex
         if slot and card:IsShown() then
             local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
@@ -1812,47 +1887,47 @@ function ns:RefreshControllerUI()
         end
     end
 
-    local p3 = tabPanels[3]
+    local p4 = tabPanels[4]
     if activeBioMode == "APPEARANCE" then
-        p3.appTabBtn:SetTone("PRIMARY")
-        p3.hisTabBtn:SetTone(nil)
-        p3.sectionHint:SetText("|cff8ab4f8PHYSICAL APPEARANCE:|r Describe your character's build, attire, voice, and demeanor.")
-        p3.bioEditor:SetPlaceholder("Write your character's physical appearance here...")
-        if not p3.bioEditor:HasFocus() and not p3.bioEditor.isDirty then p3.bioEditor:SetCleanText(p.description) end
+        p4.appTabBtn:SetTone("PRIMARY")
+        p4.hisTabBtn:SetTone(nil)
+        p4.sectionHint:SetText("|cff8ab4f8PHYSICAL APPEARANCE:|r Describe your character's build, attire, voice, and demeanor.")
+        p4.bioEditor:SetPlaceholder("Write your character's physical appearance here...")
+        if not p4.bioEditor:HasFocus() and not p4.bioEditor.isDirty then p4.bioEditor:SetCleanText(p.description) end
     else
-        p3.hisTabBtn:SetTone("PRIMARY")
-        p3.appTabBtn:SetTone(nil)
-        p3.sectionHint:SetText("|cff8ab4f8CHARACTER HISTORY & BACKGROUND:|r Write your character's origins, homeland, and story.")
-        p3.bioEditor:SetPlaceholder("Write your character's backstory and history here...")
-        if not p3.bioEditor:HasFocus() and not p3.bioEditor.isDirty then p3.bioEditor:SetCleanText(p.history) end
+        p4.hisTabBtn:SetTone("PRIMARY")
+        p4.appTabBtn:SetTone(nil)
+        p4.sectionHint:SetText("|cff8ab4f8CHARACTER HISTORY & BACKGROUND:|r Write your character's origins, homeland, and story.")
+        p4.bioEditor:SetPlaceholder("Write your character's backstory and history here...")
+        if not p4.bioEditor:HasFocus() and not p4.bioEditor.isDirty then p4.bioEditor:SetCleanText(p.history) end
     end
 
     ns:RefreshTargetCard()
     RefreshGratitudeStudio()
 
-    local p6 = tabPanels[6]
-    local curW, curH = math.floor(mainFrame:GetWidth() + 0.5), math.floor(mainFrame:GetHeight() + 0.5)
-    p6.scaleLabel:SetText(string.format("Scale: |cfffdd663%.0f%%|r  (|cff8ab4f8%dx%d|r)", (ns.db.ui.scale or 1.0) * 100, curW, curH))
-    p6.minimapBtn:SetText(FormatCheckbox("Minimap Icon", ns.db.ui.showMinimap, "ff81c995"))
-    p6.hudBtn:SetText(FormatCheckbox("Floating Target HUD", ns.db.ui.showTargetHUD, "ff81c995"))
-    p6.hudRPBtn:SetText(FormatCheckbox("TRP3-Style Player Tooltip", ns.db.ui.rpTooltip, "ff8ab4f8"))
-    p6.npClassBtn:SetText(FormatCheckbox("Class-Color Nameplates", ns.db.ui.nameplateClassColors, "ff8ab4f8"))
-    p6.npTagBtn:SetText(FormatCheckbox("Nameplate [IC/OOC] Tags", ns.db.ui.nameplateStatusTags, "ff81c995"))
-    p6.npRPNameBtn:SetText(FormatCheckbox("RP Names on Nameplates", ns.db.ui.nameplateRPNames, "ff8ab4f8"))
-    p6.combatBtn:SetText(FormatCheckbox("Auto-Hide in Combat", ns.db.ui.hideInCombat, "ff81c995"))
-    p6.soundBtn:SetText(FormatCheckbox("UI Sound Effects", ns.db.ui.soundEffects, "ff81c995"))
-    p6.partyBtn:SetText(FormatCheckbox("Ignore Party/Raid Buffs", ns.db.gratitude.ignoreParty, "ff81c995"))
-    p6.rpNameBtn:SetText(FormatCheckbox("Thank Helper RP Name", ns.db.gratitude.useRPNames, "ff81c995"))
-    p6.chatRPBtn:SetText(FormatCheckbox("Show [RP Names] in Chat", ns.db.ui.chatRPNames, "ff81c995"))
-    p6.afkOOCBtn:SetText(FormatCheckbox("Auto-OOC When AFK", ns.db.ui.autoAFKOOC, "ff81c995"))
-
-    p6.devModeBtn:SetText(FormatCheckbox("Developer Mode (Show Dev Tab)", ns.db.ui.devMode, "fffdd663"))
-    p6.devModeBtn:SetTone(ns.db.ui.devMode and "AMBER" or nil)
-
     local p7 = tabPanels[7]
-    if p7 and p7.diagText and ns.mspStats then
+    local curW, curH = math.floor(mainFrame:GetWidth() + 0.5), math.floor(mainFrame:GetHeight() + 0.5)
+    p7.scaleLabel:SetText(string.format("Scale: |cfffdd663%.0f%%|r  (|cff8ab4f8%dx%d|r)", (ns.db.ui.scale or 1.0) * 100, curW, curH))
+    p7.minimapBtn:SetText(FormatCheckbox("Minimap Icon", ns.db.ui.showMinimap, "ff81c995"))
+    p7.hudBtn:SetText(FormatCheckbox("Floating Target HUD", ns.db.ui.showTargetHUD, "ff81c995"))
+    p7.hudRPBtn:SetText(FormatCheckbox("TRP3-Style Player Tooltip", ns.db.ui.rpTooltip, "ff8ab4f8"))
+    p7.npClassBtn:SetText(FormatCheckbox("Class-Color Nameplates", ns.db.ui.nameplateClassColors, "ff8ab4f8"))
+    p7.npTagBtn:SetText(FormatCheckbox("Nameplate [IC/OOC] Tags", ns.db.ui.nameplateStatusTags, "ff81c995"))
+    p7.npRPNameBtn:SetText(FormatCheckbox("RP Names on Nameplates", ns.db.ui.nameplateRPNames, "ff8ab4f8"))
+    p7.combatBtn:SetText(FormatCheckbox("Auto-Hide in Combat", ns.db.ui.hideInCombat, "ff81c995"))
+    p7.soundBtn:SetText(FormatCheckbox("UI Sound Effects", ns.db.ui.soundEffects, "ff81c995"))
+    p7.partyBtn:SetText(FormatCheckbox("Ignore Party/Raid Buffs", ns.db.gratitude.ignoreParty, "ff81c995"))
+    p7.rpNameBtn:SetText(FormatCheckbox("Thank Helper RP Name", ns.db.gratitude.useRPNames, "ff81c995"))
+    p7.chatRPBtn:SetText(FormatCheckbox("Show [RP Names] in Chat", ns.db.ui.chatRPNames, "ff81c995"))
+    p7.afkOOCBtn:SetText(FormatCheckbox("Auto-OOC When AFK", ns.db.ui.autoAFKOOC, "ff81c995"))
+
+    p7.devModeBtn:SetText(FormatCheckbox("Developer Mode (Show Dev Tab)", ns.db.ui.devMode, "fffdd663"))
+    p7.devModeBtn:SetTone(ns.db.ui.devMode and "AMBER" or nil)
+
+    local p8 = tabPanels[8]
+    if p8 and p8.diagText and ns.mspStats then
         local engState = (type(_G.msp) == "table") and "|cff81c995LibMSP ACTIVE|r" or "|cfff28b82LibMSP MISSING|r"
-        p7.diagText:SetText(string.format(
+        p8.diagText:SetText(string.format(
             "|cff8ab4f8ENGINE:|r %s  |  Sent: |cfffdd663%d|r  |  Live Replies: |cff81c995%d|r  |  Cached: |cff8ab4f8%d|r  |  Last: |cffe8eaed%s|r",
             engState,
             ns.mspStats.sent or 0,
@@ -1860,13 +1935,13 @@ function ns:RefreshControllerUI()
             #GetFilteredKnownProfiles(),
             ns.mspStats.lastReplyFrom or "None"
         ))
-        p7.chkDebug:SetText(FormatCheckbox("Debug Events", ns.mspDebug, "ff81c995"))
-        p7.chkDebug:SetTone(ns.mspDebug and "MINT" or nil)
-        p7.chkSniff:SetText(FormatCheckbox("Wire Sniffer", ns.mspSniff, "fffdd663"))
-        p7.chkSniff:SetTone(ns.mspSniff and "AMBER" or nil)
-        p7.chkEcho:SetText(FormatCheckbox("Echo to Chat", ns.mspEchoChat, "ff8ab4f8"))
-        p7.chkEcho:SetTone(ns.mspEchoChat and "PRIMARY" or nil)
-        p7.logEditor:SetCleanText(table.concat(ns.netLogs or {}, "\n"))
+        p8.chkDebug:SetText(FormatCheckbox("Debug Events", ns.mspDebug, "ff81c995"))
+        p8.chkDebug:SetTone(ns.mspDebug and "MINT" or nil)
+        p8.chkSniff:SetText(FormatCheckbox("Wire Sniffer", ns.mspSniff, "fffdd663"))
+        p8.chkSniff:SetTone(ns.mspSniff and "AMBER" or nil)
+        p8.chkEcho:SetText(FormatCheckbox("Echo to Chat", ns.mspEchoChat, "ff8ab4f8"))
+        p8.chkEcho:SetTone(ns.mspEchoChat and "PRIMARY" or nil)
+        p8.logEditor:SetCleanText(table.concat(ns.netLogs or {}, "\n"))
     end
 
     if inspectorFrame and inspectorFrame:IsShown() then
@@ -2588,11 +2663,11 @@ function ns:InitControllerUI()
     end)
     mainFrame.bannerExpBtn = bannerExpBtn
 
-    local tabTitles = { "[LB] Identity", "First Glances", "Bio & Lore", "Directory", "Gratitude", "Settings [RB]", "Dev" }
+    local tabTitles = { "[LB] Identity", "Profiles", "First Glances", "Bio & Lore", "Directory", "Gratitude", "Settings [RB]", "Dev" }
     for i, title in ipairs(tabTitles) do
         local tb = CreateFrame("Button", nil, mainFrame, "BackdropTemplate")
-        tb:SetSize(106, 30)
-        tb:SetPoint("TOPLEFT", 12 + (i - 1) * 110, -108)
+        tb:SetSize(92, 30)
+        tb:SetPoint("TOPLEFT", 12 + (i - 1) * 95, -108)
         ns:ApplySurface(tb, M3.surfaceLow, { 0, 0, 0, 0 })
         ns:EnableClipping(tb)
         tb.isTabBarBtn = true
@@ -2600,7 +2675,7 @@ function ns:InitControllerUI()
         tb.activeBar:SetHeight(3)
         tb.activeBar:SetPoint("BOTTOMLEFT", 8, 0)
         tb.activeBar:SetPoint("BOTTOMRIGHT", -8, 0)
-        tb.activeBar:SetColorTexture(i == 7 and 0.99 or 0.54, i == 7 and 0.84 or 0.71, i == 7 and 0.39 or 0.97, 1)
+        tb.activeBar:SetColorTexture(i == 8 and 0.99 or 0.54, i == 8 and 0.84 or 0.71, i == 8 and 0.39 or 0.97, 1)
         tb.activeBar:Hide()
         tb.label = tb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         tb.label:SetPoint("CENTER", 0, 1)
@@ -2617,6 +2692,9 @@ function ns:InitControllerUI()
         tabPanels[i] = panel
     end
 
+    -- =========================================================
+    -- TAB 1: IDENTITY (3 SUB-TABS: CORE, DETAILS, EXTRAS/RP OPTIONS)
+    -- =========================================================
     local p1 = tabPanels[1]
     local function AutoCommitTab1()
         CommitModifiedBoxesToProfile(false)
@@ -2626,7 +2704,7 @@ function ns:InitControllerUI()
         ns:ShowStatusToast("Saved character vitals to PadRPDB")
     end
 
-    p1.coreSubBtn = ns:CreateMaterialButton(p1, "1. Core Identity & Status", 308, 26, 16, -10, "PRIMARY", function()
+    p1.subTabCore = ns:CreateMaterialButton(p1, "1. Core", 200, 26, 16, -10, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
         if mainFrame.presetDropdown then mainFrame.presetDropdown:Hide() end
         if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
@@ -2634,7 +2712,7 @@ function ns:InitControllerUI()
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
     end)
-    p1.detailSubBtn = ns:CreateMaterialButton(p1, "2. Vitals, Background & Profiles", 308, 26, 332, -10, nil, function()
+    p1.subTabVitals = ns:CreateMaterialButton(p1, "2. Details", 200, 26, 224, -10, nil, function()
         CommitModifiedBoxesToProfile(false)
         if mainFrame.presetDropdown then mainFrame.presetDropdown:Hide() end
         if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
@@ -2642,9 +2720,18 @@ function ns:InitControllerUI()
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
     end)
+    p1.subTabExtras = ns:CreateMaterialButton(p1, "3. Extras / RP Options", 224, 26, 432, -10, nil, function()
+        CommitModifiedBoxesToProfile(false)
+        if mainFrame.presetDropdown then mainFrame.presetDropdown:Hide() end
+        if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
+        activeIdentityPage = 3
+        ns:RefreshControllerUI()
+        ns:FocusFirstInScope()
+    end)
 
+    -- Sub-page 1: Core
     local pageCore = CreateFrame("Frame", nil, p1)
-    pageCore:SetPoint("TOPLEFT", 0, -38)
+    pageCore:SetPoint("TOPLEFT", 0, -40)
     pageCore:SetPoint("BOTTOMRIGHT", 0, 52)
     p1.pageCore = pageCore
 
@@ -2653,9 +2740,9 @@ function ns:InitControllerUI()
     p1.lnBox = ns:CreateMaterialEditBox(pageCore, "Last Name", "e.g., Gray", 282, -6, 150, 28, AutoCommitTab1)
     p1.tiBox = ns:CreateMaterialEditBox(pageCore, "Full RP Title", "e.g., Master Arcanist", 442, -6, 198, 28, AutoCommitTab1)
 
-    p1.raBox = ns:CreateMaterialEditBox(pageCore, "RP Race (Blank = Default)", "e.g., Human", 16, -58, 180, 28, AutoCommitTab1)
-    p1.clBox = ns:CreateMaterialEditBox(pageCore, "RP Class / Occupation", "e.g., Warlock", 204, -58, 164, 28, AutoCommitTab1)
-    p1.classSwatchBtn = CreateColorSwatchButton(pageCore, 376, -73, "CLASS", function()
+    p1.raBox = ns:CreateMaterialEditBox(pageCore, "RP Race (Blank = Default)", "e.g., Human", 16, -60, 196, 28, AutoCommitTab1)
+    p1.clBox = ns:CreateMaterialEditBox(pageCore, "RP Class / Occupation", "e.g., Warlock", 222, -60, 168, 28, AutoCommitTab1)
+    p1.classSwatchBtn = CreateColorSwatchButton(pageCore, 398, -75, "CLASS", function()
         ns.profile.classColorHex = nil
         ns.profile.nameColorHex = nil
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
@@ -2666,25 +2753,10 @@ function ns:InitControllerUI()
         ns:RefreshTargetCard()
         ns:ShowStatusToast("Class & Name color reset to default")
     end)
-    p1.gnBox = ns:CreateMaterialEditBox(pageCore, "Gender", "e.g., Male", 412, -58, 110, 28, AutoCommitTab1)
-    p1.prBox = ns:CreateMaterialEditBox(pageCore, "Pronouns", "e.g., He/Him", 530, -58, 110, 28, AutoCommitTab1)
+    p1.prBox = ns:CreateMaterialEditBox(pageCore, "Pronouns", "e.g., He/Him", 436, -60, 204, 28, AutoCommitTab1)
 
-    p1.agBox = ns:CreateMaterialEditBox(pageCore, "Age", "e.g., 32", 16, -110, 110, 28, AutoCommitTab1)
-    p1.htBox = ns:CreateMaterialEditBox(pageCore, "Height", "e.g., 6'0\" / Tall", 136, -110, 144, 28, AutoCommitTab1)
-    p1.wtBox = ns:CreateMaterialEditBox(pageCore, "Build / Body Shape", "e.g., Athletic", 290, -110, 166, 28, AutoCommitTab1)
-    p1.eyBox = ns:CreateMaterialEditBox(pageCore, "Eye Color", "e.g., Pale amber / Luminous", 466, -110, 138, 28, AutoCommitTab1)
-    p1.eyeSwatchBtn = CreateColorSwatchButton(pageCore, 612, -125, "EYE", function()
-        ns.profile.eyeColorHex = nil
-        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
-        if ns.SyncMSP then ns:SyncMSP() end
-        RefreshEyeSwatchBox()
-        SyncSelfProfileToLocalCache()
-        ns:ShowStatusToast("Eye color swatch cleared")
-    end)
-
-    p1.cuBox = ns:CreateMaterialEditBox(pageCore, "Currently (Select Preset, Cycle, or Type Custom)", "What is your character doing right now?", 16, -162, 336, 28, AutoCommitTab1)
-
-    p1.presetBtn = ns:CreateMaterialButton(pageCore, "Presets [v]", 82, 28, 358, -177, "AMBER", function()
+    p1.cuBox = ns:CreateMaterialEditBox(pageCore, "Currently (Select Preset, Cycle, or Type Custom)", "What is your character doing right now?", 16, -116, 336, 28, AutoCommitTab1)
+    p1.presetBtn = ns:CreateMaterialButton(pageCore, "Presets [v]", 82, 28, 358, -131, "AMBER", function()
         if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
         if mainFrame.presetDropdown:IsShown() then
             mainFrame.presetDropdown:Hide()
@@ -2696,13 +2768,13 @@ function ns:InitControllerUI()
             ns:FocusFirstInScope()
         end
     end)
-    p1.cycleCuBtn = ns:CreateMaterialButton(pageCore, "Cycle", 58, 28, 448, -177, "PRIMARY", function()
+    p1.cycleCuBtn = ns:CreateMaterialButton(pageCore, "Cycle", 58, 28, 448, -131, "PRIMARY", function()
         ns:CycleCurrentlyPreset()
         p1.cuBox:SetCleanText(ns.profile.currently or "")
         SyncSelfProfileToLocalCache()
         ns:ShowStatusToast("Cycled Currently status")
     end)
-    p1.savePresetBtn = ns:CreateMaterialButton(pageCore, "+ Save", 60, 28, 516, -177, "MINT", function()
+    p1.savePresetBtn = ns:CreateMaterialButton(pageCore, "+ Save", 60, 28, 516, -131, "MINT", function()
         local customTxt = strtrim(p1.cuBox:GetText() or "")
         if customTxt == "" then return end
         for _, existing in ipairs(ns.db.currentlyPresets) do
@@ -2716,7 +2788,7 @@ function ns:InitControllerUI()
         if mainFrame.presetDropdown:IsShown() then mainFrame.presetDropdown:Rebuild() end
         ns:ShowStatusToast("Added new Currently preset!")
     end)
-    p1.clearCuBtn = ns:CreateMaterialButton(pageCore, "Clear", 54, 28, 584, -177, nil, function()
+    p1.clearCuBtn = ns:CreateMaterialButton(pageCore, "Clear", 54, 28, 584, -131, nil, function()
         p1.cuBox:SetCleanText("")
         ns.profile.currently = ""
         ns:SnapshotActiveProfile()
@@ -2725,7 +2797,7 @@ function ns:InitControllerUI()
         ns:ShowStatusToast("Cleared Currently status")
     end)
 
-    p1.oocNotesBox = ns:CreateMaterialEditBox(pageCore, "Other Information (OOC)", "e.g., New to WoW RP.", 16, -218, 624, 28, AutoCommitTab1)
+    p1.oocNotesBox = ns:CreateMaterialEditBox(pageCore, "Other Information (OOC)", "e.g., New to WoW RP.", 16, -174, 624, 28, AutoCommitTab1)
 
     local dropdown = CreateFrame("Frame", nil, pageCore, "BackdropTemplate")
     dropdown:SetSize(426, 194)
@@ -2796,42 +2868,33 @@ function ns:InitControllerUI()
     end)
     mainFrame.presetDropdown = dropdown
 
-    local pageDetails = CreateFrame("Frame", nil, p1)
-    pageDetails:SetPoint("TOPLEFT", 0, -38)
-    pageDetails:SetPoint("BOTTOMRIGHT", 0, 52)
-    pageDetails:Hide()
-    p1.pageDetails = pageDetails
+    -- Sub-page 2: Details (Nickname, House/Guild, Motto + Vitals)
+    local pageVitals = CreateFrame("Frame", nil, p1)
+    pageVitals:SetPoint("TOPLEFT", 0, -40)
+    pageVitals:SetPoint("BOTTOMRIGHT", 0, 52)
+    pageVitals:Hide()
+    p1.pageVitals = pageVitals
 
-    p1.niBox = ns:CreateMaterialEditBox(pageDetails, "Nickname", "e.g., Kiyaskiw", 16, -6, 196, 26, AutoCommitTab1)
-    p1.hoBox = ns:CreateMaterialEditBox(pageDetails, "House / Clan / Guild Name", "e.g., House Gray", 222, -6, 204, 26, AutoCommitTab1)
-    p1.moBox = ns:CreateMaterialEditBox(pageDetails, "Motto / Catchphrase", "e.g., It isn't fraud if they're impressed.", 436, -6, 204, 26, AutoCommitTab1)
+    p1.niBox = ns:CreateMaterialEditBox(pageVitals, "Nickname", "e.g., Kiyaskiw", 16, -6, 196, 26, AutoCommitTab1)
+    p1.hoBox = ns:CreateMaterialEditBox(pageVitals, "House / Clan / Guild Name", "e.g., House Gray", 222, -6, 204, 26, AutoCommitTab1)
+    p1.moBox = ns:CreateMaterialEditBox(pageVitals, "Motto / Catchphrase", "e.g., It isn't fraud if they're impressed.", 436, -6, 204, 26, AutoCommitTab1)
 
-    p1.hbBox = ns:CreateMaterialEditBox(pageDetails, "Birthplace", "e.g., Lordaeron (Allegedly)", 16, -52, 306, 26, AutoCommitTab1)
-    p1.hhBox = ns:CreateMaterialEditBox(pageDetails, "Residence", "e.g., The Mage Quarter, Stormwind", 334, -52, 306, 26, AutoCommitTab1)
+    p1.gnBox = ns:CreateMaterialEditBox(pageVitals, "Gender", "e.g., Male", 16, -54, 130, 26, AutoCommitTab1)
+    p1.agBox = ns:CreateMaterialEditBox(pageVitals, "Age", "e.g., 32", 156, -54, 110, 26, AutoCommitTab1)
+    p1.htBox = ns:CreateMaterialEditBox(pageVitals, "Height", "e.g., 6'0\" / Tall", 276, -54, 160, 26, AutoCommitTab1)
+    p1.wtBox = ns:CreateMaterialEditBox(pageVitals, "Build / Body Shape", "e.g., Athletic", 446, -54, 194, 26, AutoCommitTab1)
 
-    p1.faceBox = ns:CreateMaterialEditBox(pageDetails, "Facial Features", "e.g., Sharp smirk, manicured beard", 16, -94, 202, 26, AutoCommitTab1)
-    p1.tatBox = ns:CreateMaterialEditBox(pageDetails, "Tattoos / Markings", "e.g., Arcane sigil on left forearm", 228, -94, 202, 26, AutoCommitTab1)
-    p1.voiceBox = ns:CreateMaterialEditBox(pageDetails, "Voice Reference", "e.g., Calm, measured cadence", 440, -94, 200, 26, AutoCommitTab1)
-
-    p1.relBtn = ns:CreateMaterialButton(pageDetails, "Relationship: Not Specified", 202, 26, 16, -142, "AMBER", function()
-        local code = ns:CycleRelationshipStatus()
-        ns:RefreshControllerUI()
-        ns:ShowStatusToast("Relationship: " .. ns:GetRelationshipLabel(code))
-    end)
-    p1.styleBtn = ns:CreateMaterialButton(pageDetails, "RP Style: Normal", 202, 26, 228, -142, "PRIMARY", function()
-        local cur = tostring((ns.profile and ns.profile.rpStyle) or "1")
-        local nextIdx = 1
-        for idx, item in ipairs(RP_EXPERIENCE_LIST) do
-            if item.code == cur then
-                nextIdx = (idx % #RP_EXPERIENCE_LIST) + 1
-                break
-            end
-        end
-        ApplyRPExperienceSelection(RP_EXPERIENCE_LIST[nextIdx].code)
-        ns:RefreshControllerUI()
+    p1.eyBox = ns:CreateMaterialEditBox(pageVitals, "Eye Color", "e.g., Pale amber / Luminous", 16, -102, 446, 26, AutoCommitTab1)
+    p1.eyeSwatchBtn = CreateColorSwatchButton(pageVitals, 470, -117, "EYE", function()
+        ns.profile.eyeColorHex = nil
+        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        if ns.SyncMSP then ns:SyncMSP() end
+        RefreshEyeSwatchBox()
+        SyncSelfProfileToLocalCache()
+        ns:ShowStatusToast("Eye color swatch cleared")
     end)
 
-    local portraitPickBtn = ns:CreateMaterialButton(pageDetails, "Portrait", 200, 26, 440, -142, nil, function(self)
+    local portraitPickBtn = ns:CreateMaterialButton(pageVitals, "Portrait", 140, 26, 506, -117, nil, function(self)
         picker:OpenForPortrait(self)
     end)
     portraitPickBtn.iconTex = portraitPickBtn:CreateTexture(nil, "OVERLAY")
@@ -2844,44 +2907,63 @@ function ns:InitControllerUI()
     portraitPickBtn.label:SetJustifyH("LEFT")
     p1.portraitPickBtn = portraitPickBtn
 
+    p1.faceBox = ns:CreateMaterialEditBox(pageVitals, "Facial Features", "e.g., Sharp smirk, manicured beard", 16, -148, 202, 26, AutoCommitTab1)
+    p1.tatBox = ns:CreateMaterialEditBox(pageVitals, "Tattoos / Markings", "e.g., Arcane sigil on left forearm", 228, -148, 202, 26, AutoCommitTab1)
+    p1.voiceBox = ns:CreateMaterialEditBox(pageVitals, "Voice Reference", "e.g., Calm, measured cadence", 440, -148, 200, 26, AutoCommitTab1)
+
+    p1.hbBox = ns:CreateMaterialEditBox(pageVitals, "Birthplace", "e.g., Lordaeron (Allegedly)", 16, -194, 306, 26, AutoCommitTab1)
+    p1.hhBox = ns:CreateMaterialEditBox(pageVitals, "Residence", "e.g., The Mage Quarter, Stormwind", 334, -194, 306, 26, AutoCommitTab1)
+
+    -- Sub-page 3: Extras / RP options
+    local pageExtras = CreateFrame("Frame", nil, p1)
+    pageExtras:SetPoint("TOPLEFT", 0, -40)
+    pageExtras:SetPoint("BOTTOMRIGHT", 0, 52)
+    pageExtras:Hide()
+    p1.pageExtras = pageExtras
+
+    p1.relBtn = ns:CreateMaterialButton(pageExtras, "Relationship: Not Specified", 306, 26, 16, -22, "AMBER", function()
+        local code = ns:CycleRelationshipStatus()
+        ns:RefreshControllerUI()
+        ns:ShowStatusToast("Relationship: " .. ns:GetRelationshipLabel(code))
+    end)
+    p1.styleBtn = ns:CreateMaterialButton(pageExtras, "RP Style: Normal", 306, 26, 334, -22, "PRIMARY", function()
+        local cur = tostring((ns.profile and ns.profile.rpStyle) or "1")
+        local nextIdx = 1
+        for idx, item in ipairs(RP_EXPERIENCE_LIST) do
+            if item.code == cur then
+                nextIdx = (idx % #RP_EXPERIENCE_LIST) + 1
+                break
+            end
+        end
+        ApplyRPExperienceSelection(RP_EXPERIENCE_LIST[nextIdx].code)
+        ns:RefreshControllerUI()
+    end)
+
     p1.topicBtns = {}
     for idx, t in ipairs(RP_STYLE_TOPICS) do
         local rowIdx = (idx <= 3) and 0 or 1
         local colIdx = (idx - 1) % 3
         local btnX = 16 + colIdx * 212
-        local btnY = -174 - rowIdx * 30
-        local tBtn = ns:CreateMaterialButton(pageDetails, "", 202, 26, btnX, btnY, nil, function(self)
+        local btnY = -68 - rowIdx * 36
+        local tBtn = ns:CreateMaterialButton(pageExtras, "", 202, 26, btnX, btnY, nil, function(self)
             local updated = CycleTopicConsent(t.key, t.defaultVal)
             self:SetText(FormatTopicButtonText(t.label, updated))
+            RefreshHeaderBanner()
             ns:ShowStatusToast(t.label .. ": " .. updated)
         end)
         tBtn.label:SetJustifyH("LEFT")
         p1.topicBtns[t.key] = tBtn
     end
 
-    p1.lgbtqBtn = ns:CreateMaterialButton(pageDetails, "", 304, 24, 16, -232, "MINT", function()
+    p1.lgbtqBtn = ns:CreateMaterialButton(pageExtras, "", 304, 26, 16, -148, "MINT", function()
         ns.profile.lgbtqFriendly = not (ns.profile.lgbtqFriendly ~= false)
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
         ns:RefreshControllerUI()
     end)
-    p1.erpBtn = ns:CreateMaterialButton(pageDetails, "", 304, 24, 336, -232, nil, function()
+    p1.erpBtn = ns:CreateMaterialButton(pageExtras, "", 304, 26, 336, -148, nil, function()
         ns.profile.erpFriendly = not (ns.profile.erpFriendly and true or false)
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
         ns:RefreshControllerUI()
-    end)
-
-    p1.profNameBox = ns:CreateMaterialEditBox(pageDetails, "Active Profile Name", "e.g., Main Character", 16, -268, 250, 26, AutoCommitTab1)
-    p1.newProfBtn = ns:CreateMaterialButton(pageDetails, "+ New Profile", 148, 26, 278, -278, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
-    p1.delProfBtn = ns:CreateMaterialButton(pageDetails, "Delete Active Profile", 166, 26, 462, -278, "CORAL", function(self)
-        local now = GetTime()
-        if now < confirmDeleteProfileUntil then
-            confirmDeleteProfileUntil = 0
-            self:SetText("Delete Active Profile")
-            ns:DeleteCurrentProfile()
-        else
-            confirmDeleteProfileUntil = now + 4
-            self:SetText("|cfff28b82Confirm Delete?|r")
-        end
     end)
 
     local saveIdentityBtn = ns:CreateMaterialButton(p1, "Save & Broadcast Profile via LibMSP", 470, 36, 16, -354, "PRIMARY", function()
@@ -2900,29 +2982,96 @@ function ns:InitControllerUI()
     revertBtn:ClearAllPoints()
     revertBtn:SetPoint("BOTTOMRIGHT", p1, "BOTTOMRIGHT", -16, 14)
 
-    local p2 = tabPanels[2]
-    p2.page1Btn = ns:CreateMaterialButton(p2, "Glances 1 - 3", 170, 26, 16, -10, "PRIMARY", function()
+    -- =========================================================
+    -- TAB 2: PROFILES MANAGER
+    -- =========================================================
+    local pProf = tabPanels[2]
+    local profHeader = pProf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    profHeader:SetPoint("TOPLEFT", 16, -10)
+    profHeader:SetText("|cff8ab4f8PROFILE MANAGER|r  -  Switch, create, rename, or delete saved profiles")
+
+    pProf.profNameBox = ns:CreateMaterialEditBox(pProf, "Active Profile Name", "e.g., Main Character", 16, -26, 260, 26, function()
+        CommitModifiedBoxesToProfile(false)
+        RefreshHeaderBanner()
+        RefreshProfilesTab()
+    end)
+    pProf.newProfBtn = ns:CreateMaterialButton(pProf, "+ New Profile", 148, 26, 288, -26, "PRIMARY", function()
+        CommitModifiedBoxesToProfile(false)
+        ns:CreateNewProfile()
+        RefreshProfilesTab()
+    end)
+    pProf.delProfBtn = ns:CreateMaterialButton(pProf, "Delete Active Profile", 166, 26, 448, -26, "CORAL", function(self)
+        local now = GetTime()
+        if now < confirmDeleteProfileUntil then
+            confirmDeleteProfileUntil = 0
+            self:SetText("Delete Active Profile")
+            ns:DeleteCurrentProfile()
+            RefreshProfilesTab()
+        else
+            confirmDeleteProfileUntil = now + 4
+            self:SetText("|cfff28b82Confirm Delete?|r")
+        end
+    end)
+
+    pProf.exportBtn = ns:CreateMaterialButton(pProf, "Export / Import Profile String", 280, 26, 16, -62, "AMBER", function()
+        CommitModifiedBoxesToProfile(false)
+        if tabPanels[7] and tabPanels[7].openExpBtn then
+            tabPanels[7].openExpBtn:Click("LeftButton")
+        end
+    end)
+    pProf.prevBtn = ns:CreateMaterialButton(pProf, "< Prev", 60, 26, 310, -62, nil, function()
+        profileListPage = math.max(1, profileListPage - 1)
+        RefreshProfilesTab()
+    end)
+    pProf.pageLabel = pProf:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pProf.pageLabel:SetJustifyH("CENTER")
+    pProf.nextBtn = ns:CreateMaterialButton(pProf, "Next >", 60, 26, 460, -62, nil, function()
+        profileListPage = profileListPage + 1
+        RefreshProfilesTab()
+    end)
+
+    pProf.rows = {}
+    for i = 1, 6 do
+        local row = {}
+        row.selectBtn = ns:CreateMaterialButton(pProf, "", 624, 32, 16, -98 - (i - 1) * 38, nil, function(btn)
+            if btn.profileId and ns.SwitchProfile then
+                CommitModifiedBoxesToProfile(false)
+                ns:SwitchProfile(btn.profileId)
+                RefreshProfilesTab()
+                ns:ShowStatusToast("Switched to profile: " .. (ns.profile.profileName or btn.profileId))
+            end
+        end)
+        row.selectBtn:SetPoint("RIGHT", pProf, "RIGHT", -16, 0)
+        row.selectBtn.label:SetJustifyH("LEFT")
+        pProf.rows[i] = row
+    end
+
+    -- =========================================================
+    -- TAB 3: FIRST GLANCES (5 SLOTS PAGED 1-3 & 4-5)
+    -- =========================================================
+    local p3 = tabPanels[3]
+    p3.page1Btn = ns:CreateMaterialButton(p3, "Glances 1 - 3", 170, 26, 16, -10, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
         activeGlancePage = 1
         LoadGlancesPageIntoUI()
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
     end)
-    p2.page2Btn = ns:CreateMaterialButton(p2, "Glances 4 - 5", 170, 26, 194, -10, nil, function()
+    p3.page2Btn = ns:CreateMaterialButton(p3, "Glances 4 - 5", 170, 26, 194, -10, nil, function()
         CommitModifiedBoxesToProfile(false)
         activeGlancePage = 2
         LoadGlancesPageIntoUI()
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
     end)
-    local gIntro = p2:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    gIntro:SetPoint("LEFT", p2.page2Btn, "RIGHT", 12, 0)
+    local gIntro = p3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    gIntro:SetPoint("LEFT", p3.page2Btn, "RIGHT", 12, 0)
     gIntro:SetText("|cff9aa0a6All 5 slots broadcast to TRP3 / MRP / XRP|r")
 
-    p2.cards = {}
+    p3.cards = {}
     local function AutoCommitGlances() CommitModifiedBoxesToProfile(false) end
     for i = 1, 3 do
-        local card = CreateFrame("Frame", nil, p2, "BackdropTemplate")
+        local card = CreateFrame("Frame", nil, p3, "BackdropTemplate")
         card:SetHeight(94)
         card:SetPoint("TOPLEFT", 16, -42 - (i - 1) * 100)
         card:SetPoint("TOPRIGHT", -16, -42 - (i - 1) * 100)
@@ -2963,36 +3112,37 @@ function ns:InitControllerUI()
             ns:SnapshotActiveProfile()
             ns:SyncMSP()
         end)
-        p2.cards[i] = card
+        p3.cards[i] = card
     end
 
-    local saveGlanceBtn = ns:CreateMaterialButton(p2, "Save & Broadcast All 5 First Glances Now", 624, 36, 16, -354, "PRIMARY", function()
+    local saveGlanceBtn = ns:CreateMaterialButton(p3, "Save & Broadcast All 5 First Glances Now", 624, 36, 16, -354, "PRIMARY", function()
         CommitModifiedBoxesToProfile(true)
         ns:ShowStatusToast("All 5 First Glances saved & synced!")
     end)
     saveGlanceBtn:ClearAllPoints()
-    saveGlanceBtn:SetPoint("BOTTOMLEFT", p2, "BOTTOMLEFT", 16, 14)
-    saveGlanceBtn:SetPoint("BOTTOMRIGHT", p2, "BOTTOMRIGHT", -16, 14)
+    saveGlanceBtn:SetPoint("BOTTOMLEFT", p3, "BOTTOMLEFT", 16, 14)
+    saveGlanceBtn:SetPoint("BOTTOMRIGHT", p3, "BOTTOMRIGHT", -16, 14)
 
-    local p3 = tabPanels[3]
-    p3.appTabBtn = ns:CreateMaterialButton(p3, "1. Physical Appearance & Attire", 254, 32, 16, -12, "PRIMARY", function()
+    -- TAB 4: BIO & LORE
+    local p4 = tabPanels[4]
+    p4.appTabBtn = ns:CreateMaterialButton(p4, "1. Physical Appearance & Attire", 254, 32, 16, -12, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
         activeBioMode = "APPEARANCE"
-        p3.bioEditor:SetCleanText(ns.profile.description)
+        p4.bioEditor:SetCleanText(ns.profile.description)
         ns:RefreshControllerUI()
     end)
-    p3.hisTabBtn = ns:CreateMaterialButton(p3, "2. Character History & Background", 254, 32, 278, -12, nil, function()
+    p4.hisTabBtn = ns:CreateMaterialButton(p4, "2. Character History & Background", 254, 32, 278, -12, nil, function()
         CommitModifiedBoxesToProfile(false)
         activeBioMode = "HISTORY"
-        p3.bioEditor:SetCleanText(ns.profile.history)
+        p4.bioEditor:SetCleanText(ns.profile.history)
         ns:RefreshControllerUI()
     end)
-    p3.clearBioBtn = ns:CreateMaterialButton(p3, "Clear Text", 104, 32, 540, -12, "CORAL", function(self)
+    p4.clearBioBtn = ns:CreateMaterialButton(p4, "Clear Text", 104, 32, 540, -12, "CORAL", function(self)
         local now = GetTime()
         if now < confirmClearBioUntil then
             confirmClearBioUntil = 0
             self:SetText("Clear Text")
-            p3.bioEditor:SetCleanText("")
+            p4.bioEditor:SetCleanText("")
             if activeBioMode == "APPEARANCE" then ns.profile.description = "" else ns.profile.history = "" end
             ns:SnapshotActiveProfile()
             ns:SyncMSP()
@@ -3001,78 +3151,79 @@ function ns:InitControllerUI()
             self:SetText("|cfff28b82Confirm?|r")
         end
     end)
-    p3.sectionHint = p3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p3.sectionHint:SetPoint("TOPLEFT", 16, -52)
-    p3.bioEditor = ns:CreateScrollableTextEditor(p3, "", 16, -72, 624, 268, function() CommitModifiedBoxesToProfile(false) end)
-    p3.bioEditor:SetPoint("BOTTOMRIGHT", p3, "BOTTOMRIGHT", -16, 58)
-    local saveBioBtn = ns:CreateMaterialButton(p3, "Save Physical Appearance & Character History", 624, 36, 16, -354, "PRIMARY", function()
+    p4.sectionHint = p4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p4.sectionHint:SetPoint("TOPLEFT", 16, -52)
+    p4.bioEditor = ns:CreateScrollableTextEditor(p4, "", 16, -72, 624, 268, function() CommitModifiedBoxesToProfile(false) end)
+    p4.bioEditor:SetPoint("BOTTOMRIGHT", p4, "BOTTOMRIGHT", -16, 58)
+    local saveBioBtn = ns:CreateMaterialButton(p4, "Save Physical Appearance & Character History", 624, 36, 16, -354, "PRIMARY", function()
         CommitModifiedBoxesToProfile(true)
         ns:ShowStatusToast("Appearance & History saved!")
     end)
     saveBioBtn:ClearAllPoints()
-    saveBioBtn:SetPoint("BOTTOMLEFT", p3, "BOTTOMLEFT", 16, 14)
-    saveBioBtn:SetPoint("BOTTOMRIGHT", p3, "BOTTOMRIGHT", -16, 14)
+    saveBioBtn:SetPoint("BOTTOMLEFT", p4, "BOTTOMLEFT", 16, 14)
+    saveBioBtn:SetPoint("BOTTOMRIGHT", p4, "BOTTOMRIGHT", -16, 14)
 
-    local p4 = tabPanels[4]
-    p4.countLabel = p4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    p4.countLabel:SetPoint("TOPLEFT", 16, -12)
+    -- TAB 5: DIRECTORY
+    local p5 = tabPanels[5]
+    p5.countLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    p5.countLabel:SetPoint("TOPLEFT", 16, -12)
 
-    local openLiveBtn = ns:CreateMaterialButton(p4, "Open Target Dossier", 142, 24, 0, 0, "PRIMARY", function()
+    local openLiveBtn = ns:CreateMaterialButton(p5, "Open Target Dossier", 142, 24, 0, 0, "PRIMARY", function()
         ns:OpenTargetDossier()
     end)
     openLiveBtn:ClearAllPoints()
-    openLiveBtn:SetPoint("TOPRIGHT", p4, "TOPRIGHT", -16, -8)
+    openLiveBtn:SetPoint("TOPRIGHT", p5, "TOPRIGHT", -16, -8)
 
-    p4.searchBox = ns:CreateMaterialEditBox(p4, nil, "Search by Name, Title, House, or Note...", 16, -38, 250, 26, function(txt)
+    p5.searchBox = ns:CreateMaterialEditBox(p5, nil, "Search by Name, Title, House, or Note...", 16, -38, 250, 26, function(txt)
         knownSearchFilter = txt or ""
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
-    p4.searchBox:SetScript("OnTextChanged", function(self)
+    p5.searchBox:SetScript("OnTextChanged", function(self)
         knownSearchFilter = self:GetText() or ""
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
 
-    p4.notesOnlyBtn = ns:CreateMaterialButton(p4, "[ ] Notes Only", 102, 26, 272, -38, nil, function()
+    p5.notesOnlyBtn = ns:CreateMaterialButton(p5, "[ ] Notes Only", 102, 26, 272, -38, nil, function()
         knownNotesOnly = not knownNotesOnly
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
 
-    p4.sortBtn = ns:CreateMaterialButton(p4, "Sort: Recent", 90, 26, 382, -38, "PRIMARY", function()
+    p5.sortBtn = ns:CreateMaterialButton(p5, "Sort: Recent", 90, 26, 382, -38, "PRIMARY", function()
         knownSortMode = (knownSortMode == "RECENT") and "NAME" or "RECENT"
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
 
-    p4.prevPageBtn = ns:CreateMaterialButton(p4, "< Prev", 54, 26, 478, -38, nil, function()
+    p5.prevPageBtn = ns:CreateMaterialButton(p5, "< Prev", 54, 26, 478, -38, nil, function()
         knownListPage = math.max(1, knownListPage - 1)
         ns:RefreshTargetCard()
     end)
 
-    p4.pageLabel = p4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p4.pageLabel:SetJustifyH("CENTER")
+    p5.pageLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p5.pageLabel:SetJustifyH("CENTER")
 
-    p4.nextPageBtn = ns:CreateMaterialButton(p4, "Next >", 54, 26, 586, -38, nil, function()
+    p5.nextPageBtn = ns:CreateMaterialButton(p5, "Next >", 54, 26, 586, -38, nil, function()
         knownListPage = knownListPage + 1
         ns:RefreshTargetCard()
     end)
 
-    AttachWheelScroller(p4, function(step)
+    AttachWheelScroller(p5, function(step)
         knownListPage = knownListPage + step
         ns:RefreshTargetCard()
     end)
 
-    p4.knownRows = {}
+    p5.knownRows = {}
     for i = 1, 8 do
         local rowY = -72 - (i - 1) * 35
-        local rowBtn = ns:CreateMaterialButton(p4, "", 624, 32, 16, rowY, nil, function(self)
+        local rowBtn = ns:CreateMaterialButton(p5, "", 624, 32, 16, rowY, nil, function(self)
             if self.profileKey and ns.OpenTargetDossier then
                 ns:OpenTargetDossier(self.profileKey)
             end
         end)
-        rowBtn:SetPoint("RIGHT", p4, "RIGHT", -16, 0)
+        rowBtn:SetPoint("RIGHT", p5, "RIGHT", -16, 0)
         rowBtn.directoryRowIndex = i
 
         rowBtn.seenLabel = rowBtn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -3090,28 +3241,29 @@ function ns:InitControllerUI()
             ns:RefreshTargetCard()
         end)
 
-        p4.knownRows[i] = rowBtn
+        p5.knownRows[i] = rowBtn
     end
 
-    local p5 = tabPanels[5]
-    p5.modeBtn = ns:CreateMaterialButton(p5, "Gratitude Mode [v]", 624, 30, 16, -10, "PRIMARY", function()
+    -- TAB 6: GRATITUDE STUDIO
+    local p6 = tabPanels[6]
+    p6.modeBtn = ns:CreateMaterialButton(p6, "Gratitude Mode [v]", 624, 30, 16, -10, "PRIMARY", function()
         if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
         if mainFrame.poolDropdown then mainFrame.poolDropdown:Hide() end
         if mainFrame.modeDropdown:IsShown() then
             mainFrame.modeDropdown:Hide()
-            ns:SetControllerFocus(p5.modeBtn)
+            ns:SetControllerFocus(p6.modeBtn)
         else
             mainFrame.modeDropdown:Rebuild()
             mainFrame.modeDropdown:Show()
             ns:FocusFirstInScope()
         end
     end)
-    p5.modeBtn.label:SetJustifyH("LEFT")
+    p6.modeBtn.label:SetJustifyH("LEFT")
 
-    local modeDropdown = CreateFrame("Frame", nil, p5, "BackdropTemplate")
+    local modeDropdown = CreateFrame("Frame", nil, p6, "BackdropTemplate")
     modeDropdown:SetSize(624, 196)
-    modeDropdown:SetPoint("TOPLEFT", p5.modeBtn, "BOTTOMLEFT", 0, -2)
-    modeDropdown:SetFrameLevel(p5:GetFrameLevel() + 30)
+    modeDropdown:SetPoint("TOPLEFT", p6.modeBtn, "BOTTOMLEFT", 0, -2)
+    modeDropdown:SetFrameLevel(p6:GetFrameLevel() + 30)
     ns:ApplySurface(modeDropdown, M3.surfaceDim, M3.primary)
     ns:EnableClipping(modeDropdown)
     modeDropdown:EnableMouse(true)
@@ -3122,7 +3274,7 @@ function ns:InitControllerUI()
             ns.db.gratitude.mode = m.key
             modeDropdown:Hide()
             RefreshGratitudeStudio()
-            ns:SetControllerFocus(p5.modeBtn)
+            ns:SetControllerFocus(p6.modeBtn)
         end)
         rowBtn.label:SetJustifyH("LEFT")
         modeDropdown.rows[i] = rowBtn
@@ -3138,40 +3290,40 @@ function ns:InitControllerUI()
     end
     mainFrame.modeDropdown = modeDropdown
 
-    p5.buffBtn = ns:CreateMaterialButton(p5, "Buffs", 118, 26, 16, -46, nil, function() ns.db.gratitude.thankBuffs = not ns.db.gratitude.thankBuffs; RefreshGratitudeStudio() end)
-    p5.healBtn = ns:CreateMaterialButton(p5, "Heals", 118, 26, 142, -46, nil, function() ns.db.gratitude.thankHeals = not ns.db.gratitude.thankHeals; RefreshGratitudeStudio() end)
-    p5.resBtn = ns:CreateMaterialButton(p5, "Res", 118, 26, 268, -46, nil, function() ns.db.gratitude.thankRes = not ns.db.gratitude.thankRes; RefreshGratitudeStudio() end)
-    p5.specialBtn = ns:CreateMaterialButton(p5, "Portals/CDs", 124, 26, 394, -46, nil, function() ns.db.gratitude.thankSpecial = not ns.db.gratitude.thankSpecial; RefreshGratitudeStudio() end)
-    p5.sessionBtn = ns:CreateMaterialButton(p5, "1x/Session", 114, 26, 526, -46, nil, function() ns.db.gratitude.oncePerSession = not ns.db.gratitude.oncePerSession; RefreshGratitudeStudio() end)
+    p6.buffBtn = ns:CreateMaterialButton(p6, "Buffs", 118, 26, 16, -46, nil, function() ns.db.gratitude.thankBuffs = not ns.db.gratitude.thankBuffs; RefreshGratitudeStudio() end)
+    p6.healBtn = ns:CreateMaterialButton(p6, "Heals", 118, 26, 142, -46, nil, function() ns.db.gratitude.thankHeals = not ns.db.gratitude.thankHeals; RefreshGratitudeStudio() end)
+    p6.resBtn = ns:CreateMaterialButton(p6, "Res", 118, 26, 268, -46, nil, function() ns.db.gratitude.thankRes = not ns.db.gratitude.thankRes; RefreshGratitudeStudio() end)
+    p6.specialBtn = ns:CreateMaterialButton(p6, "Portals/CDs", 124, 26, 394, -46, nil, function() ns.db.gratitude.thankSpecial = not ns.db.gratitude.thankSpecial; RefreshGratitudeStudio() end)
+    p6.sessionBtn = ns:CreateMaterialButton(p6, "1x/Session", 114, 26, 526, -46, nil, function() ns.db.gratitude.oncePerSession = not ns.db.gratitude.oncePerSession; RefreshGratitudeStudio() end)
 
-    p5.cdMinusBtn = ns:CreateMaterialButton(p5, "-15s", 52, 24, 16, -78, nil, function() ns.db.gratitude.cooldown = math.max(15, (ns.db.gratitude.cooldown or 60) - 15); RefreshGratitudeStudio() end)
-    p5.cdLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p5.cdLabel:SetJustifyH("CENTER")
-    p5.cdPlusBtn = ns:CreateMaterialButton(p5, "+15s", 52, 24, 185, -78, nil, function() ns.db.gratitude.cooldown = math.min(600, (ns.db.gratitude.cooldown or 60) + 15); RefreshGratitudeStudio() end)
+    p6.cdMinusBtn = ns:CreateMaterialButton(p6, "-15s", 52, 24, 16, -78, nil, function() ns.db.gratitude.cooldown = math.max(15, (ns.db.gratitude.cooldown or 60) - 15); RefreshGratitudeStudio() end)
+    p6.cdLabel = p6:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p6.cdLabel:SetJustifyH("CENTER")
+    p6.cdPlusBtn = ns:CreateMaterialButton(p6, "+15s", 52, 24, 185, -78, nil, function() ns.db.gratitude.cooldown = math.min(600, (ns.db.gratitude.cooldown or 60) + 15); RefreshGratitudeStudio() end)
 
-    p5.healMinusBtn = ns:CreateMaterialButton(p5, "-5%", 52, 24, 332, -78, nil, function() ns.db.gratitude.minHealPercent = math.max(1, (ns.db.gratitude.minHealPercent or 15) - 5); RefreshGratitudeStudio() end)
-    p5.healPctLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p5.healPctLabel:SetJustifyH("CENTER")
-    p5.healPlusBtn = ns:CreateMaterialButton(p5, "+5%", 52, 24, 520, -78, nil, function() ns.db.gratitude.minHealPercent = math.min(80, (ns.db.gratitude.minHealPercent or 15) + 5); RefreshGratitudeStudio() end)
+    p6.healMinusBtn = ns:CreateMaterialButton(p6, "-5%", 52, 24, 332, -78, nil, function() ns.db.gratitude.minHealPercent = math.max(1, (ns.db.gratitude.minHealPercent or 15) - 5); RefreshGratitudeStudio() end)
+    p6.healPctLabel = p6:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p6.healPctLabel:SetJustifyH("CENTER")
+    p6.healPlusBtn = ns:CreateMaterialButton(p6, "+5%", 52, 24, 520, -78, nil, function() ns.db.gratitude.minHealPercent = math.min(80, (ns.db.gratitude.minHealPercent or 15) + 5); RefreshGratitudeStudio() end)
 
-    p5.poolToggleBtn = ns:CreateMaterialButton(p5, "Phrase Pool [v]", 336, 26, 16, -110, "AMBER", function()
+    p6.poolToggleBtn = ns:CreateMaterialButton(p6, "Phrase Pool [v]", 336, 26, 16, -110, "AMBER", function()
         if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
         if mainFrame.modeDropdown then mainFrame.modeDropdown:Hide() end
         if mainFrame.poolDropdown:IsShown() then
             mainFrame.poolDropdown:Hide()
-            ns:SetControllerFocus(p5.poolToggleBtn)
+            ns:SetControllerFocus(p6.poolToggleBtn)
         else
             mainFrame.poolDropdown:Rebuild()
             mainFrame.poolDropdown:Show()
             ns:FocusFirstInScope()
         end
     end)
-    p5.poolToggleBtn.label:SetJustifyH("LEFT")
+    p6.poolToggleBtn.label:SetJustifyH("LEFT")
 
-    local poolDropdown = CreateFrame("Frame", nil, p5, "BackdropTemplate")
+    local poolDropdown = CreateFrame("Frame", nil, p6, "BackdropTemplate")
     poolDropdown:SetSize(440, 170)
-    poolDropdown:SetPoint("TOPLEFT", p5.poolToggleBtn, "BOTTOMLEFT", 0, -2)
-    poolDropdown:SetFrameLevel(p5:GetFrameLevel() + 30)
+    poolDropdown:SetPoint("TOPLEFT", p6.poolToggleBtn, "BOTTOMLEFT", 0, -2)
+    poolDropdown:SetFrameLevel(p6:GetFrameLevel() + 30)
     ns:ApplySurface(poolDropdown, M3.surfaceDim, M3.amber)
     ns:EnableClipping(poolDropdown)
     poolDropdown:EnableMouse(true)
@@ -3182,7 +3334,7 @@ function ns:InitControllerUI()
             editPoolIdx, editPhraseIdx = i, 1
             poolDropdown:Hide()
             RefreshGratitudeStudio()
-            ns:SetControllerFocus(p5.poolToggleBtn)
+            ns:SetControllerFocus(p6.poolToggleBtn)
         end)
         rowBtn.label:SetJustifyH("LEFT")
         poolDropdown.rows[i] = rowBtn
@@ -3197,16 +3349,16 @@ function ns:InitControllerUI()
     end
     mainFrame.poolDropdown = poolDropdown
 
-    p5.addPhraseBtn = ns:CreateMaterialButton(p5, "+ Add Phrase", 100, 26, 358, -110, "PRIMARY", function()
+    p6.addPhraseBtn = ns:CreateMaterialButton(p6, "+ Add Phrase", 100, 26, 358, -110, "PRIMARY", function()
         local pool = GetActiveGratitudePool()
         table.insert(pool, "nods warmly to %name in thanks for the %spell.")
         editPhraseIdx = #pool
         RefreshGratitudeStudio()
     end)
-    p5.prevPhraseBtn = ns:CreateMaterialButton(p5, "<", 28, 26, 468, -110, nil, function() editPhraseIdx = math.max(1, editPhraseIdx - 3); RefreshGratitudeStudio() end)
-    p5.phrasePageLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p5.phrasePageLabel:SetJustifyH("CENTER")
-    p5.nextPhraseBtn = ns:CreateMaterialButton(p5, ">", 28, 26, 612, -110, nil, function()
+    p6.prevPhraseBtn = ns:CreateMaterialButton(p6, "<", 28, 26, 468, -110, nil, function() editPhraseIdx = math.max(1, editPhraseIdx - 3); RefreshGratitudeStudio() end)
+    p6.phrasePageLabel = p6:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p6.phrasePageLabel:SetJustifyH("CENTER")
+    p6.nextPhraseBtn = ns:CreateMaterialButton(p6, ">", 28, 26, 612, -110, nil, function()
         local pool = GetActiveGratitudePool()
         editPhraseIdx = math.min(#pool, editPhraseIdx + 3)
         RefreshGratitudeStudio()
@@ -3217,13 +3369,13 @@ function ns:InitControllerUI()
         editPhraseIdx = math.max(1, math.min(#pool, editPhraseIdx + (step * 3)))
         RefreshGratitudeStudio()
     end
-    AttachWheelScroller(p5, StepPhrasePage)
+    AttachWheelScroller(p6, StepPhrasePage)
 
-    p5.phraseRows = {}
+    p6.phraseRows = {}
     for i = 1, 3 do
         local rowY = -142 - (i - 1) * 28
         local r = {}
-        r.delBtn = ns:CreateMaterialButton(p5, "X", 32, 25, 0, 0, "CORAL", function()
+        r.delBtn = ns:CreateMaterialButton(p6, "X", 32, 25, 0, 0, "CORAL", function()
             local pool = GetActiveGratitudePool()
             if #pool > 1 and r.phraseIndex and pool[r.phraseIndex] then
                 table.remove(pool, r.phraseIndex)
@@ -3232,20 +3384,20 @@ function ns:InitControllerUI()
             end
         end)
         r.delBtn:ClearAllPoints()
-        r.delBtn:SetPoint("TOPRIGHT", p5, "TOPRIGHT", -16, rowY)
+        r.delBtn:SetPoint("TOPRIGHT", p6, "TOPRIGHT", -16, rowY)
         AttachWheelScroller(r.delBtn, StepPhrasePage)
 
-        r.selectBtn = ns:CreateMaterialButton(p5, "", 586, 25, 16, rowY, nil, function()
+        r.selectBtn = ns:CreateMaterialButton(p6, "", 586, 25, 16, rowY, nil, function()
             if r.phraseIndex then editPhraseIdx = r.phraseIndex; RefreshGratitudeStudio() end
         end)
         r.selectBtn:SetPoint("RIGHT", r.delBtn, "LEFT", -6, 0)
         r.selectBtn.label:SetJustifyH("LEFT")
         AttachWheelScroller(r.selectBtn, StepPhrasePage)
 
-        p5.phraseRows[i] = r
+        p6.phraseRows[i] = r
     end
 
-    p5.phraseBox = ns:CreateMaterialEditBox(p5, "Edit Selected Phrase", "", 16, -232, 624, 30, function(txt)
+    p6.phraseBox = ns:CreateMaterialEditBox(p6, "Edit Selected Phrase", "", 16, -232, 624, 30, function(txt)
         local pool = GetActiveGratitudePool()
         local trimmed = strtrim(txt or "")
         if trimmed ~= "" then pool[editPhraseIdx] = trimmed; RefreshGratitudeStudio() end
@@ -3258,79 +3410,80 @@ function ns:InitControllerUI()
         { label = "+ %class",    token = "%class" },
         { label = "+ %race",     token = "%race" },
     }
-    p5.tokenBtns = {}
+    p6.tokenBtns = {}
     for idx, tk in ipairs(tokens) do
-        p5.tokenBtns[idx] = ns:CreateMaterialButton(p5, tk.label, 82, 26, 16 + (idx - 1) * 86, -284, nil, function()
-            local cur = p5.phraseBox:GetText() or ""
+        p6.tokenBtns[idx] = ns:CreateMaterialButton(p6, tk.label, 82, 26, 16 + (idx - 1) * 86, -284, nil, function()
+            local cur = p6.phraseBox:GetText() or ""
             local sep = (cur ~= "" and string.sub(cur, -1) ~= " ") and " " or ""
-            p5.phraseBox:SetCleanText(cur .. sep .. tk.token)
-            GetActiveGratitudePool()[editPhraseIdx] = p5.phraseBox:GetText()
+            p6.phraseBox:SetCleanText(cur .. sep .. tk.token)
+            GetActiveGratitudePool()[editPhraseIdx] = p6.phraseBox:GetText()
             RefreshGratitudeStudio()
         end)
     end
-    p5.savePhraseBtn = ns:CreateMaterialButton(p5, "Save Phrase", 90, 26, 448, -284, "MINT", function()
-        local txt = strtrim(p5.phraseBox:GetText() or "")
+    p6.savePhraseBtn = ns:CreateMaterialButton(p6, "Save Phrase", 90, 26, 448, -284, "MINT", function()
+        local txt = strtrim(p6.phraseBox:GetText() or "")
         if txt ~= "" then GetActiveGratitudePool()[editPhraseIdx] = txt; RefreshGratitudeStudio() end
     end)
-    p5.previewBtn = ns:CreateMaterialButton(p5, "Preview", 84, 26, 546, -284, "AMBER", function()
-        local preview = ns:FormatTokens(p5.phraseBox:GetText(), UnitExists("target") and "target" or "player", "Mark of the Wild")
+    p6.previewBtn = ns:CreateMaterialButton(p6, "Preview", 84, 26, 546, -284, "AMBER", function()
+        local preview = ns:FormatTokens(p6.phraseBox:GetText(), UnitExists("target") and "target" or "player", "Mark of the Wild")
         ns:LogNet("PREVIEW", "ff81c995", preview)
         ns:ShowStatusToast("Preview: " .. preview)
     end)
-    local quickThankBottom = ns:CreateMaterialButton(p5, "Trigger Quick-Thank Now (Target or Last Helper)", 624, 36, 16, -356, "PRIMARY", function() ns:QuickThankAction() end)
+    local quickThankBottom = ns:CreateMaterialButton(p6, "Trigger Quick-Thank Now (Target or Last Helper)", 624, 36, 16, -356, "PRIMARY", function() ns:QuickThankAction() end)
     quickThankBottom:ClearAllPoints()
-    quickThankBottom:SetPoint("BOTTOMLEFT", p5, "BOTTOMLEFT", 16, 14)
-    quickThankBottom:SetPoint("BOTTOMRIGHT", p5, "BOTTOMRIGHT", -16, 14)
+    quickThankBottom:SetPoint("BOTTOMLEFT", p6, "BOTTOMLEFT", 16, 14)
+    quickThankBottom:SetPoint("BOTTOMRIGHT", p6, "BOTTOMRIGHT", -16, 14)
 
-    local p6 = tabPanels[6]
-    p6.scaleMinusBtn = ns:CreateMaterialButton(p6, "Scale -", 68, 28, 16, -14, nil, function() ns.db.ui.scale = math.max(0.8, (ns.db.ui.scale or 1.0) - 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
-    p6.scaleLabel = p6:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p6.scaleLabel:SetJustifyH("CENTER")
-    p6.scalePlusBtn = ns:CreateMaterialButton(p6, "Scale +", 68, 28, 268, -14, nil, function() ns.db.ui.scale = math.min(1.3, (ns.db.ui.scale or 1.0) + 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
-    p6.stdSizeBtn = ns:CreateMaterialButton(p6, "Standard", 88, 28, 356, -14, nil, function() ns:SetWindowDimensions(680, 560) end)
-    p6.wideSizeBtn = ns:CreateMaterialButton(p6, "Wide", 80, 28, 454, -14, "PRIMARY", function() ns:SetWindowDimensions(820, 620) end)
-    p6.largeSizeBtn = ns:CreateMaterialButton(p6, "Large", 80, 28, 552, -14, "AMBER", function() ns:SetWindowDimensions(940, 700) end)
+    -- TAB 7: SETTINGS
+    local p7 = tabPanels[7]
+    p7.scaleMinusBtn = ns:CreateMaterialButton(p7, "Scale -", 68, 28, 16, -14, nil, function() ns.db.ui.scale = math.max(0.8, (ns.db.ui.scale or 1.0) - 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
+    p7.scaleLabel = p7:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p7.scaleLabel:SetJustifyH("CENTER")
+    p7.scalePlusBtn = ns:CreateMaterialButton(p7, "Scale +", 68, 28, 268, -14, nil, function() ns.db.ui.scale = math.min(1.3, (ns.db.ui.scale or 1.0) + 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
+    p7.stdSizeBtn = ns:CreateMaterialButton(p7, "Standard", 88, 28, 356, -14, nil, function() ns:SetWindowDimensions(680, 560) end)
+    p7.wideSizeBtn = ns:CreateMaterialButton(p7, "Wide", 80, 28, 454, -14, "PRIMARY", function() ns:SetWindowDimensions(820, 620) end)
+    p7.largeSizeBtn = ns:CreateMaterialButton(p7, "Large", 80, 28, 552, -14, "AMBER", function() ns:SetWindowDimensions(940, 700) end)
 
-    p6.minimapBtn   = ns:CreateMaterialButton(p6, "", 304, 28, 16, -50, nil, function() ns.db.ui.showMinimap = not ns.db.ui.showMinimap; ns:RefreshMinimapButton(); ns:RefreshControllerUI() end)
-    p6.hudBtn       = ns:CreateMaterialButton(p6, "", 304, 28, 336, -50, nil, function() ns.db.ui.showTargetHUD = not ns.db.ui.showTargetHUD; ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
+    p7.minimapBtn   = ns:CreateMaterialButton(p7, "", 304, 28, 16, -50, nil, function() ns.db.ui.showMinimap = not ns.db.ui.showMinimap; ns:RefreshMinimapButton(); ns:RefreshControllerUI() end)
+    p7.hudBtn       = ns:CreateMaterialButton(p7, "", 304, 28, 336, -50, nil, function() ns.db.ui.showTargetHUD = not ns.db.ui.showTargetHUD; ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
 
-    p6.hudRPBtn     = ns:CreateMaterialButton(p6, "", 304, 28, 16, -84, nil, function() ns.db.ui.rpTooltip = not ns.db.ui.rpTooltip; ns:RefreshControllerUI() end)
-    p6.npClassBtn   = ns:CreateMaterialButton(p6, "", 304, 28, 336, -84, nil, function() ns.db.ui.nameplateClassColors = not ns.db.ui.nameplateClassColors; if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
+    p7.hudRPBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 16, -84, nil, function() ns.db.ui.rpTooltip = not ns.db.ui.rpTooltip; ns:RefreshControllerUI() end)
+    p7.npClassBtn   = ns:CreateMaterialButton(p7, "", 304, 28, 336, -84, nil, function() ns.db.ui.nameplateClassColors = not ns.db.ui.nameplateClassColors; if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
 
-    p6.npTagBtn     = ns:CreateMaterialButton(p6, "", 304, 28, 16, -118, nil, function() ns.db.ui.nameplateStatusTags = not ns.db.ui.nameplateStatusTags; if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
-    p6.npRPNameBtn  = ns:CreateMaterialButton(p6, "", 304, 28, 336, -118, nil, function() ns.db.ui.nameplateRPNames = not ns.db.ui.nameplateRPNames; if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
+    p7.npTagBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 16, -118, nil, function() ns.db.ui.nameplateStatusTags = not ns.db.ui.nameplateStatusTags; if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
+    p7.npRPNameBtn  = ns:CreateMaterialButton(p7, "", 304, 28, 336, -118, nil, function() ns.db.ui.nameplateRPNames = not ns.db.ui.nameplateRPNames; if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
 
-    p6.combatBtn    = ns:CreateMaterialButton(p6, "", 304, 28, 16, -152, nil, function() ns.db.ui.hideInCombat = not ns.db.ui.hideInCombat; ns:RefreshControllerUI() end)
-    p6.soundBtn     = ns:CreateMaterialButton(p6, "", 304, 28, 336, -152, nil, function() ns.db.ui.soundEffects = not ns.db.ui.soundEffects; ns:RefreshControllerUI() end)
+    p7.combatBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 16, -152, nil, function() ns.db.ui.hideInCombat = not ns.db.ui.hideInCombat; ns:RefreshControllerUI() end)
+    p7.soundBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 336, -152, nil, function() ns.db.ui.soundEffects = not ns.db.ui.soundEffects; ns:RefreshControllerUI() end)
 
-    p6.partyBtn     = ns:CreateMaterialButton(p6, "", 304, 28, 16, -186, nil, function() ns.db.gratitude.ignoreParty = not ns.db.gratitude.ignoreParty; ns:RefreshControllerUI() end)
-    p6.rpNameBtn    = ns:CreateMaterialButton(p6, "", 304, 28, 336, -186, nil, function() ns.db.gratitude.useRPNames = not ns.db.gratitude.useRPNames; ns:RefreshControllerUI() end)
+    p7.partyBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 16, -186, nil, function() ns.db.gratitude.ignoreParty = not ns.db.gratitude.ignoreParty; ns:RefreshControllerUI() end)
+    p7.rpNameBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 336, -186, nil, function() ns.db.gratitude.useRPNames = not ns.db.gratitude.useRPNames; ns:RefreshControllerUI() end)
 
-    p6.chatRPBtn    = ns:CreateMaterialButton(p6, "", 304, 28, 16, -220, nil, function() ns.db.ui.chatRPNames = not ns.db.ui.chatRPNames; ns:RefreshControllerUI() end)
-    p6.afkOOCBtn    = ns:CreateMaterialButton(p6, "", 304, 28, 336, -220, nil, function() ns.db.ui.autoAFKOOC = not ns.db.ui.autoAFKOOC; ns:RefreshControllerUI() end)
+    p7.chatRPBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 16, -220, nil, function() ns.db.ui.chatRPNames = not ns.db.ui.chatRPNames; ns:RefreshControllerUI() end)
+    p7.afkOOCBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 336, -220, nil, function() ns.db.ui.autoAFKOOC = not ns.db.ui.autoAFKOOC; ns:RefreshControllerUI() end)
 
-    p6.openExpBtn = ns:CreateMaterialButton(p6, "Export / Import Profile String", 304, 30, 16, -260, "PRIMARY", function()
+    p7.openExpBtn = ns:CreateMaterialButton(p7, "Export / Import Profile String", 304, 30, 16, -260, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
         mainFrame.exportModal.box:SetCleanText(ns:ExportCurrentProfileString())
         mainFrame.exportModal:Show()
         ns:FocusFirstInScope()
     end)
 
-    p6.devModeBtn = ns:CreateMaterialButton(p6, "", 304, 30, 336, -260, nil, function()
+    p7.devModeBtn = ns:CreateMaterialButton(p7, "", 304, 30, 336, -260, nil, function()
         ns.db.ui.devMode = not ns.db.ui.devMode
         ns:RefreshControllerUI()
         ns:ShowStatusToast(ns.db.ui.devMode and "Developer Mode enabled (Dev tab unlocked)" or "Developer Mode hidden")
     end)
 
-    local expModal = CreateFrame("Frame", nil, p6, "BackdropTemplate")
+    local expModal = CreateFrame("Frame", nil, p7, "BackdropTemplate")
     expModal:SetSize(560, 260)
-    expModal:SetPoint("CENTER", p6, "CENTER", 0, 0)
-    expModal:SetFrameLevel(p6:GetFrameLevel() + 30)
+    expModal:SetPoint("CENTER", p7, "CENTER", 0, 0)
+    expModal:SetFrameLevel(p7:GetFrameLevel() + 30)
     ns:ApplySurface(expModal, M3.surfaceDim, M3.primary)
     ns:EnableClipping(expModal)
     expModal:EnableMouse(true)
     expModal:Hide()
-    ns:CreateMaterialButton(expModal, "X", 28, 24, 520, -8, "CORAL", function() expModal:Hide(); ns:SetControllerFocus(p6.openExpBtn) end)
+    ns:CreateMaterialButton(expModal, "X", 28, 24, 520, -8, "CORAL", function() expModal:Hide(); ns:SetControllerFocus(p7.openExpBtn) end)
     expModal.box = ns:CreateScrollableTextEditor(expModal, "Paste a PADRP5~ or PADRP4~ profile string here...", 16, -40, 528, 165)
     ns:CreateMaterialButton(expModal, "Highlight String for Copy", 258, 30, 16, -216, "AMBER", function()
         expModal.box:SetCleanText(ns:ExportCurrentProfileString())
@@ -3339,41 +3492,42 @@ function ns:InitControllerUI()
     end)
     ns:CreateMaterialButton(expModal, "Import String as New Profile", 258, 30, 286, -216, "MINT", function()
         local ok, msg = ns:ImportProfileString(strtrim(expModal.box:GetText() or ""))
-        if ok then expModal:Hide(); ns:SetControllerFocus(p6.openExpBtn); ns:ShowStatusToast("Imported: " .. msg)
+        if ok then expModal:Hide(); ns:SetControllerFocus(p7.openExpBtn); ns:ShowStatusToast("Imported: " .. msg)
         else ns:ShowStatusToast(msg or "Import failed") end
     end)
     mainFrame.exportModal = expModal
 
-    local p7 = tabPanels[7]
-    p7.diagText = p7:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p7.diagText:SetPoint("TOPLEFT", 16, -12)
-    p7.diagText:SetPoint("TOPRIGHT", -16, -12)
-    p7.diagText:SetJustifyH("LEFT")
+    -- TAB 8: DEV TAB (HIDDEN UNLESS DEVELOPER MODE IS CHECKED)
+    local p8 = tabPanels[8]
+    p8.diagText = p8:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p8.diagText:SetPoint("TOPLEFT", 16, -12)
+    p8.diagText:SetPoint("TOPRIGHT", -16, -12)
+    p8.diagText:SetJustifyH("LEFT")
 
-    p7.chkDebug = ns:CreateMaterialButton(p7, "", 198, 26, 16, -34, nil, function()
+    p8.chkDebug = ns:CreateMaterialButton(p8, "", 198, 26, 16, -34, nil, function()
         ns.mspDebug = not ns.mspDebug
         ns:RefreshControllerUI()
     end)
-    p7.chkSniff = ns:CreateMaterialButton(p7, "", 198, 26, 222, -34, nil, function()
+    p8.chkSniff = ns:CreateMaterialButton(p8, "", 198, 26, 222, -34, nil, function()
         ns.mspSniff = not ns.mspSniff
         if ns.mspSniff then ns.mspDebug = true end
         ns:RefreshControllerUI()
     end)
-    p7.chkEcho = ns:CreateMaterialButton(p7, "", 212, 26, 428, -34, nil, function()
+    p8.chkEcho = ns:CreateMaterialButton(p8, "", 212, 26, 428, -34, nil, function()
         ns.mspEchoChat = not ns.mspEchoChat
         ns:RefreshControllerUI()
     end)
 
-    p7.popOutBtn = ns:CreateMaterialButton(p7, "Pop-Out Inspector", 148, 28, 16, -68, "PRIMARY", function()
+    p8.popOutBtn = ns:CreateMaterialButton(p8, "Pop-Out Inspector", 148, 28, 16, -68, "PRIMARY", function()
         ns.mspDebug = true
         ns:ToggleNetInspector(true)
         ns:RefreshControllerUI()
     end)
-    p7.selfTestBtn = ns:CreateMaterialButton(p7, "Run Self-Test", 148, 28, 172, -68, "AMBER", function()
+    p8.selfTestBtn = ns:CreateMaterialButton(p8, "Run Self-Test", 148, 28, 172, -68, "AMBER", function()
         ns:RunMSPSelfTest()
     end)
 
-    p7.clearCacheBtn = ns:CreateMaterialButton(p7, "Clear Profile Cache", 156, 28, 328, -68, "CORAL", function(self)
+    p8.clearCacheBtn = ns:CreateMaterialButton(p8, "Clear Profile Cache", 156, 28, 328, -68, "CORAL", function(self)
         local now = GetTime()
         if now < confirmClearCacheUntil then
             confirmClearCacheUntil = 0
@@ -3386,14 +3540,14 @@ function ns:InitControllerUI()
             self:SetText("|cfff28b82Confirm Wipe?|r")
             if C_Timer and C_Timer.After then
                 C_Timer.After(4.1, function()
-                    if p7.clearCacheBtn then p7.clearCacheBtn:SetText("Clear Profile Cache") end
+                    if p8.clearCacheBtn then p8.clearCacheBtn:SetText("Clear Profile Cache") end
                 end)
             end
         end
     end)
 
-    p7.logEditor = ns:CreateScrollableTextEditor(p7, "Network & wire logs appear here when Debug Events or Wire Sniffer are checked...", 16, -104, 624, 240)
-    p7.logEditor:SetPoint("BOTTOMRIGHT", p7, "BOTTOMRIGHT", -16, 14)
+    p8.logEditor = ns:CreateScrollableTextEditor(p8, "Network & wire logs appear here when Debug Events or Wire Sniffer are checked...", 16, -104, 624, 240)
+    p8.logEditor:SetPoint("BOTTOMRIGHT", p8, "BOTTOMRIGHT", -16, 14)
 
     local footer = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
     footer:SetHeight(26)
