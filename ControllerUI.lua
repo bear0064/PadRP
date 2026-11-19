@@ -12,7 +12,7 @@ local activeBioMode = "APPEARANCE"
 local knownListPage = 1
 local knownSearchFilter = ""
 local knownNotesOnly = false
-local knownSortMode = "RECENT" -- "RECENT" or "NAME"
+local knownSortMode = "RECENT"
 
 local editPoolIdx = 1
 local editPhraseIdx = 1
@@ -21,6 +21,8 @@ local phrasePage = 1
 local confirmDeleteProfileUntil = 0
 local confirmClearBioUntil = 0
 local confirmClearCacheUntil = 0
+
+local nativeIconPool = nil
 
 local MODE_LIST = {
     { key = "SMART",        label = "Smart Auto (IC Emote Nearby / Whisper Far)" },
@@ -39,23 +41,39 @@ local POOL_LIST = {
     { key = "SPECIAL", label = "5. Portals, Healthstones & Major Cooldowns" },
 }
 
-local GLANCE_ICONS = {
-    "INV_Misc_Book_09",            "INV_Misc_Book_07",            "INV_Misc_Book_11",            "INV_Scroll_02",
-    "INV_Scroll_05",               "INV_Misc_Note_01",            "INV_Feather_16",              "INV_Letter_15",
-    "INV_Jewelry_Ring_03",         "INV_Jewelry_Ring_22",         "INV_Jewelry_Necklace_07",     "INV_Jewelry_Talisman_07",
-    "INV_Misc_Coin_01",            "INV_Misc_Gem_Ruby_02",        "INV_Misc_Gem_Sapphire_02",    "INV_Misc_PocketWatch_01",
-    "INV_Helmet_46",               "INV_Misc_Cape_18",            "INV_Shirt_GuildTabard_01",    "INV_Boots_05",
-    "INV_Gauntlets_05",            "INV_Belt_15",                 "INV_Shoulder_23",             "INV_Chest_Cloth_21",
-    "INV_Sword_04",                "INV_Sword_39",                "INV_Weapon_ShortBlade_05",    "INV_Staff_13",
-    "INV_Shield_06",               "INV_Weapon_Bow_07",           "INV_Weapon_Rifle_08",         "INV_Hammer_05",
-    "Spell_Shadow_Charm",          "Spell_Shadow_SoulGem",        "Spell_Shadow_Metamorphosis",  "Spell_Fire_Fire",
-    "Spell_Frost_FrostBolt02",     "Spell_Arcane_Blink",          "Spell_Holy_HolyBolt",         "Spell_Nature_Rejuvenation",
-    "INV_Potion_54",               "INV_Potion_20",               "INV_Drink_05",                "INV_Drink_03",
-    "INV_Misc_Bag_10",             "INV_Misc_Pipe_01",            "INV_Misc_Lantern_01",         "INV_Misc_Key_04",
-    "INV_Misc_Bone_HumanSkull_01", "Ability_Racial_BloodRage",    "Ability_Hunter_BeastTaming",  "Ability_Stealth",
-    "Ability_DualWield",           "Spell_Shadow_DeathCoil",      "INV_Misc_MonsterClaw_04",     "INV_Misc_Eye_01",
-    "INV_Misc_Flower_02",          "INV_Misc_Herb_16",            "INV_Fishingpole_02",          "INV_Torch_Lit",
+local CURATED_RP_ICONS = {
+    "INV_Misc_Book_09",            "INV_Misc_Book_07",            "INV_Misc_Book_11",            "INV_Misc_Book_04",
+    "INV_Misc_Book_06",            "INV_Scroll_02",               "INV_Scroll_05",               "INV_Scroll_08",
+    "INV_Misc_Note_01",            "INV_Misc_Note_02",            "INV_Feather_16",              "INV_Letter_15",
+    "INV_Letter_18",               "INV_Misc_Map_01",             "INV_Misc_Spyglass_02",        "INV_Misc_PocketWatch_01",
+    "INV_Helmet_46",               "INV_Helmet_24",               "INV_Helmet_52",               "INV_Crown_01",
+    "INV_Misc_Cape_18",            "INV_Misc_Cape_02",            "INV_Misc_Cape_16",            "INV_Shirt_GuildTabard_01",
+    "INV_Chest_Cloth_21",          "INV_Chest_Leather_09",        "INV_Chest_Plate06",           "INV_Shoulder_23",
+    "INV_Boots_05",                "INV_Gauntlets_05",            "INV_Belt_15",                 "INV_Bracer_07",
+    "INV_Jewelry_Ring_03",         "INV_Jewelry_Ring_22",         "INV_Jewelry_Ring_36",         "INV_Jewelry_Necklace_07",
+    "INV_Jewelry_Necklace_11",     "INV_Jewelry_Talisman_07",     "INV_Jewelry_Amulet_04",       "INV_Misc_Coin_01",
+    "INV_Misc_Coin_02",            "INV_Misc_Gem_Ruby_02",        "INV_Misc_Gem_Sapphire_02",    "INV_Misc_Gem_Emerald_02",
+    "INV_Misc_Gem_Amethyst_02",    "INV_Misc_Key_04",             "INV_Misc_Key_10",             "INV_Misc_Bell_01",
+    "INV_Sword_04",                "INV_Sword_39",                "INV_Sword_27",                "INV_Weapon_ShortBlade_05",
+    "INV_Weapon_ShortBlade_15",    "INV_Staff_13",                "INV_Staff_30",                "INV_Wand_07",
+    "INV_Shield_06",               "INV_Shield_14",               "INV_Weapon_Bow_07",           "INV_Weapon_Rifle_08",
+    "INV_Hammer_05",               "INV_Axe_09",                  "INV_Spear_06",                "INV_Mace_08",
+    "Spell_Shadow_Charm",          "Spell_Shadow_SoulGem",        "Spell_Shadow_Metamorphosis",  "Spell_Shadow_DeathCoil",
+    "Spell_Shadow_ShadowBolt",     "Spell_Shadow_SummonImp",      "Spell_Shadow_SummonVoidWalker","Spell_Shadow_DemonForm",
+    "Spell_Fire_Fire",             "Spell_Fire_FlameBolt",        "Spell_Fire_BlueFlameRing",    "Spell_Frost_FrostBolt02",
+    "Spell_Frost_IceShard",        "Spell_Arcane_Blink",          "Spell_Arcane_PortalStormwind","Spell_Arcane_Arcane01",
+    "Spell_Holy_HolyBolt",         "Spell_Holy_PowerWordShield",  "Spell_Holy_Resurrection",     "Spell_Holy_SealOfLight",
+    "Spell_Nature_Rejuvenation",   "Spell_Nature_Lightning",      "Spell_Nature_StarFall",       "Spell_Nature_MoonGlow",
+    "INV_Potion_54",               "INV_Potion_20",               "INV_Potion_93",               "INV_Drink_05",
+    "INV_Drink_03",                "INV_Drink_11",                "INV_Misc_Food_15",            "INV_Misc_Food_64",
+    "INV_Misc_Bag_10",             "INV_Misc_Bag_17",             "INV_Misc_Pipe_01",            "INV_Misc_Lantern_01",
+    "INV_Torch_Lit",               "INV_Misc_Candle_02",          "INV_Misc_Campfire_01",        "INV_Misc_Flute_01",
+    "INV_Misc_Bone_HumanSkull_01", "INV_Misc_Eye_01",             "INV_Misc_MonsterClaw_04",     "INV_Misc_Head_Dragon_01",
+    "Ability_Racial_BloodRage",    "Ability_Hunter_BeastTaming",  "Ability_Stealth",             "Ability_DualWield",
+    "Ability_Mount_RidingHorse",   "Ability_Mount_BlackDireWolf", "Ability_Druid_CatForm",       "Ability_Paladin_HammeroftheRighteous",
+    "INV_Misc_Flower_02",          "INV_Misc_Herb_16",            "INV_Fishingpole_02",          "INV_Misc_Fish_02",
     "Trade_Engineering",           "Trade_Alchemy",               "Trade_BlackSmithing",         "Trade_Tailoring",
+    "Trade_Enchanting",            "Trade_LeatherWorking",        "Trade_Herbalism",             "Trade_Mining",
 }
 
 local STANDING_BADGES = {
@@ -68,6 +86,314 @@ local STANDING_BADGES = {
 local function FormatCheckbox(label, isChecked, activeColorHex)
     local box = isChecked and ("|c" .. (activeColorHex or "ff81c995") .. "[X]|r ") or "|cff9aa0a6[ ]|r "
     return box .. label
+end
+
+local function SetIconTextureSafe(tex, icon, fallback)
+    if ns.ResolveIconTexture then
+        tex:SetTexture(ns:ResolveIconTexture(icon, fallback))
+    else
+        tex:SetTexture("Interface\\Icons\\" .. tostring(icon or fallback or "INV_Misc_Book_09"))
+    end
+end
+
+-- Proportional horizontal row layout helper (supports mixed fixed + flex columns)
+local function LayoutRow(parent, y, items, padLeft, padRight, gap)
+    if not parent then return end
+    local parentW = parent:GetWidth()
+    if not parentW or parentW < 180 then return end
+
+    padLeft = padLeft or 16
+    padRight = padRight or padLeft
+    gap = gap or 8
+
+    local totalFixed = 0
+    local totalWeight = 0
+    local lastFlexIdx = nil
+
+    for idx, item in ipairs(items) do
+        if item.fixed then
+            totalFixed = totalFixed + item.fixed
+        else
+            local w = item.weight or 1
+            totalWeight = totalWeight + w
+            lastFlexIdx = idx
+        end
+    end
+
+    local availW = parentW - padLeft - padRight - (gap * math.max(0, #items - 1))
+    local flexPool = math.max(40, availW - totalFixed)
+    local curX = padLeft
+    local usedFlex = 0
+
+    for idx, item in ipairs(items) do
+        local colW
+        if item.fixed then
+            colW = item.fixed
+        elseif idx == lastFlexIdx then
+            colW = math.max(40, flexPool - usedFlex)
+        else
+            colW = math.max(40, math.floor(flexPool * ((item.weight or 1) / totalWeight)))
+            usedFlex = usedFlex + colW
+        end
+
+        local widget = item.w
+        if widget then
+            widget:ClearAllPoints()
+            local yOffset = item.yOffset or 0
+            widget:SetPoint("TOPLEFT", parent, "TOPLEFT", curX, y + yOffset)
+            widget:SetWidth(colW)
+            if widget.fieldLabel then
+                widget.fieldLabel:SetWidth(colW)
+            end
+        end
+        curX = curX + colW + gap
+    end
+end
+
+local function UpdateResponsiveLayouts()
+    if not mainFrame or not tabPanels[1] then return end
+
+    -- Tab 1: Identity & Vitals
+    local p1 = tabPanels[1]
+    if p1 and p1.coreSubBtn then
+        LayoutRow(p1, -10, {
+            { w = p1.coreSubBtn,   weight = 1 },
+            { w = p1.detailSubBtn, weight = 1 },
+        }, 16, 16, 8)
+
+        local pc = p1.pageCore
+        if pc then
+            LayoutRow(pc, -21, {
+                { w = p1.pxBox, weight = 0.15 },
+                { w = p1.fnBox, weight = 0.24 },
+                { w = p1.lnBox, weight = 0.24 },
+                { w = p1.tiBox, weight = 0.37 },
+            }, 16, 16, 10)
+
+            LayoutRow(pc, -73, {
+                { w = p1.raBox, weight = 0.33 },
+                { w = p1.clBox, weight = 0.37 },
+                { w = p1.prBox, weight = 0.30 },
+            }, 16, 16, 10)
+
+            LayoutRow(pc, -125, {
+                { w = p1.agBox, weight = 0.18 },
+                { w = p1.htBox, weight = 0.24 },
+                { w = p1.wtBox, weight = 0.29 },
+                { w = p1.eyBox, weight = 0.29 },
+            }, 16, 16, 10)
+
+            LayoutRow(pc, -177, {
+                { w = p1.cuBox,         weight = 1 },
+                { w = p1.presetBtn,     fixed = 82 },
+                { w = p1.cycleCuBtn,    fixed = 58 },
+                { w = p1.savePresetBtn, fixed = 60 },
+                { w = p1.clearCuBtn,    fixed = 54 },
+            }, 16, 16, 6)
+
+            LayoutRow(pc, -233, {
+                { w = p1.oocBox, weight = 1 },
+            }, 16, 16, 0)
+        end
+
+        local pd = p1.pageDetails
+        if pd then
+            LayoutRow(pd, -21, {
+                { w = p1.niBox, weight = 0.28 },
+                { w = p1.hoBox, weight = 0.32 },
+                { w = p1.moBox, weight = 0.40 },
+            }, 16, 16, 10)
+
+            LayoutRow(pd, -75, {
+                { w = p1.hbBox, weight = 1 },
+                { w = p1.hhBox, weight = 1 },
+            }, 16, 16, 10)
+
+            LayoutRow(pd, -118, {
+                { w = p1.relBtn,   weight = 1 },
+                { w = p1.styleBtn, weight = 1 },
+            }, 16, 16, 10)
+
+            LayoutRow(pd, -158, {
+                { w = p1.portraitPickBtn, weight = 1 },
+            }, 16, 16, 0)
+
+            LayoutRow(pd, -221, {
+                { w = p1.profNameBox, weight = 1 },
+                { w = p1.newProfBtn,  fixed = 148 },
+                { w = p1.delProfBtn,  fixed = 166 },
+            }, 16, 16, 10)
+        end
+    end
+
+    -- Tab 2: First Glances
+    local p2 = tabPanels[2]
+    if p2 and p2.cards then
+        for i = 1, 3 do
+            local card = p2.cards[i]
+            if card then
+                LayoutRow(card, -27, {
+                    { w = card.titleBox,  weight = 0.36 },
+                    { w = card.detailBox, weight = 0.64 },
+                    { w = card.clrBtn,    fixed = 52 },
+                }, 74, 12, 10)
+            end
+        end
+    end
+
+    -- Tab 3: Bio & Lore
+    local p3 = tabPanels[3]
+    if p3 and p3.appTabBtn then
+        LayoutRow(p3, -12, {
+            { w = p3.appTabBtn,   weight = 1 },
+            { w = p3.hisTabBtn,   weight = 1 },
+            { w = p3.clearBioBtn, fixed = 104 },
+        }, 16, 16, 8)
+    end
+
+    -- Tab 4: Directory
+    local p4 = tabPanels[4]
+    if p4 and p4.searchBox then
+        LayoutRow(p4, -38, {
+            { w = p4.searchBox,    weight = 1 },
+            { w = p4.notesOnlyBtn, fixed = 102 },
+            { w = p4.sortBtn,      fixed = 90 },
+            { w = p4.prevPageBtn,  fixed = 54 },
+            { w = p4.pageLabel,    fixed = 74, yOffset = -6 },
+            { w = p4.nextPageBtn,  fixed = 54 },
+        }, 16, 16, 6)
+    end
+
+    -- Tab 5: Gratitude Studio
+    local p5 = tabPanels[5]
+    if p5 and p5.modeBtn then
+        LayoutRow(p5, -10, {
+            { w = p5.modeBtn, weight = 1 },
+        }, 16, 16, 0)
+        if mainFrame.modeDropdown then
+            local mw = p5.modeBtn:GetWidth()
+            if mw and mw > 200 then
+                mainFrame.modeDropdown:SetWidth(mw)
+                for _, r in ipairs(mainFrame.modeDropdown.rows or {}) do
+                    r:SetWidth(mw - 16)
+                end
+            end
+        end
+
+        LayoutRow(p5, -46, {
+            { w = p5.buffBtn,    weight = 1 },
+            { w = p5.healBtn,    weight = 1 },
+            { w = p5.resBtn,     weight = 1 },
+            { w = p5.specialBtn, weight = 1.1 },
+            { w = p5.sessionBtn, weight = 1 },
+        }, 16, 16, 6)
+
+        LayoutRow(p5, -78, {
+            { w = p5.cdMinusBtn,   fixed = 52 },
+            { w = p5.cdLabel,      weight = 1, yOffset = -5 },
+            { w = p5.cdPlusBtn,    fixed = 52 },
+            { w = p5.healMinusBtn, fixed = 52 },
+            { w = p5.healPctLabel, weight = 1, yOffset = -5 },
+            { w = p5.healPlusBtn,  fixed = 52 },
+        }, 16, 16, 8)
+
+        LayoutRow(p5, -110, {
+            { w = p5.poolToggleBtn,   weight = 1 },
+            { w = p5.addPhraseBtn,    fixed = 100 },
+            { w = p5.prevPhraseBtn,   fixed = 28 },
+            { w = p5.phrasePageLabel, fixed = 86, yOffset = -6 },
+            { w = p5.nextPhraseBtn,   fixed = 28 },
+        }, 16, 16, 6)
+
+        LayoutRow(p5, -247, {
+            { w = p5.phraseBox, weight = 1 },
+        }, 16, 16, 0)
+
+        local tokRow = {}
+        for _, tb in ipairs(p5.tokenBtns or {}) do
+            table.insert(tokRow, { w = tb, weight = 1 })
+        end
+        table.insert(tokRow, { w = p5.savePhraseBtn, fixed = 90 })
+        table.insert(tokRow, { w = p5.previewBtn,    fixed = 84 })
+        LayoutRow(p5, -284, tokRow, 16, 16, 6)
+    end
+
+    -- Tab 6: Settings
+    local p6 = tabPanels[6]
+    if p6 and p6.minimapBtn then
+        LayoutRow(p6, -14, {
+            { w = p6.scaleMinusBtn, fixed = 68 },
+            { w = p6.scaleLabel,    weight = 1, yOffset = -7 },
+            { w = p6.scalePlusBtn,  fixed = 68 },
+            { w = p6.stdSizeBtn,    fixed = 88 },
+            { w = p6.wideSizeBtn,   fixed = 80 },
+            { w = p6.largeSizeBtn,  fixed = 80 },
+        }, 16, 16, 6)
+
+        local pairs6 = {
+            { -50,  p6.minimapBtn, p6.hudBtn },
+            { -84,  p6.hudRPBtn,   p6.npClassBtn },
+            { -118, p6.npTagBtn,   p6.npRPNameBtn },
+            { -152, p6.combatBtn,  p6.soundBtn },
+            { -186, p6.partyBtn,   p6.rpNameBtn },
+            { -220, p6.chatRPBtn,  p6.afkOOCBtn },
+            { -260, p6.openExpBtn, p6.devModeBtn },
+        }
+        for _, row in ipairs(pairs6) do
+            LayoutRow(p6, row[1], {
+                { w = row[2], weight = 1 },
+                { w = row[3], weight = 1 },
+            }, 16, 16, 12)
+        end
+    end
+
+    -- Tab 7: Dev Tab
+    local p7 = tabPanels[7]
+    if p7 and p7.chkDebug then
+        LayoutRow(p7, -34, {
+            { w = p7.chkDebug, weight = 1 },
+            { w = p7.chkSniff, weight = 1 },
+            { w = p7.chkEcho,  weight = 1 },
+        }, 16, 16, 8)
+
+        LayoutRow(p7, -68, {
+            { w = p7.popOutBtn,     weight = 1 },
+            { w = p7.sweepDevBtn,   weight = 1 },
+            { w = p7.selfTestBtn,   weight = 1 },
+            { w = p7.clearCacheBtn, weight = 1 },
+        }, 16, 16, 8)
+    end
+end
+
+local function CollectIconsFromAPI(fn, seen, out)
+    if type(fn) ~= "function" then return end
+    local buf = {}
+    local ok, res = pcall(fn, buf)
+    local src = (ok and type(res) == "table" and #res > 0) and res or buf
+    for _, icon in ipairs(src) do
+        if icon and icon ~= "" then
+            local key = tostring(icon)
+            if not seen[key] then
+                seen[key] = true
+                table.insert(out, key)
+            end
+        end
+    end
+end
+
+local function EnsureNativeIconPool()
+    if nativeIconPool then return nativeIconPool end
+    nativeIconPool = {}
+    local seen = {}
+    for _, name in ipairs(CURATED_RP_ICONS) do
+        seen[name] = true
+        table.insert(nativeIconPool, name)
+    end
+    CollectIconsFromAPI(_G.GetMacroIcons, seen, nativeIconPool)
+    CollectIconsFromAPI(_G.GetMacroItemIcons, seen, nativeIconPool)
+    CollectIconsFromAPI(_G.GetLooseMacroIcons, seen, nativeIconPool)
+    CollectIconsFromAPI(_G.GetLooseMacroItemIcons, seen, nativeIconPool)
+    return nativeIconPool
 end
 
 function ns:ShowStatusToast(msg)
@@ -339,7 +665,7 @@ function ns:ToggleNetInspector(forceShow)
 end
 
 -- =========================================================
--- CONTROLLER ACTIONS & PROFILE SYNC
+-- CONTROLLER ACTIONS & PROFILE SYNC (MAIN + DOSSIER AWARE)
 -- =========================================================
 local function CloseAnyOpenPopup()
     if not mainFrame then return false end
@@ -377,7 +703,8 @@ local function CloseAnyOpenPopup()
 end
 
 function ns:ControllerConfirmAction()
-    if not mainFrame or not mainFrame:IsShown() or not ns:CanProcessPadAction() then return end
+    local scope = ns:GetActiveModalScope()
+    if not scope or not ns:CanProcessPadAction() then return end
     if ns.activeEditBox and ns.activeEditBox:HasFocus() then
         ns.activeEditBox:ClearFocus()
         return
@@ -395,20 +722,36 @@ function ns:ControllerConfirmAction()
 end
 
 function ns:ControllerCancelAction()
-    if not mainFrame or not mainFrame:IsShown() or not ns:CanProcessPadAction() then return end
+    local scope = ns:GetActiveModalScope()
+    if not scope or not ns:CanProcessPadAction() then return end
     if ns.activeEditBox and ns.activeEditBox:HasFocus() then
         ns.activeEditBox:ClearFocus()
+        return
+    end
+    if ns.dossierFrame and ns.dossierFrame:IsShown() then
+        ns.dossierFrame:Hide()
         return
     end
     if CloseAnyOpenPopup() then
         ns:PlayUISound()
         return
     end
-    mainFrame:Hide()
+    if mainFrame and mainFrame:IsShown() then
+        mainFrame:Hide()
+    end
 end
 
 function ns:CycleTab(delta)
-    if not mainFrame or not mainFrame:IsShown() or not ns:CanProcessPadAction() then return end
+    if not ns:CanProcessPadAction() then return end
+    if ns.dossierFrame and ns.dossierFrame:IsShown() and ns.CycleDossierTab then
+        ns:CycleDossierTab(delta)
+        return
+    end
+    if not mainFrame or not mainFrame:IsShown() then return end
+    if mainFrame.iconPicker and mainFrame.iconPicker:IsShown() then
+        mainFrame.iconPicker:StepPage(delta)
+        return
+    end
     local maxTabs = (ns.db and ns.db.ui and ns.db.ui.devMode) and 7 or 6
     local nextTab = ((activeTab - 1 + delta) % maxTabs) + 1
     ns:SelectTab(nextTab)
@@ -442,10 +785,10 @@ local function LoadGlancesPageIntoUI()
         local slot = baseOffset + i
         local card = p2.cards[i]
         if slot <= 5 then
-            local g = p.glances[slot] or { icon = GLANCE_ICONS[slot], title = "", detail = "" }
+            local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
             card.slotIndex = slot
             card.slotBadge:SetText("|cff8ab4f8GLANCE #" .. slot .. "|r")
-            card.iconTex:SetTexture("Interface\\Icons\\" .. (g.icon or GLANCE_ICONS[1]))
+            SetIconTextureSafe(card.iconTex, g.icon, CURATED_RP_ICONS[1])
             card.titleBox.placeholder:SetText(placeholders[slot].title)
             card.detailBox.placeholder:SetText(placeholders[slot].detail)
             card.titleBox:SetCleanText(g.title)
@@ -598,7 +941,7 @@ local function RefreshHeaderBanner()
     local classHex = (classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile] and RAID_CLASS_COLORS[classFile].colorStr) or "ffffffff"
 
     if mainFrame.portraitTex then
-        mainFrame.portraitTex:SetTexture("Interface\\Icons\\" .. ((p.icon and p.icon ~= "") and p.icon or "INV_Helmet_46"))
+        SetIconTextureSafe(mainFrame.portraitTex, p.icon, "INV_Helmet_46")
     end
 
     local nameParts = {}
@@ -756,6 +1099,7 @@ function ns:RefreshControllerUI()
     if not mainFrame or not ns.profile then return end
     mainFrame:SetScale(ns.db.ui.scale or 1.0)
     UpdateTabBarLayout()
+    UpdateResponsiveLayouts()
     RefreshHeaderBanner()
 
     local p = ns.profile
@@ -800,7 +1144,7 @@ function ns:RefreshControllerUI()
 
     p1.relBtn:SetText("Relationship: |cfffdd663" .. ns:GetRelationshipLabel(p.relationship) .. "|r")
     p1.styleBtn:SetText("RP Style: |cff8ab4f8" .. ns:GetRPStyleLabel(p.rpStyle) .. "|r")
-    p1.portraitPickBtn:SetText("Character Portrait Icon: |cff81c995" .. (p.icon or "INV_Helmet_46") .. "|r  |cff9aa0a6[Browse Icons]|r")
+    p1.portraitPickBtn:SetText("Character Portrait Icon: |cff81c995" .. tostring(p.icon or "INV_Helmet_46") .. "|r  |cff9aa0a6[Browse Icons]|r")
 
     local p2 = tabPanels[2]
     p2.page1Btn:SetTone(activeGlancePage == 1 and "PRIMARY" or nil)
@@ -809,8 +1153,8 @@ function ns:RefreshControllerUI()
         local card = p2.cards[i]
         local slot = card.slotIndex
         if slot and card:IsShown() then
-            local g = p.glances[slot] or { icon = GLANCE_ICONS[slot], title = "", detail = "" }
-            card.iconTex:SetTexture("Interface\\Icons\\" .. (g.icon or GLANCE_ICONS[1]))
+            local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
+            SetIconTextureSafe(card.iconTex, g.icon, CURATED_RP_ICONS[1])
             if not card.titleBox:HasFocus() and not card.titleBox.isDirty then card.titleBox:SetCleanText(g.title) end
             if not card.detailBox:HasFocus() and not card.detailBox.isDirty then card.detailBox:SetCleanText(g.detail) end
         end
@@ -834,7 +1178,6 @@ function ns:RefreshControllerUI()
     ns:RefreshTargetCard()
     RefreshGratitudeStudio()
 
-    -- Tab 6: Clean User Settings + Developer Mode Checkbox
     local p6 = tabPanels[6]
     local curW, curH = math.floor(mainFrame:GetWidth() + 0.5), math.floor(mainFrame:GetHeight() + 0.5)
     p6.scaleLabel:SetText(string.format("Scale: |cfffdd663%.0f%%|r  (|cff8ab4f8%dx%d|r)", (ns.db.ui.scale or 1.0) * 100, curW, curH))
@@ -854,7 +1197,6 @@ function ns:RefreshControllerUI()
     p6.devModeBtn:SetText(FormatCheckbox("Developer Mode (Show Dev Tab)", ns.db.ui.devMode, "fffdd663"))
     p6.devModeBtn:SetTone(ns.db.ui.devMode and "AMBER" or nil)
 
-    -- Tab 7: Dev Tab (only visible when Developer Mode is checked)
     local p7 = tabPanels[7]
     if p7 and p7.diagText and ns.mspStats then
         local engState = (type(_G.msp) == "table") and "|cff81c995LibMSP ACTIVE|r" or "|cfff28b82LibMSP MISSING|r"
@@ -932,42 +1274,6 @@ function ns:InitControllerUI()
     mainFrame:Hide()
     ns:ApplySurface(mainFrame, M3.surfaceDim, M3.outline)
 
-    local pendingBindingClear = false
-
-    local function ApplyControllerBindings(frame)
-        if InCombatLockdown() then return end
-        SetOverrideBindingClick(frame, true, "PADLSHOULDER", "PadRP_PrevTabBtn")
-        SetOverrideBindingClick(frame, true, "PADRSHOULDER", "PadRP_NextTabBtn")
-        SetOverrideBindingClick(frame, true, "PADDUP",       "PadRP_PadUpBtn")
-        SetOverrideBindingClick(frame, true, "PADDDOWN",     "PadRP_PadDownBtn")
-        SetOverrideBindingClick(frame, true, "PADDLEFT",     "PadRP_PadLeftBtn")
-        SetOverrideBindingClick(frame, true, "PADDRIGHT",    "PadRP_PadRightBtn")
-        SetOverrideBindingClick(frame, true, "PAD1",         "PadRP_PadConfirmBtn")
-        SetOverrideBindingClick(frame, true, "PAD2",         "PadRP_PadCancelBtn")
-        pendingBindingClear = false
-    end
-
-    local function RemoveControllerBindings(frame)
-        if InCombatLockdown() then
-            pendingBindingClear = true
-            return
-        end
-        ClearOverrideBindings(frame)
-        pendingBindingClear = false
-    end
-
-    local focusRing = CreateFrame("Frame", "PadRP_FocusRing", mainFrame, "BackdropTemplate")
-    focusRing:SetBackdrop({
-        bgFile   = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 2,
-        insets   = { left = 2, right = 2, top = 2, bottom = 2 },
-    })
-    focusRing:SetBackdropColor(0.54, 0.71, 0.97, 0.05)
-    focusRing:SetBackdropBorderColor(0.54, 0.71, 0.97, 0.90)
-    focusRing:Hide()
-    mainFrame.focusRing = focusRing
-
     local topAccent = mainFrame:CreateTexture(nil, "OVERLAY")
     topAccent:SetHeight(2)
     topAccent:SetPoint("TOPLEFT", 1, -1)
@@ -976,60 +1282,62 @@ function ns:InitControllerUI()
 
     tinsert(UISpecialFrames, "PadRP_MainFrame")
 
-    mainFrame:SetScript("OnShow", function(self)
+    mainFrame:SetScript("OnShow", function()
         ns:PlayUISound(SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_OPEN)
-        ApplyControllerBindings(self)
+        UpdateTabBarLayout()
+        UpdateResponsiveLayouts()
+        ns:UpdateControllerBindings()
         ns:FocusFirstInScope()
     end)
-    mainFrame:SetScript("OnHide", function(self)
+    mainFrame:SetScript("OnHide", function()
         if ns.activeEditBox and ns.activeEditBox:HasFocus() then ns.activeEditBox:ClearFocus() end
         CommitModifiedBoxesToProfile(false)
         ns:PlayUISound(SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_CLOSE)
         CloseAnyOpenPopup()
-        RemoveControllerBindings(self)
+        ns:UpdateControllerBindings()
     end)
     mainFrame:SetScript("OnSizeChanged", function(self, w, h)
         if ns.db and ns.db.ui then
             ns.db.ui.width, ns.db.ui.height = math.floor(w + 0.5), math.floor(h + 0.5)
         end
         UpdateTabBarLayout()
+        UpdateResponsiveLayouts()
         if self:IsShown() then
             ns:RefreshTargetCard()
             if ns.currentFocus then ns:SetControllerFocus(ns.currentFocus) end
         end
     end)
     mainFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    mainFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     mainFrame:SetScript("OnEvent", function(self, event)
-        if event == "PLAYER_REGEN_DISABLED" then
-            RemoveControllerBindings(self)
-            if self:IsShown() and ns.db.ui.hideInCombat then
-                self:Hide()
-            end
-        elseif event == "PLAYER_REGEN_ENABLED" then
-            if pendingBindingClear and not self:IsShown() then
-                RemoveControllerBindings(self)
-            elseif self:IsShown() then
-                ApplyControllerBindings(self)
-            end
+        if event == "PLAYER_REGEN_DISABLED" and self:IsShown() and ns.db.ui.hideInCombat then
+            self:Hide()
         end
     end)
 
     -- =========================================================
-    -- SHARED ICON PICKER MODAL (WORKS FOR PORTRAIT & GLANCES 1-5)
+    -- SEARCHABLE NATIVE ICON BROWSER (CURATED RP + ALL WOW ICONS)
     -- =========================================================
     local picker = CreateFrame("Frame", "PadRP_IconPicker", mainFrame, "BackdropTemplate")
-    picker:SetSize(452, 318)
-    picker:SetPoint("CENTER", mainFrame, "CENTER", 0, -10)
+    picker:SetSize(512, 412)
+    picker:SetPoint("CENTER", mainFrame, "CENTER", 0, -4)
     picker:SetFrameLevel(mainFrame:GetFrameLevel() + 45)
     ns:ApplySurface(picker, M3.surfaceDim, M3.primary)
     ns:EnableClipping(picker)
     picker:EnableMouse(true)
     picker:Hide()
-    picker.mode, picker.targetSlot, picker.page, picker.cells = "GLANCE", 1, 1, {}
+
+    picker.mode = "GLANCE"
+    picker.sourceMode = "CURATED"
+    picker.targetSlot = 1
+    picker.page = 1
+    picker.searchQuery = ""
+    picker.filteredIcons = {}
+    picker.cells = {}
+
     picker.title = picker:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     picker.title:SetPoint("TOPLEFT", 16, -12)
-    ns:CreateMaterialButton(picker, "X", 26, 24, 416, -8, "CORAL", function()
+
+    ns:CreateMaterialButton(picker, "X", 26, 22, 476, -8, "CORAL", function()
         picker:Hide()
         if picker.returnFocusWidget and picker.returnFocusWidget:IsVisible() then
             ns:SetControllerFocus(picker.returnFocusWidget)
@@ -1038,17 +1346,48 @@ function ns:InitControllerUI()
         end
     end)
 
-    local function ApplyPickedIcon(iconName)
-        if not iconName or iconName == "" then return end
+    picker.curatedBtn = ns:CreateMaterialButton(picker, "Curated RP", 118, 24, 16, -34, "PRIMARY", function()
+        picker.sourceMode = "CURATED"
+        picker.page = 1
+        picker:RebuildFilter()
+    end)
+
+    picker.nativeBtn = ns:CreateMaterialButton(picker, "All WoW Icons", 142, 24, 140, -34, nil, function()
+        picker.sourceMode = "NATIVE"
+        picker.page = 1
+        picker:RebuildFilter()
+    end)
+
+    picker.searchBox = ns:CreateMaterialEditBox(picker, nil, "Search (e.g., sword, fire, book, ring, id)...", 288, -34, 162, 24, function(txt)
+        picker.searchQuery = txt or ""
+        picker.page = 1
+        picker:RebuildFilter()
+    end)
+    picker.searchBox:SetScript("OnTextChanged", function(self)
+        picker.searchQuery = self:GetText() or ""
+        picker.page = 1
+        picker:RebuildFilter()
+    end)
+
+    ns:CreateMaterialButton(picker, "Clr", 40, 24, 456, -34, nil, function()
+        picker.searchBox:SetCleanText("")
+        picker.searchQuery = ""
+        picker.page = 1
+        picker:RebuildFilter()
+    end)
+
+    local function ApplyPickedIcon(iconValue)
+        local clean = strtrim(tostring(iconValue or ""))
+        if clean == "" then return end
         if picker.mode == "PORTRAIT" then
-            ns.profile.icon = iconName
+            ns.profile.icon = clean
             RefreshHeaderBanner()
             ns:RefreshControllerUI()
             ns:ShowStatusToast("Portrait icon updated!")
         else
             local slot = picker.targetSlot or 1
             if ns.profile.glances[slot] then
-                ns.profile.glances[slot].icon = iconName
+                ns.profile.glances[slot].icon = clean
             end
             LoadGlancesPageIntoUI()
             ns:ShowStatusToast("Glance #" .. slot .. " icon updated!")
@@ -1063,75 +1402,158 @@ function ns:InitControllerUI()
         end
     end
 
-    local ICONS_PER_PAGE = 32
+    local ICONS_PER_PAGE = 40
     for idx = 1, ICONS_PER_PAGE do
         local col, row = (idx - 1) % 8, math.floor((idx - 1) / 8)
         local cell = CreateFrame("Button", nil, picker, "BackdropTemplate")
-        cell:SetSize(46, 46)
-        cell:SetPoint("TOPLEFT", 16 + col * 53, -40 - row * 51)
+        cell:SetSize(50, 48)
+        cell:SetPoint("TOPLEFT", 16 + col * 60, -66 - row * 52)
         ns:ApplySurface(cell, M3.surface, M3.outline)
         cell.tex = cell:CreateTexture(nil, "ARTWORK")
-        cell.tex:SetSize(38, 38)
+        cell.tex:SetSize(40, 40)
         cell.tex:SetPoint("CENTER")
         cell.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        cell:SetScript("OnEnter", function(self) ns:SetControllerFocus(self) end)
+        cell:SetScript("OnEnter", function(self)
+            ns:SetControllerFocus(self)
+            if self.iconName then
+                picker.hoverLabel:SetText("|cff8ab4f8Selected:|r |cffe8eaed" .. tostring(self.iconName) .. "|r")
+            end
+        end)
         cell:SetScript("OnClick", function(self)
             if not self.iconName then return end
             ns:PlayUISound()
             ApplyPickedIcon(self.iconName)
         end)
-        ns:RegisterFocusable(cell, function() cell:Click("LeftButton") end)
+        ns:RegisterFocusable(cell, function() cell:Click("LeftButton") end, function(self, isFocused)
+            if isFocused then
+                self:SetBackdropColor(unpack(M3.surfaceBright))
+                self:SetBackdropBorderColor(unpack(M3.primary))
+                if self.iconName then
+                    picker.hoverLabel:SetText("|cff8ab4f8Selected:|r |cffe8eaed" .. tostring(self.iconName) .. "|r")
+                end
+            else
+                self:SetBackdropColor(unpack(M3.surface))
+                self:SetBackdropBorderColor(unpack(M3.outline))
+            end
+        end)
         picker.cells[idx] = cell
     end
-    ns:CreateMaterialButton(picker, "< Page 1", 86, 26, 16, -248, nil, function() picker.page = 1; picker:RefreshGrid() end)
+
+    picker.hoverLabel = picker:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    picker.hoverLabel:SetPoint("TOPLEFT", 16, -328)
+    picker.hoverLabel:SetPoint("TOPRIGHT", -16, -328)
+    picker.hoverLabel:SetJustifyH("LEFT")
+    picker.hoverLabel:SetWordWrap(false)
+
+    ns:CreateMaterialButton(picker, "<< -10", 58, 24, 16, -346, nil, function() picker:StepPage(-10) end)
+    ns:CreateMaterialButton(picker, "< [LB]", 62, 24, 80, -346, nil, function() picker:StepPage(-1) end)
+
     picker.pageText = picker:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    picker.pageText:SetPoint("TOPLEFT", 112, -255)
-    ns:CreateMaterialButton(picker, "Page 2 >", 86, 26, 182, -248, nil, function() picker.page = 2; picker:RefreshGrid() end)
-    picker.customBox = ns:CreateMaterialEditBox(picker, nil, "Or type icon name...", 16, -280, 318, 26)
-    ns:CreateMaterialButton(picker, "Use Custom", 96, 26, 342, -280, "PRIMARY", function()
+    picker.pageText:SetPoint("TOPLEFT", 148, -352)
+    picker.pageText:SetWidth(216)
+    picker.pageText:SetJustifyH("CENTER")
+
+    ns:CreateMaterialButton(picker, "[RB] >", 62, 24, 370, -346, nil, function() picker:StepPage(1) end)
+    ns:CreateMaterialButton(picker, "+10 >>", 58, 24, 438, -346, nil, function() picker:StepPage(10) end)
+
+    picker.customBox = ns:CreateMaterialEditBox(picker, nil, "Or enter custom icon name / FileDataID...", 16, -376, 374, 24)
+    ns:CreateMaterialButton(picker, "Use Custom", 100, 24, 396, -376, "PRIMARY", function()
         local raw = strtrim(picker.customBox:GetText() or "")
         if raw ~= "" then ApplyPickedIcon(raw) end
     end)
+
+    picker.StepPage = function(self, delta)
+        local totalPages = math.max(1, math.ceil(#self.filteredIcons / ICONS_PER_PAGE))
+        self.page = math.max(1, math.min(totalPages, self.page + (delta or 1)))
+        self:RefreshGrid()
+    end
+
+    picker.RebuildFilter = function(self)
+        wipe(self.filteredIcons)
+        local pool = (self.sourceMode == "NATIVE") and EnsureNativeIconPool() or CURATED_RP_ICONS
+        local q = strtrim(string.lower(self.searchQuery or ""))
+
+        if q == "" then
+            for _, ic in ipairs(pool) do
+                table.insert(self.filteredIcons, ic)
+            end
+        else
+            for _, ic in ipairs(pool) do
+                if string.find(string.lower(tostring(ic)), q, 1, true) then
+                    table.insert(self.filteredIcons, ic)
+                end
+            end
+        end
+
+        self.curatedBtn:SetTone(self.sourceMode == "CURATED" and "PRIMARY" or nil)
+        self.nativeBtn:SetTone(self.sourceMode == "NATIVE" and "PRIMARY" or nil)
+        self.curatedBtn:SetText(string.format("Curated RP (%d)", #CURATED_RP_ICONS))
+        if nativeIconPool then
+            self.nativeBtn:SetText(string.format("All WoW (%d)", #nativeIconPool))
+        else
+            self.nativeBtn:SetText("All WoW Icons")
+        end
+
+        self:RefreshGrid()
+    end
+
     picker.RefreshGrid = function(self)
         local currentIcon
         if self.mode == "PORTRAIT" then
-            currentIcon = (ns.profile and ns.profile.icon) or "INV_Helmet_46"
+            currentIcon = tostring((ns.profile and ns.profile.icon) or "INV_Helmet_46")
             self.title:SetText("|cff8ab4f8SELECT CHARACTER PORTRAIT ICON|r")
         else
             local slot = self.targetSlot or 1
-            currentIcon = (ns.profile.glances[slot] and ns.profile.glances[slot].icon) or GLANCE_ICONS[1]
+            currentIcon = tostring((ns.profile.glances[slot] and ns.profile.glances[slot].icon) or CURATED_RP_ICONS[1])
             self.title:SetText("|cff8ab4f8SELECT ICON FOR GLANCE #" .. slot .. "|r")
         end
-        self.pageText:SetText(string.format("Page %d / 2", self.page))
-        self.customBox:SetCleanText(currentIcon)
+
+        local total = #self.filteredIcons
+        local totalPages = math.max(1, math.ceil(total / ICONS_PER_PAGE))
+        self.page = math.max(1, math.min(totalPages, self.page))
+        self.pageText:SetText(string.format("Page %d / %d  (|cff9aa0a6%d icons|r)", self.page, totalPages, total))
+        if not self.customBox:HasFocus() then
+            self.customBox:SetCleanText(currentIcon)
+        end
+        self.hoverLabel:SetText("|cff8ab4f8Current:|r |cffe8eaed" .. currentIcon .. "|r")
+
         local startIndex = (self.page - 1) * ICONS_PER_PAGE
         for i = 1, ICONS_PER_PAGE do
             local cell = self.cells[i]
-            local iconName = GLANCE_ICONS[startIndex + i]
+            local iconName = self.filteredIcons[startIndex + i]
             if iconName then
                 cell.iconName = iconName
-                cell.tex:SetTexture("Interface\\Icons\\" .. iconName)
+                SetIconTextureSafe(cell.tex, iconName, CURATED_RP_ICONS[1])
                 cell:Show()
             else
+                cell.iconName = nil
                 cell:Hide()
             end
         end
     end
+
     picker.OpenForSlot = function(self, slotIndex, returnWidget)
         self.mode, self.targetSlot, self.page, self.returnFocusWidget = "GLANCE", slotIndex, 1, returnWidget
-        self:RefreshGrid()
+        self.searchQuery = ""
+        self.searchBox:SetCleanText("")
+        self:RebuildFilter()
         self:Show()
-        ns:SetControllerFocus(self.cells[1])
+        ns:SetControllerFocus(self.cells[1]:IsShown() and self.cells[1] or self.searchBox)
     end
+
     picker.OpenForPortrait = function(self, returnWidget)
         self.mode, self.page, self.returnFocusWidget = "PORTRAIT", 1, returnWidget
-        self:RefreshGrid()
+        self.searchQuery = ""
+        self.searchBox:SetCleanText("")
+        self:RebuildFilter()
         self:Show()
-        ns:SetControllerFocus(self.cells[1])
+        ns:SetControllerFocus(self.cells[1]:IsShown() and self.cells[1] or self.searchBox)
     end
     mainFrame.iconPicker = picker
 
-    -- HEADER BAR
+    -- =========================================================
+    -- HEADER BAR (RIGHT-ANCHORED CONTROLS SO NAME/TITLE EXPAND)
+    -- =========================================================
     local banner = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
     banner:SetHeight(56)
     banner:SetPoint("TOPLEFT", 12, -12)
@@ -1151,22 +1573,6 @@ function ns:InitControllerUI()
     portraitBtn:SetScript("OnEnter", function(self) ns:SetControllerFocus(self) end)
     portraitBtn:SetScript("OnClick", function(self) ns:PlayUISound(); picker:OpenForPortrait(self) end)
     ns:RegisterFocusable(portraitBtn, function() portraitBtn:Click("LeftButton") end)
-
-    mainFrame.bannerName = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    mainFrame.bannerName:SetPoint("TOPLEFT", 56, -9)
-    mainFrame.bannerName:SetWidth(142)
-    mainFrame.bannerName:SetJustifyH("LEFT")
-    mainFrame.bannerName:SetWordWrap(false)
-
-    mainFrame.bannerTitle = banner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    mainFrame.bannerTitle:SetPoint("TOPLEFT", 56, -32)
-    mainFrame.bannerTitle:SetWidth(142)
-    mainFrame.bannerTitle:SetJustifyH("LEFT")
-    mainFrame.bannerTitle:SetWordWrap(false)
-
-    ns:CreateMaterialButton(banner, "<", 20, 24, 202, -16, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(-1) end)
-    mainFrame.profChip = ns:CreateMaterialButton(banner, "Profile", 84, 24, 224, -16, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
-    ns:CreateMaterialButton(banner, ">", 20, 24, 310, -16, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
 
     local closeBtn = ns:CreateMaterialButton(banner, "X", 26, 32, 0, -12, "CORAL", function() mainFrame:Hide() end)
     closeBtn:ClearAllPoints()
@@ -1201,6 +1607,30 @@ function ns:InitControllerUI()
     walkUpBtn:ClearAllPoints()
     walkUpBtn:SetPoint("RIGHT", icSwitch, "LEFT", -6, 0)
     mainFrame.walkUpBtn = walkUpBtn
+
+    local profNextBtn = ns:CreateMaterialButton(banner, ">", 20, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
+    profNextBtn:ClearAllPoints()
+    profNextBtn:SetPoint("RIGHT", walkUpBtn, "LEFT", -8, 0)
+
+    mainFrame.profChip = ns:CreateMaterialButton(banner, "Profile", 84, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
+    mainFrame.profChip:ClearAllPoints()
+    mainFrame.profChip:SetPoint("RIGHT", profNextBtn, "LEFT", -2, 0)
+
+    local profPrevBtn = ns:CreateMaterialButton(banner, "<", 20, 24, 0, 0, nil, function() CommitModifiedBoxesToProfile(false); ns:CycleProfile(-1) end)
+    profPrevBtn:ClearAllPoints()
+    profPrevBtn:SetPoint("RIGHT", mainFrame.profChip, "LEFT", -2, 0)
+
+    mainFrame.bannerName = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    mainFrame.bannerName:SetPoint("TOPLEFT", banner, "TOPLEFT", 56, -9)
+    mainFrame.bannerName:SetPoint("RIGHT", profPrevBtn, "LEFT", -8, 0)
+    mainFrame.bannerName:SetJustifyH("LEFT")
+    mainFrame.bannerName:SetWordWrap(false)
+
+    mainFrame.bannerTitle = banner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    mainFrame.bannerTitle:SetPoint("TOPLEFT", banner, "TOPLEFT", 56, -32)
+    mainFrame.bannerTitle:SetPoint("RIGHT", profPrevBtn, "LEFT", -8, 0)
+    mainFrame.bannerTitle:SetJustifyH("LEFT")
+    mainFrame.bannerTitle:SetWordWrap(false)
 
     -- 6 CORE TABS + CONDITIONAL 7TH DEV TAB
     local tabTitles = { "[LB] Identity", "First Glances", "Bio & Lore", "Directory", "Gratitude", "Settings [RB]", "Dev" }
@@ -1256,7 +1686,6 @@ function ns:InitControllerUI()
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
     end)
-    p1.detailSubBtn:SetPoint("TOPRIGHT", p1, "TOPRIGHT", -16, -10)
 
     local pageCore = CreateFrame("Frame", nil, p1)
     pageCore:SetPoint("TOPLEFT", 0, -38)
@@ -1267,22 +1696,19 @@ function ns:InitControllerUI()
     p1.fnBox = ns:CreateMaterialEditBox(pageCore, "First Name", "e.g., Malachar", 122, -6, 150, 28, AutoCommitTab1)
     p1.lnBox = ns:CreateMaterialEditBox(pageCore, "Last Name", "e.g., Gray", 282, -6, 150, 28, AutoCommitTab1)
     p1.tiBox = ns:CreateMaterialEditBox(pageCore, "Full RP Title", "e.g., Master Arcanist", 442, -6, 198, 28, AutoCommitTab1)
-    p1.tiBox:SetPoint("TOPRIGHT", pageCore, "TOPRIGHT", -16, -21)
 
     p1.raBox = ns:CreateMaterialEditBox(pageCore, "RP Race (Blank = Default)", "e.g., Human", 16, -58, 196, 28, AutoCommitTab1)
     p1.clBox = ns:CreateMaterialEditBox(pageCore, "RP Class / Occupation", "e.g., Warlock", 222, -58, 204, 28, AutoCommitTab1)
     p1.prBox = ns:CreateMaterialEditBox(pageCore, "Pronouns", "e.g., He/Him", 436, -58, 204, 28, AutoCommitTab1)
-    p1.prBox:SetPoint("TOPRIGHT", pageCore, "TOPRIGHT", -16, -73)
 
     p1.agBox = ns:CreateMaterialEditBox(pageCore, "Age", "e.g., 32", 16, -110, 145, 28, AutoCommitTab1)
     p1.htBox = ns:CreateMaterialEditBox(pageCore, "Height", "e.g., 6'0\" / Tall", 171, -110, 145, 28, AutoCommitTab1)
     p1.wtBox = ns:CreateMaterialEditBox(pageCore, "Build / Body Shape", "e.g., Athletic", 326, -110, 152, 28, AutoCommitTab1)
     p1.eyBox = ns:CreateMaterialEditBox(pageCore, "Eye Color", "e.g., Pale amber", 488, -110, 152, 28, AutoCommitTab1)
-    p1.eyBox:SetPoint("TOPRIGHT", pageCore, "TOPRIGHT", -16, -125)
 
     p1.cuBox = ns:CreateMaterialEditBox(pageCore, "Currently (Select Preset, Cycle, or Type Custom)", "What is your character doing right now?", 16, -162, 336, 28, AutoCommitTab1)
 
-    p1.presetBtn = ns:CreateMaterialButton(pageCore, "Presets [v]", 84, 28, 358, -177, "AMBER", function()
+    p1.presetBtn = ns:CreateMaterialButton(pageCore, "Presets [v]", 82, 28, 358, -177, "AMBER", function()
         if mainFrame.presetDropdown:IsShown() then
             mainFrame.presetDropdown:Hide()
             ns:SetControllerFocus(p1.presetBtn)
@@ -1293,12 +1719,12 @@ function ns:InitControllerUI()
             ns:FocusFirstInScope()
         end
     end)
-    ns:CreateMaterialButton(pageCore, "Cycle", 62, 28, 448, -177, "PRIMARY", function()
+    p1.cycleCuBtn = ns:CreateMaterialButton(pageCore, "Cycle", 58, 28, 448, -177, "PRIMARY", function()
         ns:CycleCurrentlyPreset()
         p1.cuBox:SetCleanText(ns.profile.currently or "")
         ns:ShowStatusToast("Cycled Currently status")
     end)
-    ns:CreateMaterialButton(pageCore, "+ Save", 62, 28, 516, -177, "MINT", function()
+    p1.savePresetBtn = ns:CreateMaterialButton(pageCore, "+ Save", 60, 28, 516, -177, "MINT", function()
         local customTxt = strtrim(p1.cuBox:GetText() or "")
         if customTxt == "" then return end
         for _, existing in ipairs(ns.db.currentlyPresets) do
@@ -1311,7 +1737,7 @@ function ns:InitControllerUI()
         if mainFrame.presetDropdown:IsShown() then mainFrame.presetDropdown:Rebuild() end
         ns:ShowStatusToast("Added new Currently preset!")
     end)
-    ns:CreateMaterialButton(pageCore, "Clear", 56, 28, 584, -177, nil, function()
+    p1.clearCuBtn = ns:CreateMaterialButton(pageCore, "Clear", 54, 28, 584, -177, nil, function()
         p1.cuBox:SetCleanText("")
         ns.profile.currently = ""
         ns:SnapshotActiveProfile()
@@ -1320,7 +1746,6 @@ function ns:InitControllerUI()
     end)
 
     p1.oocBox = ns:CreateMaterialEditBox(pageCore, "Out-of-Character (OOC) Note & RP Preferences", "e.g., Playing on controller.", 16, -218, 624, 28, AutoCommitTab1)
-    p1.oocBox:SetPoint("TOPRIGHT", pageCore, "TOPRIGHT", -16, -233)
 
     local dropdown = CreateFrame("Frame", nil, pageCore, "BackdropTemplate")
     dropdown:SetSize(426, 194)
@@ -1387,11 +1812,9 @@ function ns:InitControllerUI()
     p1.niBox = ns:CreateMaterialEditBox(pageDetails, "Nickname", "e.g., Kiyaskiw", 16, -6, 196, 28, AutoCommitTab1)
     p1.hoBox = ns:CreateMaterialEditBox(pageDetails, "House / Clan / Guild Name", "e.g., House Gray", 222, -6, 204, 28, AutoCommitTab1)
     p1.moBox = ns:CreateMaterialEditBox(pageDetails, "Motto / Catchphrase", "e.g., It isn't fraud if they're impressed.", 436, -6, 204, 28, AutoCommitTab1)
-    p1.moBox:SetPoint("TOPRIGHT", pageDetails, "TOPRIGHT", -16, -21)
 
     p1.hbBox = ns:CreateMaterialEditBox(pageDetails, "Birthplace", "e.g., Lordaeron (Allegedly)", 16, -60, 306, 28, AutoCommitTab1)
     p1.hhBox = ns:CreateMaterialEditBox(pageDetails, "Residence", "e.g., The Mage Quarter, Stormwind", 334, -60, 306, 28, AutoCommitTab1)
-    p1.hhBox:SetPoint("TOPRIGHT", pageDetails, "TOPRIGHT", -16, -75)
 
     p1.relBtn = ns:CreateMaterialButton(pageDetails, "Relationship: Not Specified", 306, 30, 16, -118, "AMBER", function()
         local code = ns:CycleRelationshipStatus()
@@ -1403,16 +1826,14 @@ function ns:InitControllerUI()
         ns:RefreshControllerUI()
         ns:ShowStatusToast("RP Style: " .. ns:GetRPStyleLabel(code))
     end)
-    p1.styleBtn:SetPoint("TOPRIGHT", pageDetails, "TOPRIGHT", -16, -118)
 
     p1.portraitPickBtn = ns:CreateMaterialButton(pageDetails, "Character Portrait Icon", 624, 30, 16, -158, nil, function(self)
         picker:OpenForPortrait(self)
     end)
-    p1.portraitPickBtn:SetPoint("TOPRIGHT", pageDetails, "TOPRIGHT", -16, -158)
 
     p1.profNameBox = ns:CreateMaterialEditBox(pageDetails, "Active Profile Name", "e.g., Main Character", 16, -206, 250, 28, AutoCommitTab1)
-    ns:CreateMaterialButton(pageDetails, "+ New Profile", 175, 28, 278, -221, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
-    p1.delProfBtn = ns:CreateMaterialButton(pageDetails, "Delete Active Profile", 178, 28, 462, -221, "CORAL", function(self)
+    p1.newProfBtn = ns:CreateMaterialButton(pageDetails, "+ New Profile", 148, 28, 278, -221, "PRIMARY", function() CommitModifiedBoxesToProfile(false); ns:CreateNewProfile() end)
+    p1.delProfBtn = ns:CreateMaterialButton(pageDetails, "Delete Active Profile", 166, 28, 462, -221, "CORAL", function(self)
         local now = GetTime()
         if now < confirmDeleteProfileUntil then
             confirmDeleteProfileUntil = 0
@@ -1494,10 +1915,9 @@ function ns:InitControllerUI()
         end)
         ns:RegisterFocusable(iconBtn, function() iconBtn:Click("LeftButton") end)
 
-        card.titleBox = ns:CreateMaterialEditBox(card, "1. Short Hook / Trait Name", "", 76, -12, 180, 28, AutoCommitGlances)
-        card.detailBox = ns:CreateMaterialEditBox(card, "2. Tooltip Description", "", 268, -12, 286, 28, AutoCommitGlances)
-        card.detailBox:SetPoint("TOPRIGHT", card, "TOPRIGHT", -68, -27)
-        local clrBtn = ns:CreateMaterialButton(card, "Clear", 50, 28, 0, 0, nil, function()
+        card.titleBox = ns:CreateMaterialEditBox(card, "1. Short Hook / Trait Name", "", 74, -12, 180, 28, AutoCommitGlances)
+        card.detailBox = ns:CreateMaterialEditBox(card, "2. Tooltip Description", "", 264, -12, 286, 28, AutoCommitGlances)
+        card.clrBtn = ns:CreateMaterialButton(card, "Clear", 52, 28, 560, -27, nil, function()
             local slot = card.slotIndex
             card.titleBox:SetCleanText("")
             card.detailBox:SetCleanText("")
@@ -1507,8 +1927,6 @@ function ns:InitControllerUI()
             ns:SnapshotActiveProfile()
             ns:SyncMSP()
         end)
-        clrBtn:ClearAllPoints()
-        clrBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, -27)
         p2.cards[i] = card
     end
 
@@ -1534,7 +1952,7 @@ function ns:InitControllerUI()
         p3.bioEditor:SetCleanText(ns.profile.history)
         ns:RefreshControllerUI()
     end)
-    p3.clearBioBtn = ns:CreateMaterialButton(p3, "Clear Text", 100, 32, 540, -12, "CORAL", function(self)
+    p3.clearBioBtn = ns:CreateMaterialButton(p3, "Clear Text", 104, 32, 540, -12, "CORAL", function(self)
         local now = GetTime()
         if now < confirmClearBioUntil then
             confirmClearBioUntil = 0
@@ -1548,8 +1966,6 @@ function ns:InitControllerUI()
             self:SetText("|cfff28b82Confirm?|r")
         end
     end)
-    p3.clearBioBtn:ClearAllPoints()
-    p3.clearBioBtn:SetPoint("TOPRIGHT", p3, "TOPRIGHT", -16, -12)
     p3.sectionHint = p3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     p3.sectionHint:SetPoint("TOPLEFT", 16, -52)
     p3.bioEditor = ns:CreateScrollableTextEditor(p3, "", 16, -72, 624, 268, function() CommitModifiedBoxesToProfile(false) end)
@@ -1593,7 +2009,7 @@ function ns:InitControllerUI()
         ns:RefreshTargetCard()
     end)
 
-    p4.notesOnlyBtn = ns:CreateMaterialButton(p4, "[ ] Notes Only", 104, 26, 272, -38, nil, function()
+    p4.notesOnlyBtn = ns:CreateMaterialButton(p4, "[ ] Notes Only", 102, 26, 272, -38, nil, function()
         knownNotesOnly = not knownNotesOnly
         knownListPage = 1
         ns:RefreshTargetCard()
@@ -1605,22 +2021,18 @@ function ns:InitControllerUI()
         ns:RefreshTargetCard()
     end)
 
-    local nextPageBtn = ns:CreateMaterialButton(p4, "Next >", 54, 26, 0, 0, nil, function()
-        knownListPage = knownListPage + 1
-        ns:RefreshTargetCard()
-    end)
-    nextPageBtn:ClearAllPoints()
-    nextPageBtn:SetPoint("TOPRIGHT", p4, "TOPRIGHT", -16, -38)
-
-    p4.pageLabel = p4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p4.pageLabel:SetPoint("RIGHT", nextPageBtn, "LEFT", -6, 0)
-
-    local prevPageBtn = ns:CreateMaterialButton(p4, "< Prev", 54, 26, 0, 0, nil, function()
+    p4.prevPageBtn = ns:CreateMaterialButton(p4, "< Prev", 54, 26, 478, -38, nil, function()
         knownListPage = math.max(1, knownListPage - 1)
         ns:RefreshTargetCard()
     end)
-    prevPageBtn:ClearAllPoints()
-    prevPageBtn:SetPoint("RIGHT", p4.pageLabel, "LEFT", -6, 0)
+
+    p4.pageLabel = p4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p4.pageLabel:SetJustifyH("CENTER")
+
+    p4.nextPageBtn = ns:CreateMaterialButton(p4, "Next >", 54, 26, 586, -38, nil, function()
+        knownListPage = knownListPage + 1
+        ns:RefreshTargetCard()
+    end)
 
     p4.knownRows = {}
     for i = 1, 8 do
@@ -1654,7 +2066,6 @@ function ns:InitControllerUI()
             ns:FocusFirstInScope()
         end
     end)
-    p5.modeBtn:SetPoint("TOPRIGHT", p5, "TOPRIGHT", -16, -10)
     p5.modeBtn.label:SetJustifyH("LEFT")
 
     local modeDropdown = CreateFrame("Frame", nil, p5, "BackdropTemplate")
@@ -1693,15 +2104,15 @@ function ns:InitControllerUI()
     p5.specialBtn = ns:CreateMaterialButton(p5, "Portals/CDs", 124, 26, 394, -46, nil, function() ns.db.gratitude.thankSpecial = not ns.db.gratitude.thankSpecial; RefreshGratitudeStudio() end)
     p5.sessionBtn = ns:CreateMaterialButton(p5, "1x/Session", 114, 26, 526, -46, nil, function() ns.db.gratitude.oncePerSession = not ns.db.gratitude.oncePerSession; RefreshGratitudeStudio() end)
 
-    ns:CreateMaterialButton(p5, "-15s", 52, 24, 16, -78, nil, function() ns.db.gratitude.cooldown = math.max(15, (ns.db.gratitude.cooldown or 60) - 15); RefreshGratitudeStudio() end)
+    p5.cdMinusBtn = ns:CreateMaterialButton(p5, "-15s", 52, 24, 16, -78, nil, function() ns.db.gratitude.cooldown = math.max(15, (ns.db.gratitude.cooldown or 60) - 15); RefreshGratitudeStudio() end)
     p5.cdLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p5.cdLabel:SetPoint("TOPLEFT", 78, -84)
-    ns:CreateMaterialButton(p5, "+15s", 52, 24, 185, -78, nil, function() ns.db.gratitude.cooldown = math.min(600, (ns.db.gratitude.cooldown or 60) + 15); RefreshGratitudeStudio() end)
+    p5.cdLabel:SetJustifyH("CENTER")
+    p5.cdPlusBtn = ns:CreateMaterialButton(p5, "+15s", 52, 24, 185, -78, nil, function() ns.db.gratitude.cooldown = math.min(600, (ns.db.gratitude.cooldown or 60) + 15); RefreshGratitudeStudio() end)
 
-    ns:CreateMaterialButton(p5, "-5%", 52, 24, 332, -78, nil, function() ns.db.gratitude.minHealPercent = math.max(1, (ns.db.gratitude.minHealPercent or 15) - 5); RefreshGratitudeStudio() end)
+    p5.healMinusBtn = ns:CreateMaterialButton(p5, "-5%", 52, 24, 332, -78, nil, function() ns.db.gratitude.minHealPercent = math.max(1, (ns.db.gratitude.minHealPercent or 15) - 5); RefreshGratitudeStudio() end)
     p5.healPctLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p5.healPctLabel:SetPoint("TOPLEFT", 396, -84)
-    ns:CreateMaterialButton(p5, "+5%", 52, 24, 520, -78, nil, function() ns.db.gratitude.minHealPercent = math.min(80, (ns.db.gratitude.minHealPercent or 15) + 5); RefreshGratitudeStudio() end)
+    p5.healPctLabel:SetJustifyH("CENTER")
+    p5.healPlusBtn = ns:CreateMaterialButton(p5, "+5%", 52, 24, 520, -78, nil, function() ns.db.gratitude.minHealPercent = math.min(80, (ns.db.gratitude.minHealPercent or 15) + 5); RefreshGratitudeStudio() end)
 
     p5.poolToggleBtn = ns:CreateMaterialButton(p5, "Phrase Pool [v]", 336, 26, 16, -110, "AMBER", function()
         if mainFrame.modeDropdown then mainFrame.modeDropdown:Hide() end
@@ -1745,16 +2156,16 @@ function ns:InitControllerUI()
     end
     mainFrame.poolDropdown = poolDropdown
 
-    ns:CreateMaterialButton(p5, "+ Add Phrase", 104, 26, 358, -110, "PRIMARY", function()
+    p5.addPhraseBtn = ns:CreateMaterialButton(p5, "+ Add Phrase", 100, 26, 358, -110, "PRIMARY", function()
         local pool = GetActiveGratitudePool()
         table.insert(pool, "nods warmly to %name in thanks for the %spell.")
         editPhraseIdx = #pool
         RefreshGratitudeStudio()
     end)
-    ns:CreateMaterialButton(p5, "<", 28, 26, 468, -110, nil, function() editPhraseIdx = math.max(1, editPhraseIdx - 3); RefreshGratitudeStudio() end)
+    p5.prevPhraseBtn = ns:CreateMaterialButton(p5, "<", 28, 26, 468, -110, nil, function() editPhraseIdx = math.max(1, editPhraseIdx - 3); RefreshGratitudeStudio() end)
     p5.phrasePageLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p5.phrasePageLabel:SetPoint("TOPLEFT", 502, -117)
-    ns:CreateMaterialButton(p5, ">", 28, 26, 612, -110, nil, function()
+    p5.phrasePageLabel:SetJustifyH("CENTER")
+    p5.nextPhraseBtn = ns:CreateMaterialButton(p5, ">", 28, 26, 612, -110, nil, function()
         local pool = GetActiveGratitudePool()
         editPhraseIdx = math.min(#pool, editPhraseIdx + 3)
         RefreshGratitudeStudio()
@@ -1787,7 +2198,6 @@ function ns:InitControllerUI()
         local trimmed = strtrim(txt or "")
         if trimmed ~= "" then pool[editPhraseIdx] = trimmed; RefreshGratitudeStudio() end
     end)
-    p5.phraseBox:SetPoint("TOPRIGHT", p5, "TOPRIGHT", -16, -247)
 
     local tokens = {
         { label = "+ %name",     token = "%name" },
@@ -1796,8 +2206,9 @@ function ns:InitControllerUI()
         { label = "+ %class",    token = "%class" },
         { label = "+ %race",     token = "%race" },
     }
+    p5.tokenBtns = {}
     for idx, tk in ipairs(tokens) do
-        ns:CreateMaterialButton(p5, tk.label, 82, 26, 16 + (idx - 1) * 86, -284, nil, function()
+        p5.tokenBtns[idx] = ns:CreateMaterialButton(p5, tk.label, 82, 26, 16 + (idx - 1) * 86, -284, nil, function()
             local cur = p5.phraseBox:GetText() or ""
             local sep = (cur ~= "" and string.sub(cur, -1) ~= " ") and " " or ""
             p5.phraseBox:SetCleanText(cur .. sep .. tk.token)
@@ -1805,11 +2216,11 @@ function ns:InitControllerUI()
             RefreshGratitudeStudio()
         end)
     end
-    ns:CreateMaterialButton(p5, "Save Phrase", 92, 26, 448, -284, "MINT", function()
+    p5.savePhraseBtn = ns:CreateMaterialButton(p5, "Save Phrase", 90, 26, 448, -284, "MINT", function()
         local txt = strtrim(p5.phraseBox:GetText() or "")
         if txt ~= "" then GetActiveGratitudePool()[editPhraseIdx] = txt; RefreshGratitudeStudio() end
     end)
-    ns:CreateMaterialButton(p5, "Preview", 94, 26, 546, -284, "AMBER", function()
+    p5.previewBtn = ns:CreateMaterialButton(p5, "Preview", 84, 26, 546, -284, "AMBER", function()
         local preview = ns:FormatTokens(p5.phraseBox:GetText(), UnitExists("target") and "target" or "player", "Mark of the Wild")
         ns:LogNet("PREVIEW", "ff81c995", preview)
         ns:ShowStatusToast("Preview: " .. preview)
@@ -1821,13 +2232,13 @@ function ns:InitControllerUI()
 
     -- TAB 6: SETTINGS
     local p6 = tabPanels[6]
-    ns:CreateMaterialButton(p6, "Scale -", 78, 28, 16, -14, nil, function() ns.db.ui.scale = math.max(0.8, (ns.db.ui.scale or 1.0) - 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
+    p6.scaleMinusBtn = ns:CreateMaterialButton(p6, "Scale -", 68, 28, 16, -14, nil, function() ns.db.ui.scale = math.max(0.8, (ns.db.ui.scale or 1.0) - 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
     p6.scaleLabel = p6:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p6.scaleLabel:SetPoint("TOPLEFT", 104, -22)
-    ns:CreateMaterialButton(p6, "Scale +", 78, 28, 268, -14, nil, function() ns.db.ui.scale = math.min(1.3, (ns.db.ui.scale or 1.0) + 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
-    ns:CreateMaterialButton(p6, "Standard Size", 92, 28, 356, -14, nil, function() ns:SetWindowDimensions(680, 560) end)
-    ns:CreateMaterialButton(p6, "Wide Size", 92, 28, 454, -14, "PRIMARY", function() ns:SetWindowDimensions(820, 620) end)
-    ns:CreateMaterialButton(p6, "Large Size", 88, 28, 552, -14, "AMBER", function() ns:SetWindowDimensions(940, 700) end)
+    p6.scaleLabel:SetJustifyH("CENTER")
+    p6.scalePlusBtn = ns:CreateMaterialButton(p6, "Scale +", 68, 28, 268, -14, nil, function() ns.db.ui.scale = math.min(1.3, (ns.db.ui.scale or 1.0) + 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
+    p6.stdSizeBtn = ns:CreateMaterialButton(p6, "Standard", 88, 28, 356, -14, nil, function() ns:SetWindowDimensions(680, 560) end)
+    p6.wideSizeBtn = ns:CreateMaterialButton(p6, "Wide", 80, 28, 454, -14, "PRIMARY", function() ns:SetWindowDimensions(820, 620) end)
+    p6.largeSizeBtn = ns:CreateMaterialButton(p6, "Large", 80, 28, 552, -14, "AMBER", function() ns:SetWindowDimensions(940, 700) end)
 
     p6.minimapBtn   = ns:CreateMaterialButton(p6, "", 304, 28, 16, -50, nil, function() ns.db.ui.showMinimap = not ns.db.ui.showMinimap; ns:RefreshMinimapButton(); ns:RefreshControllerUI() end)
     p6.hudBtn       = ns:CreateMaterialButton(p6, "", 304, 28, 336, -50, nil, function() ns.db.ui.showTargetHUD = not ns.db.ui.showTargetHUD; ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
@@ -1847,7 +2258,7 @@ function ns:InitControllerUI()
     p6.chatRPBtn    = ns:CreateMaterialButton(p6, "", 304, 28, 16, -220, nil, function() ns.db.ui.chatRPNames = not ns.db.ui.chatRPNames; ns:RefreshControllerUI() end)
     p6.afkOOCBtn    = ns:CreateMaterialButton(p6, "", 304, 28, 336, -220, nil, function() ns.db.ui.autoAFKOOC = not ns.db.ui.autoAFKOOC; ns:RefreshControllerUI() end)
 
-    local openExpBtn = ns:CreateMaterialButton(p6, "Export / Import Profile String", 304, 30, 16, -260, "PRIMARY", function()
+    p6.openExpBtn = ns:CreateMaterialButton(p6, "Export / Import Profile String", 304, 30, 16, -260, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
         mainFrame.exportModal.box:SetCleanText(ns:ExportCurrentProfileString())
         mainFrame.exportModal:Show()
@@ -1868,7 +2279,7 @@ function ns:InitControllerUI()
     ns:EnableClipping(expModal)
     expModal:EnableMouse(true)
     expModal:Hide()
-    ns:CreateMaterialButton(expModal, "X", 28, 24, 520, -8, "CORAL", function() expModal:Hide(); ns:SetControllerFocus(openExpBtn) end)
+    ns:CreateMaterialButton(expModal, "X", 28, 24, 520, -8, "CORAL", function() expModal:Hide(); ns:SetControllerFocus(p6.openExpBtn) end)
     expModal.box = ns:CreateScrollableTextEditor(expModal, "Paste a PADRP5~ or PADRP4~ profile string here...", 16, -40, 528, 165)
     ns:CreateMaterialButton(expModal, "Highlight String for Copy", 258, 30, 16, -216, "AMBER", function()
         expModal.box:SetCleanText(ns:ExportCurrentProfileString())
@@ -1877,7 +2288,7 @@ function ns:InitControllerUI()
     end)
     ns:CreateMaterialButton(expModal, "Import String as New Profile", 258, 30, 286, -216, "MINT", function()
         local ok, msg = ns:ImportProfileString(strtrim(expModal.box:GetText() or ""))
-        if ok then expModal:Hide(); ns:SetControllerFocus(openExpBtn); ns:ShowStatusToast("Imported: " .. msg)
+        if ok then expModal:Hide(); ns:SetControllerFocus(p6.openExpBtn); ns:ShowStatusToast("Imported: " .. msg)
         else ns:ShowStatusToast(msg or "Import failed") end
     end)
     mainFrame.exportModal = expModal
@@ -1903,15 +2314,15 @@ function ns:InitControllerUI()
         ns:RefreshControllerUI()
     end)
 
-    ns:CreateMaterialButton(p7, "Pop-Out Inspector", 148, 28, 16, -68, "PRIMARY", function()
+    p7.popOutBtn = ns:CreateMaterialButton(p7, "Pop-Out Inspector", 148, 28, 16, -68, "PRIMARY", function()
         ns.mspDebug = true
         ns:ToggleNetInspector(true)
         ns:RefreshControllerUI()
     end)
-    ns:CreateMaterialButton(p7, "Sweep Nearby", 148, 28, 172, -68, "MINT", function()
+    p7.sweepDevBtn = ns:CreateMaterialButton(p7, "Sweep Nearby", 148, 28, 172, -68, "MINT", function()
         ns:ScanNearbyPlayers()
     end)
-    ns:CreateMaterialButton(p7, "Run Self-Test", 148, 28, 328, -68, "AMBER", function()
+    p7.selfTestBtn = ns:CreateMaterialButton(p7, "Run Self-Test", 148, 28, 328, -68, "AMBER", function()
         ns:RunMSPSelfTest()
     end)
 

@@ -96,7 +96,6 @@ local function EnsureBindingOwner()
     bindingOwner:RegisterEvent("PLAYER_REGEN_ENABLED")
     bindingOwner:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_REGEN_DISABLED" then
-            -- Immediately release controller overrides before combat lockdown engages
             ClearOverrideBindings(bindingOwner)
             pendingBindingSync = true
         elseif event == "PLAYER_REGEN_ENABLED" then
@@ -139,7 +138,6 @@ function ns:UpdateControllerBindings()
 end
 
 function ns:GetActiveModalScope()
-    -- Dossier sits above MainFrame (or opens standalone), so it takes focus priority when visible
     if ns.dossierFrame and ns.dossierFrame:IsShown() then
         return ns.dossierFrame
     end
@@ -281,22 +279,29 @@ end
 
 function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, width, height, onCommit)
     local M3 = ns.M3
-    if labelText and labelText ~= "" then
-        local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        label:SetPoint("TOPLEFT", x, y)
-        label:SetText("|cff9aa0a6" .. labelText .. "|r")
-        y = y - 15
-    end
+    local hasLabel = (labelText and labelText ~= "")
+    local boxY = hasLabel and (y - 15) or y
 
     local box = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
     box:SetSize(width, height or 28)
-    box:SetPoint("TOPLEFT", x, y)
+    box:SetPoint("TOPLEFT", x, boxY)
     box:SetFontObject("ChatFontNormal")
     box:SetTextInsets(10, 10, 5, 6)
     box:SetAutoFocus(false)
     ns:ApplySurface(box, M3.surface, { 0, 0, 0, 0 })
     ns:EnableClipping(box)
     box.isDirty = false
+
+    -- Anchor label directly to the EditBox so responsive resizing moves & clips it automatically
+    if hasLabel then
+        local label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 0, 3)
+        label:SetWidth(width)
+        label:SetJustifyH("LEFT")
+        label:SetWordWrap(false)
+        label:SetText("|cff9aa0a6" .. labelText .. "|r")
+        box.fieldLabel = label
+    end
 
     box.bottomBar = box:CreateTexture(nil, "OVERLAY")
     box.bottomBar:SetHeight(2)
