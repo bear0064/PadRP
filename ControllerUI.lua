@@ -27,8 +27,6 @@ local lastConfirmTarget = nil
 local lastBackdoorToggleTime = 0
 local lastPickerApplyTime = 0
 local pickerReopenGuardUntil = 0
-local multiPressCount = 0
-local multiPressWindowUntil = 0
 local leftTriggerHeld = false
 
 local verifiedIconPool = nil
@@ -291,11 +289,13 @@ local function IsPlayerSelfKey(k)
     return false
 end
 
-local function SyncSelfColorToLocalCache()
-    if type(ns.mspCache) ~= "table" then return end
+local function SyncSelfProfileToLocalCache()
+    if type(ns.mspCache) ~= "table" or not ns.profile then return end
     local custom = NormalizeHex6(ns.profile and (ns.profile.classColorHex or ns.profile.nameColorHex))
+    local cuText = tostring(ns.profile.currently or "")
     for k, rec in pairs(ns.mspCache) do
         if type(rec) == "table" and IsPlayerSelfKey(k) then
+            rec.CU = cuText
             if rec.RC and strtrim(StripColorCodes(rec.RC)) ~= "" then
                 local plainRC = StripColorCodes(rec.RC)
                 rec.RC = custom and ("|cff" .. custom .. plainRC .. "|r") or plainRC
@@ -308,6 +308,7 @@ local function SyncSelfColorToLocalCache()
     end
     if ns.RefreshTargetHUD then ns:RefreshTargetHUD() end
     if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
+    if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
 end
 
 local function ApplySwatchVisual(swatch, hex6, isFocused)
@@ -1269,7 +1270,7 @@ local function CommitModifiedBoxesToProfile(forceAll)
     if changed then
         ns:SnapshotActiveProfile()
         ns:SyncMSP()
-        SyncSelfColorToLocalCache()
+        SyncSelfProfileToLocalCache()
     end
     return changed
 end
@@ -1709,9 +1710,8 @@ local function PersistColorSelection(mode, hex6, returnWidget)
         ns.profile.nameColorHex = hex6
         RefreshClassSwatchBox()
         RefreshHeaderBanner()
-        SyncSelfColorToLocalCache()
+        SyncSelfProfileToLocalCache()
         ns:RefreshTargetCard()
-        if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
     end
     if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
     if ns.SyncMSP then ns:SyncMSP() end
@@ -1756,9 +1756,8 @@ local function OpenNativeColorPicker(mode, returnWidget)
             ns.profile.nameColorHex = liveHex6
             RefreshClassSwatchBox()
             RefreshHeaderBanner()
-            SyncSelfColorToLocalCache()
+            SyncSelfProfileToLocalCache()
             ns:RefreshTargetCard()
-            if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
         end
     end
 
@@ -1774,9 +1773,8 @@ local function OpenNativeColorPicker(mode, returnWidget)
             ns.profile.nameColorHex = prevHex
             RefreshClassSwatchBox()
             RefreshHeaderBanner()
-            SyncSelfColorToLocalCache()
+            SyncSelfProfileToLocalCache()
             ns:RefreshTargetCard()
-            if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
         end
         if prevHex and ColorPickerFrame.SetColorRGB then
             local pr, pg, pb = HexToRGB(prevHex)
@@ -1886,22 +1884,8 @@ local function TriggerBackdoorToggle()
     ns:ToggleMainFrame()
 end
 
-local function RegisterMultiPressBackdoor()
-    local now = (GetTime and GetTime()) or 0
-    if now > (multiPressWindowUntil or 0) then
-        multiPressCount = 0
-    end
-    multiPressCount = multiPressCount + 1
-    multiPressWindowUntil = now + 0.45
-    if multiPressCount >= 2 then
-        multiPressCount = 0
-        multiPressWindowUntil = 0
-        TriggerBackdoorToggle()
-    end
-end
-
 function PadRP_ActionBarToggle()
-    RegisterMultiPressBackdoor()
+    TriggerBackdoorToggle()
 end
 
 local function InitControllerBackdoorChord()
@@ -2485,9 +2469,8 @@ function ns:InitControllerUI()
         if ns.SyncMSP then ns:SyncMSP() end
         RefreshClassSwatchBox()
         RefreshHeaderBanner()
-        SyncSelfColorToLocalCache()
+        SyncSelfProfileToLocalCache()
         ns:RefreshTargetCard()
-        if ns.RefreshDossierWindow then ns:RefreshDossierWindow() end
         ns:ShowStatusToast("Class & Name color reset to default")
     end)
     p1.prBox = ns:CreateMaterialEditBox(pageCore, "Pronouns", "e.g., He/Him", 436, -58, 204, 28, AutoCommitTab1)
@@ -2521,6 +2504,7 @@ function ns:InitControllerUI()
     p1.cycleCuBtn = ns:CreateMaterialButton(pageCore, "Cycle", 58, 28, 448, -177, "PRIMARY", function()
         ns:CycleCurrentlyPreset()
         p1.cuBox:SetCleanText(ns.profile.currently or "")
+        SyncSelfProfileToLocalCache()
         ns:ShowStatusToast("Cycled Currently status")
     end)
     p1.savePresetBtn = ns:CreateMaterialButton(pageCore, "+ Save", 60, 28, 516, -177, "MINT", function()
@@ -2533,6 +2517,7 @@ function ns:InitControllerUI()
         ns.profile.currently = customTxt
         ns:SnapshotActiveProfile()
         ns:SyncMSP()
+        SyncSelfProfileToLocalCache()
         if mainFrame.presetDropdown:IsShown() then mainFrame.presetDropdown:Rebuild() end
         ns:ShowStatusToast("Added new Currently preset!")
     end)
@@ -2541,6 +2526,7 @@ function ns:InitControllerUI()
         ns.profile.currently = ""
         ns:SnapshotActiveProfile()
         ns:SyncMSP()
+        SyncSelfProfileToLocalCache()
         ns:ShowStatusToast("Cleared Currently status")
     end)
 
@@ -2580,6 +2566,7 @@ function ns:InitControllerUI()
                     p1.cuBox:SetCleanText(btn.presetText)
                     ns:SnapshotActiveProfile()
                     ns:SyncMSP()
+                    SyncSelfProfileToLocalCache()
                     dropdown:Hide()
                     ns:SetControllerFocus(p1.presetBtn)
                 end)
