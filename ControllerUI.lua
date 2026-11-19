@@ -573,7 +573,6 @@ local function UpdateResponsiveLayouts()
     if not mainFrame or not tabPanels[1] then return end
     UpdateControlStripLayout()
 
-    -- Tab 1: Core, Details, Extras/RP options
     local p1 = tabPanels[1]
     if p1 and p1.subTabCore then
         LayoutRow(p1, -10, {
@@ -672,28 +671,10 @@ local function UpdateResponsiveLayouts()
         end
     end
 
-    -- Tab 2: Profiles
-    local pProf = tabPanels[2]
-    if pProf and pProf.profNameBox then
-        LayoutRow(pProf, -26, {
-            { w = pProf.profNameBox, weight = 1 },
-            { w = pProf.newProfBtn,  fixed = 148 },
-            { w = pProf.delProfBtn,  fixed = 166 },
-        }, 16, 16, 10)
-
-        LayoutRow(pProf, -62, {
-            { w = pProf.exportBtn, weight = 1 },
-            { w = pProf.prevBtn,   fixed = 60 },
-            { w = pProf.pageLabel, fixed = 78, yOffset = -6 },
-            { w = pProf.nextBtn,   fixed = 60 },
-        }, 16, 16, 8)
-    end
-
-    -- Tab 3: First Glances
-    local p3 = tabPanels[3]
-    if p3 and p3.cards then
+    local p2 = tabPanels[2]
+    if p2 and p2.cards then
         for i = 1, 3 do
-            local card = p3.cards[i]
+            local card = p2.cards[i]
             if card then
                 LayoutRow(card, -27, {
                     { w = card.titleBox,  weight = 0.36 },
@@ -704,30 +685,43 @@ local function UpdateResponsiveLayouts()
         end
     end
 
-    -- Tab 4: Bio & Lore
-    local p4 = tabPanels[4]
-    if p4 and p4.appTabBtn then
-        LayoutRow(p4, -12, {
-            { w = p4.appTabBtn,   weight = 1 },
-            { w = p4.hisTabBtn,   weight = 1 },
-            { w = p4.clearBioBtn, fixed = 104 },
+    local p3 = tabPanels[3]
+    if p3 and p3.appTabBtn then
+        LayoutRow(p3, -12, {
+            { w = p3.appTabBtn,   weight = 1 },
+            { w = p3.hisTabBtn,   weight = 1 },
+            { w = p3.clearBioBtn, fixed = 104 },
         }, 16, 16, 8)
     end
 
-    -- Tab 5: Directory
-    local p5 = tabPanels[5]
-    if p5 and p5.searchBox then
-        LayoutRow(p5, -38, {
-            { w = p5.searchBox,    weight = 1 },
-            { w = p5.notesOnlyBtn, fixed = 102 },
-            { w = p5.sortBtn,      fixed = 90 },
-            { w = p5.prevPageBtn,  fixed = 54 },
-            { w = p5.pageLabel,    fixed = 74, yOffset = -6 },
-            { w = p5.nextPageBtn,  fixed = 54 },
+    local p4 = tabPanels[4]
+    if p4 and p4.searchBox then
+        LayoutRow(p4, -38, {
+            { w = p4.searchBox,    weight = 1 },
+            { w = p4.notesOnlyBtn, fixed = 102 },
+            { w = p4.sortBtn,      fixed = 90 },
+            { w = p4.prevPageBtn,  fixed = 54 },
+            { w = p4.pageLabel,    fixed = 74, yOffset = -6 },
+            { w = p4.nextPageBtn,  fixed = 54 },
         }, 16, 16, 6)
     end
 
-    -- Tab 6: Gratitude Studio
+    local pProf = tabPanels[5]
+    if pProf and pProf.profNameBox then
+        LayoutRow(pProf, -42, {
+            { w = pProf.profNameBox, weight = 1 },
+            { w = pProf.newProfBtn,  fixed = 148 },
+            { w = pProf.delProfBtn,  fixed = 166 },
+        }, 16, 16, 10)
+
+        LayoutRow(pProf, -80, {
+            { w = pProf.exportBtn, weight = 1 },
+            { w = pProf.prevBtn,   fixed = 60 },
+            { w = pProf.pageLabel, fixed = 78, yOffset = -6 },
+            { w = pProf.nextBtn,   fixed = 60 },
+        }, 16, 16, 8)
+    end
+
     local p6 = tabPanels[6]
     if p6 and p6.modeBtn then
         LayoutRow(p6, -10, {
@@ -781,7 +775,6 @@ local function UpdateResponsiveLayouts()
         LayoutRow(p6, -284, tokRow, 16, 16, 6)
     end
 
-    -- Tab 7: Settings
     local p7 = tabPanels[7]
     if p7 and p7.minimapBtn then
         LayoutRow(p7, -14, {
@@ -810,7 +803,6 @@ local function UpdateResponsiveLayouts()
         end
     end
 
-    -- Tab 8: Dev Tab
     local p8 = tabPanels[8]
     if p8 and p8.chkDebug then
         LayoutRow(p8, -34, {
@@ -969,7 +961,7 @@ local function GetFilteredKnownProfiles()
 end
 
 local function RefreshProfilesTab()
-    local pProf = tabPanels[2]
+    local pProf = tabPanels[5]
     if not pProf or not pProf.rows or not ns.db or not ns.db.profiles then return end
 
     local ids = {}
@@ -1273,6 +1265,10 @@ function ns:ControllerConfirmAction()
     elseif cur.Click then
         cur:Click("LeftButton")
     end
+
+    if cur and cur:IsVisible() and ns:GetActiveModalScope() == scope then
+        ns:SetControllerFocus(cur)
+    end
 end
 
 function ns:ControllerCancelAction()
@@ -1323,8 +1319,8 @@ local function GetActiveGratitudePool()
 end
 
 local function LoadGlancesPageIntoUI()
-    local p3 = tabPanels[3]
-    if not p3 or not p3.cards or not ns.profile then return end
+    local p2 = tabPanels[2]
+    if not p2 or not p2.cards or not ns.profile then return end
     local p = ns.profile
     local baseOffset = (activeGlancePage == 2) and 3 or 0
     local placeholders = {
@@ -1337,7 +1333,7 @@ local function LoadGlancesPageIntoUI()
 
     for i = 1, 3 do
         local slot = baseOffset + i
-        local card = p3.cards[i]
+        local card = p2.cards[i]
         if slot <= 5 then
             local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
             card.slotIndex = slot
@@ -1385,15 +1381,15 @@ function ns:LoadProfileIntoUI()
         p1.tatBox:SetCleanText(p.tattoos)
         p1.voiceBox:SetCleanText(p.voiceReference)
     end
-    if tabPanels[2] and tabPanels[2].profNameBox then
-        tabPanels[2].profNameBox:SetCleanText(p.profileName)
+    if tabPanels[5] and tabPanels[5].profNameBox then
+        tabPanels[5].profNameBox:SetCleanText(p.profileName)
     end
     RefreshEyeSwatchBox()
     RefreshClassSwatchBox()
     LoadGlancesPageIntoUI()
-    local p4 = tabPanels[4]
-    if p4 and p4.bioEditor then
-        p4.bioEditor:SetCleanText(activeBioMode == "APPEARANCE" and p.description or p.history)
+    local p3 = tabPanels[3]
+    if p3 and p3.bioEditor then
+        p3.bioEditor:SetCleanText(activeBioMode == "APPEARANCE" and p.description or p.history)
     end
 end
 
@@ -1436,7 +1432,7 @@ local function CommitModifiedBoxesToProfile(forceAll)
         CheckBox(p1.voiceBox, "voiceReference")
     end
 
-    local pProf = tabPanels[2]
+    local pProf = tabPanels[5]
     if pProf and pProf.profNameBox and (forceAll or pProf.profNameBox.isDirty) then
         local pName = strtrim(pProf.profNameBox:GetText() or "")
         if pName ~= "" then p.profileName = pName end
@@ -1444,10 +1440,10 @@ local function CommitModifiedBoxesToProfile(forceAll)
         changed = true
     end
 
-    local p3 = tabPanels[3]
-    if p3 and p3.cards then
+    local p2 = tabPanels[2]
+    if p2 and p2.cards then
         for i = 1, 3 do
-            local card = p3.cards[i]
+            local card = p2.cards[i]
             local slot = card and card.slotIndex
             if card and slot and card:IsShown() and p.glances[slot] then
                 if forceAll or card.titleBox.isDirty then
@@ -1464,11 +1460,11 @@ local function CommitModifiedBoxesToProfile(forceAll)
         end
     end
 
-    local p4 = tabPanels[4]
-    if p4 and p4.bioEditor and (forceAll or p4.bioEditor.isDirty) then
-        local text = p4.bioEditor:GetText()
+    local p3 = tabPanels[3]
+    if p3 and p3.bioEditor and (forceAll or p3.bioEditor.isDirty) then
+        local text = p3.bioEditor:GetText()
         if activeBioMode == "APPEARANCE" then p.description = text else p.history = text end
-        p4.bioEditor.isDirty = false
+        p3.bioEditor.isDirty = false
         changed = true
     end
 
@@ -1666,8 +1662,8 @@ local function FormatDirectoryRowText(k, d, item)
 end
 
 function ns:RefreshTargetCard()
-    if not mainFrame or not tabPanels[5] then return end
-    local p5 = tabPanels[5]
+    if not mainFrame or not tabPanels[4] then return end
+    local p4 = tabPanels[4]
 
     local entries = GetFilteredKnownProfiles()
     local perPage = 8
@@ -1675,17 +1671,17 @@ function ns:RefreshTargetCard()
     if knownListPage > totalPages then knownListPage = totalPages end
     if knownListPage < 1 then knownListPage = 1 end
 
-    p5.countLabel:SetText(string.format("|cff8ab4f8RP DIRECTORY (%d)|r  -  Select any player to open Dossier & Notes", #entries))
-    p5.pageLabel:SetText(string.format("Page %d / %d", knownListPage, totalPages))
+    p4.countLabel:SetText(string.format("|cff8ab4f8RP DIRECTORY (%d)|r  -  Select any player to open Dossier & Notes", #entries))
+    p4.pageLabel:SetText(string.format("Page %d / %d", knownListPage, totalPages))
 
-    p5.notesOnlyBtn:SetText(FormatCheckbox("Notes Only", knownNotesOnly, "ff81c995"))
-    p5.notesOnlyBtn:SetTone(knownNotesOnly and "MINT" or nil)
-    p5.sortBtn:SetText(knownSortMode == "RECENT" and "Sort: Recent" or "Sort: A-Z")
-    p5.sortBtn:SetTone(knownSortMode == "RECENT" and "PRIMARY" or nil)
+    p4.notesOnlyBtn:SetText(FormatCheckbox("Notes Only", knownNotesOnly, "ff81c995"))
+    p4.notesOnlyBtn:SetTone(knownNotesOnly and "MINT" or nil)
+    p4.sortBtn:SetText(knownSortMode == "RECENT" and "Sort: Recent" or "Sort: A-Z")
+    p4.sortBtn:SetTone(knownSortMode == "RECENT" and "PRIMARY" or nil)
 
     local startIdx = (knownListPage - 1) * perPage
     for i = 1, perPage do
-        local rowBtn = p5.knownRows[i]
+        local rowBtn = p4.knownRows[i]
         local item = entries[startIdx + i]
         if item then
             local k = item.key
@@ -1705,9 +1701,9 @@ function ns:RefreshTargetCard()
 end
 
 function ns:TrySeamlessDirectoryStep(rowIndex, dir)
-    if activeTab ~= 5 then return false end
-    local p5 = tabPanels[5]
-    if not p5 or not p5:IsShown() or not p5.knownRows then return false end
+    if activeTab ~= 4 then return false end
+    local p4 = tabPanels[4]
+    if not p4 or not p4:IsShown() or not p4.knownRows then return false end
 
     local entries = GetFilteredKnownProfiles()
     local perPage = 8
@@ -1715,7 +1711,7 @@ function ns:TrySeamlessDirectoryStep(rowIndex, dir)
 
     local lastShownIdx = 0
     for i = 1, perPage do
-        if p5.knownRows[i] and p5.knownRows[i]:IsShown() then
+        if p4.knownRows[i] and p4.knownRows[i]:IsShown() then
             lastShownIdx = i
         end
     end
@@ -1725,15 +1721,15 @@ function ns:TrySeamlessDirectoryStep(rowIndex, dir)
         knownListPage = knownListPage + 1
         ns:RefreshTargetCard()
         ns:PlayUISound()
-        if p5.knownRows[1] and p5.knownRows[1]:IsShown() then
-            ns:SetControllerFocus(p5.knownRows[1])
+        if p4.knownRows[1] and p4.knownRows[1]:IsShown() then
+            ns:SetControllerFocus(p4.knownRows[1])
         end
         return true
     elseif dir == "UP" and rowIndex <= 1 and knownListPage > 1 then
         knownListPage = knownListPage - 1
         ns:RefreshTargetCard()
         ns:PlayUISound()
-        local targetRow = p5.knownRows[perPage]
+        local targetRow = p4.knownRows[perPage]
         if targetRow and targetRow:IsShown() then
             ns:SetControllerFocus(targetRow)
         end
@@ -1792,6 +1788,49 @@ local function RefreshGratitudeStudio()
     end
 end
 
+local function RefreshProfilesTab()
+    local pProf = tabPanels[5]
+    if not pProf or not pProf.rows or not ns.db or not ns.db.profiles then return end
+
+    local ids = {}
+    for id in pairs(ns.db.profiles) do
+        table.insert(ids, id)
+    end
+    table.sort(ids, function(a, b)
+        local na = string.lower((ns.db.profiles[a] and ns.db.profiles[a].profileName) or a)
+        local nb = string.lower((ns.db.profiles[b] and ns.db.profiles[b].profileName) or b)
+        return na < nb
+    end)
+
+    local perPage = 6
+    local totalPages = math.max(1, math.ceil(#ids / perPage))
+    profileListPage = math.max(1, math.min(totalPages, profileListPage))
+    pProf.pageLabel:SetText(string.format("Page %d / %d", profileListPage, totalPages))
+
+    local startIdx = (profileListPage - 1) * perPage
+    for i = 1, perPage do
+        local row = pProf.rows[i]
+        local profId = ids[startIdx + i]
+        if profId and ns.db.profiles[profId] then
+            local prof = ns.db.profiles[profId]
+            local isActive = (profId == ns.activeProfileId)
+            local pLabel = prof.profileName or profId
+            local charLine = strtrim(((prof.firstName or "") .. " " .. (prof.lastName or "")))
+            local summary = isActive and ("|cff81c995[ACTIVE]|r  |cfffdd663" .. pLabel .. "|r") or ("|cffe8eaed" .. pLabel .. "|r")
+            if charLine ~= "" then
+                summary = summary .. "  |cff9aa0a6(" .. charLine .. ")|r"
+            end
+            row.selectBtn.profileId = profId
+            row.selectBtn:SetText(summary)
+            row.selectBtn:SetTone(isActive and "MINT" or nil)
+            row.selectBtn:Show()
+        else
+            row.selectBtn.profileId = nil
+            row.selectBtn:Hide()
+        end
+    end
+end
+
 function ns:RefreshControllerUI()
     if not mainFrame or not ns.profile then return end
     mainFrame:SetScale(ns.db.ui.scale or 1.0)
@@ -1841,8 +1880,8 @@ function ns:RefreshControllerUI()
     SyncBox(p1.tatBox, p.tattoos)
     SyncBox(p1.voiceBox, p.voiceReference)
 
-    if tabPanels[2] and tabPanels[2].profNameBox then
-        SyncBox(tabPanels[2].profNameBox, p.profileName)
+    if tabPanels[5] and tabPanels[5].profNameBox then
+        SyncBox(tabPanels[5].profNameBox, p.profileName)
     end
 
     p1.relBtn:SetText("Relationship: |cfffdd663" .. ns:GetRelationshipLabel(p.relationship) .. "|r")
@@ -1873,11 +1912,11 @@ function ns:RefreshControllerUI()
 
     RefreshProfilesTab()
 
-    local p3 = tabPanels[3]
-    p3.page1Btn:SetTone(activeGlancePage == 1 and "PRIMARY" or nil)
-    p3.page2Btn:SetTone(activeGlancePage == 2 and "PRIMARY" or nil)
+    local p2 = tabPanels[2]
+    p2.page1Btn:SetTone(activeGlancePage == 1 and "PRIMARY" or nil)
+    p2.page2Btn:SetTone(activeGlancePage == 2 and "PRIMARY" or nil)
     for i = 1, 3 do
-        local card = p3.cards[i]
+        local card = p2.cards[i]
         local slot = card.slotIndex
         if slot and card:IsShown() then
             local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
@@ -1887,19 +1926,19 @@ function ns:RefreshControllerUI()
         end
     end
 
-    local p4 = tabPanels[4]
+    local p3 = tabPanels[3]
     if activeBioMode == "APPEARANCE" then
-        p4.appTabBtn:SetTone("PRIMARY")
-        p4.hisTabBtn:SetTone(nil)
-        p4.sectionHint:SetText("|cff8ab4f8PHYSICAL APPEARANCE:|r Describe your character's build, attire, voice, and demeanor.")
-        p4.bioEditor:SetPlaceholder("Write your character's physical appearance here...")
-        if not p4.bioEditor:HasFocus() and not p4.bioEditor.isDirty then p4.bioEditor:SetCleanText(p.description) end
+        p3.appTabBtn:SetTone("PRIMARY")
+        p3.hisTabBtn:SetTone(nil)
+        p3.sectionHint:SetText("|cff8ab4f8PHYSICAL APPEARANCE:|r Describe your character's build, attire, voice, and demeanor.")
+        p3.bioEditor:SetPlaceholder("Write your character's physical appearance here...")
+        if not p3.bioEditor:HasFocus() and not p3.bioEditor.isDirty then p3.bioEditor:SetCleanText(p.description) end
     else
-        p4.hisTabBtn:SetTone("PRIMARY")
-        p4.appTabBtn:SetTone(nil)
-        p4.sectionHint:SetText("|cff8ab4f8CHARACTER HISTORY & BACKGROUND:|r Write your character's origins, homeland, and story.")
-        p4.bioEditor:SetPlaceholder("Write your character's backstory and history here...")
-        if not p4.bioEditor:HasFocus() and not p4.bioEditor.isDirty then p4.bioEditor:SetCleanText(p.history) end
+        p3.hisTabBtn:SetTone("PRIMARY")
+        p3.appTabBtn:SetTone(nil)
+        p3.sectionHint:SetText("|cff8ab4f8CHARACTER HISTORY & BACKGROUND:|r Write your character's origins, homeland, and story.")
+        p3.bioEditor:SetPlaceholder("Write your character's backstory and history here...")
+        if not p3.bioEditor:HasFocus() and not p3.bioEditor.isDirty then p3.bioEditor:SetCleanText(p.history) end
     end
 
     ns:RefreshTargetCard()
@@ -2663,7 +2702,7 @@ function ns:InitControllerUI()
     end)
     mainFrame.bannerExpBtn = bannerExpBtn
 
-    local tabTitles = { "[LB] Identity", "Profiles", "First Glances", "Bio & Lore", "Directory", "Gratitude", "Settings [RB]", "Dev" }
+    local tabTitles = { "[LB] Identity", "First Glances", "Bio & Lore", "Directory", "Profiles", "Gratitude", "Settings [RB]", "Dev" }
     for i, title in ipairs(tabTitles) do
         local tb = CreateFrame("Button", nil, mainFrame, "BackdropTemplate")
         tb:SetSize(92, 30)
@@ -2692,9 +2731,6 @@ function ns:InitControllerUI()
         tabPanels[i] = panel
     end
 
-    -- =========================================================
-    -- TAB 1: IDENTITY (3 SUB-TABS: CORE, DETAILS, EXTRAS/RP OPTIONS)
-    -- =========================================================
     local p1 = tabPanels[1]
     local function AutoCommitTab1()
         CommitModifiedBoxesToProfile(false)
@@ -2729,7 +2765,6 @@ function ns:InitControllerUI()
         ns:FocusFirstInScope()
     end)
 
-    -- Sub-page 1: Core
     local pageCore = CreateFrame("Frame", nil, p1)
     pageCore:SetPoint("TOPLEFT", 0, -40)
     pageCore:SetPoint("BOTTOMRIGHT", 0, 52)
@@ -2868,7 +2903,6 @@ function ns:InitControllerUI()
     end)
     mainFrame.presetDropdown = dropdown
 
-    -- Sub-page 2: Details (Nickname, House/Guild, Motto + Vitals)
     local pageVitals = CreateFrame("Frame", nil, p1)
     pageVitals:SetPoint("TOPLEFT", 0, -40)
     pageVitals:SetPoint("BOTTOMRIGHT", 0, 52)
@@ -2914,7 +2948,6 @@ function ns:InitControllerUI()
     p1.hbBox = ns:CreateMaterialEditBox(pageVitals, "Birthplace", "e.g., Lordaeron (Allegedly)", 16, -194, 306, 26, AutoCommitTab1)
     p1.hhBox = ns:CreateMaterialEditBox(pageVitals, "Residence", "e.g., The Mage Quarter, Stormwind", 334, -194, 306, 26, AutoCommitTab1)
 
-    -- Sub-page 3: Extras / RP options
     local pageExtras = CreateFrame("Frame", nil, p1)
     pageExtras:SetPoint("TOPLEFT", 0, -40)
     pageExtras:SetPoint("BOTTOMRIGHT", 0, 52)
@@ -2982,96 +3015,29 @@ function ns:InitControllerUI()
     revertBtn:ClearAllPoints()
     revertBtn:SetPoint("BOTTOMRIGHT", p1, "BOTTOMRIGHT", -16, 14)
 
-    -- =========================================================
-    -- TAB 2: PROFILES MANAGER
-    -- =========================================================
-    local pProf = tabPanels[2]
-    local profHeader = pProf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    profHeader:SetPoint("TOPLEFT", 16, -10)
-    profHeader:SetText("|cff8ab4f8PROFILE MANAGER|r  -  Switch, create, rename, or delete saved profiles")
-
-    pProf.profNameBox = ns:CreateMaterialEditBox(pProf, "Active Profile Name", "e.g., Main Character", 16, -26, 260, 26, function()
-        CommitModifiedBoxesToProfile(false)
-        RefreshHeaderBanner()
-        RefreshProfilesTab()
-    end)
-    pProf.newProfBtn = ns:CreateMaterialButton(pProf, "+ New Profile", 148, 26, 288, -26, "PRIMARY", function()
-        CommitModifiedBoxesToProfile(false)
-        ns:CreateNewProfile()
-        RefreshProfilesTab()
-    end)
-    pProf.delProfBtn = ns:CreateMaterialButton(pProf, "Delete Active Profile", 166, 26, 448, -26, "CORAL", function(self)
-        local now = GetTime()
-        if now < confirmDeleteProfileUntil then
-            confirmDeleteProfileUntil = 0
-            self:SetText("Delete Active Profile")
-            ns:DeleteCurrentProfile()
-            RefreshProfilesTab()
-        else
-            confirmDeleteProfileUntil = now + 4
-            self:SetText("|cfff28b82Confirm Delete?|r")
-        end
-    end)
-
-    pProf.exportBtn = ns:CreateMaterialButton(pProf, "Export / Import Profile String", 280, 26, 16, -62, "AMBER", function()
-        CommitModifiedBoxesToProfile(false)
-        if tabPanels[7] and tabPanels[7].openExpBtn then
-            tabPanels[7].openExpBtn:Click("LeftButton")
-        end
-    end)
-    pProf.prevBtn = ns:CreateMaterialButton(pProf, "< Prev", 60, 26, 310, -62, nil, function()
-        profileListPage = math.max(1, profileListPage - 1)
-        RefreshProfilesTab()
-    end)
-    pProf.pageLabel = pProf:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    pProf.pageLabel:SetJustifyH("CENTER")
-    pProf.nextBtn = ns:CreateMaterialButton(pProf, "Next >", 60, 26, 460, -62, nil, function()
-        profileListPage = profileListPage + 1
-        RefreshProfilesTab()
-    end)
-
-    pProf.rows = {}
-    for i = 1, 6 do
-        local row = {}
-        row.selectBtn = ns:CreateMaterialButton(pProf, "", 624, 32, 16, -98 - (i - 1) * 38, nil, function(btn)
-            if btn.profileId and ns.SwitchProfile then
-                CommitModifiedBoxesToProfile(false)
-                ns:SwitchProfile(btn.profileId)
-                RefreshProfilesTab()
-                ns:ShowStatusToast("Switched to profile: " .. (ns.profile.profileName or btn.profileId))
-            end
-        end)
-        row.selectBtn:SetPoint("RIGHT", pProf, "RIGHT", -16, 0)
-        row.selectBtn.label:SetJustifyH("LEFT")
-        pProf.rows[i] = row
-    end
-
-    -- =========================================================
-    -- TAB 3: FIRST GLANCES (5 SLOTS PAGED 1-3 & 4-5)
-    -- =========================================================
-    local p3 = tabPanels[3]
-    p3.page1Btn = ns:CreateMaterialButton(p3, "Glances 1 - 3", 170, 26, 16, -10, "PRIMARY", function()
+    local p2 = tabPanels[2]
+    p2.page1Btn = ns:CreateMaterialButton(p2, "Glances 1 - 3", 170, 26, 16, -10, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
         activeGlancePage = 1
         LoadGlancesPageIntoUI()
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
     end)
-    p3.page2Btn = ns:CreateMaterialButton(p3, "Glances 4 - 5", 170, 26, 194, -10, nil, function()
+    p2.page2Btn = ns:CreateMaterialButton(p2, "Glances 4 - 5", 170, 26, 194, -10, nil, function()
         CommitModifiedBoxesToProfile(false)
         activeGlancePage = 2
         LoadGlancesPageIntoUI()
         ns:RefreshControllerUI()
         ns:FocusFirstInScope()
     end)
-    local gIntro = p3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    gIntro:SetPoint("LEFT", p3.page2Btn, "RIGHT", 12, 0)
+    local gIntro = p2:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    gIntro:SetPoint("LEFT", p2.page2Btn, "RIGHT", 12, 0)
     gIntro:SetText("|cff9aa0a6All 5 slots broadcast to TRP3 / MRP / XRP|r")
 
-    p3.cards = {}
+    p2.cards = {}
     local function AutoCommitGlances() CommitModifiedBoxesToProfile(false) end
     for i = 1, 3 do
-        local card = CreateFrame("Frame", nil, p3, "BackdropTemplate")
+        local card = CreateFrame("Frame", nil, p2, "BackdropTemplate")
         card:SetHeight(94)
         card:SetPoint("TOPLEFT", 16, -42 - (i - 1) * 100)
         card:SetPoint("TOPRIGHT", -16, -42 - (i - 1) * 100)
@@ -3112,37 +3078,36 @@ function ns:InitControllerUI()
             ns:SnapshotActiveProfile()
             ns:SyncMSP()
         end)
-        p3.cards[i] = card
+        p2.cards[i] = card
     end
 
-    local saveGlanceBtn = ns:CreateMaterialButton(p3, "Save & Broadcast All 5 First Glances Now", 624, 36, 16, -354, "PRIMARY", function()
+    local saveGlanceBtn = ns:CreateMaterialButton(p2, "Save & Broadcast All 5 First Glances Now", 624, 36, 16, -354, "PRIMARY", function()
         CommitModifiedBoxesToProfile(true)
         ns:ShowStatusToast("All 5 First Glances saved & synced!")
     end)
     saveGlanceBtn:ClearAllPoints()
-    saveGlanceBtn:SetPoint("BOTTOMLEFT", p3, "BOTTOMLEFT", 16, 14)
-    saveGlanceBtn:SetPoint("BOTTOMRIGHT", p3, "BOTTOMRIGHT", -16, 14)
+    saveGlanceBtn:SetPoint("BOTTOMLEFT", p2, "BOTTOMLEFT", 16, 14)
+    saveGlanceBtn:SetPoint("BOTTOMRIGHT", p2, "BOTTOMRIGHT", -16, 14)
 
-    -- TAB 4: BIO & LORE
-    local p4 = tabPanels[4]
-    p4.appTabBtn = ns:CreateMaterialButton(p4, "1. Physical Appearance & Attire", 254, 32, 16, -12, "PRIMARY", function()
+    local p3 = tabPanels[3]
+    p3.appTabBtn = ns:CreateMaterialButton(p3, "1. Physical Appearance & Attire", 254, 32, 16, -12, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
         activeBioMode = "APPEARANCE"
-        p4.bioEditor:SetCleanText(ns.profile.description)
+        p3.bioEditor:SetCleanText(ns.profile.description)
         ns:RefreshControllerUI()
     end)
-    p4.hisTabBtn = ns:CreateMaterialButton(p4, "2. Character History & Background", 254, 32, 278, -12, nil, function()
+    p3.hisTabBtn = ns:CreateMaterialButton(p3, "2. Character History & Background", 254, 32, 278, -12, nil, function()
         CommitModifiedBoxesToProfile(false)
         activeBioMode = "HISTORY"
-        p4.bioEditor:SetCleanText(ns.profile.history)
+        p3.bioEditor:SetCleanText(ns.profile.history)
         ns:RefreshControllerUI()
     end)
-    p4.clearBioBtn = ns:CreateMaterialButton(p4, "Clear Text", 104, 32, 540, -12, "CORAL", function(self)
+    p3.clearBioBtn = ns:CreateMaterialButton(p3, "Clear Text", 104, 32, 540, -12, "CORAL", function(self)
         local now = GetTime()
         if now < confirmClearBioUntil then
             confirmClearBioUntil = 0
             self:SetText("Clear Text")
-            p4.bioEditor:SetCleanText("")
+            p3.bioEditor:SetCleanText("")
             if activeBioMode == "APPEARANCE" then ns.profile.description = "" else ns.profile.history = "" end
             ns:SnapshotActiveProfile()
             ns:SyncMSP()
@@ -3151,79 +3116,78 @@ function ns:InitControllerUI()
             self:SetText("|cfff28b82Confirm?|r")
         end
     end)
-    p4.sectionHint = p4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p4.sectionHint:SetPoint("TOPLEFT", 16, -52)
-    p4.bioEditor = ns:CreateScrollableTextEditor(p4, "", 16, -72, 624, 268, function() CommitModifiedBoxesToProfile(false) end)
-    p4.bioEditor:SetPoint("BOTTOMRIGHT", p4, "BOTTOMRIGHT", -16, 58)
-    local saveBioBtn = ns:CreateMaterialButton(p4, "Save Physical Appearance & Character History", 624, 36, 16, -354, "PRIMARY", function()
+    p3.sectionHint = p3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p3.sectionHint:SetPoint("TOPLEFT", 16, -52)
+    p3.bioEditor = ns:CreateScrollableTextEditor(p3, "", 16, -72, 624, 268, function() CommitModifiedBoxesToProfile(false) end)
+    p3.bioEditor:SetPoint("BOTTOMRIGHT", p3, "BOTTOMRIGHT", -16, 58)
+    local saveBioBtn = ns:CreateMaterialButton(p3, "Save Physical Appearance & Character History", 624, 36, 16, -354, "PRIMARY", function()
         CommitModifiedBoxesToProfile(true)
         ns:ShowStatusToast("Appearance & History saved!")
     end)
     saveBioBtn:ClearAllPoints()
-    saveBioBtn:SetPoint("BOTTOMLEFT", p4, "BOTTOMLEFT", 16, 14)
-    saveBioBtn:SetPoint("BOTTOMRIGHT", p4, "BOTTOMRIGHT", -16, 14)
+    saveBioBtn:SetPoint("BOTTOMLEFT", p3, "BOTTOMLEFT", 16, 14)
+    saveBioBtn:SetPoint("BOTTOMRIGHT", p3, "BOTTOMRIGHT", -16, 14)
 
-    -- TAB 5: DIRECTORY
-    local p5 = tabPanels[5]
-    p5.countLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    p5.countLabel:SetPoint("TOPLEFT", 16, -12)
+    local p4 = tabPanels[4]
+    p4.countLabel = p4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    p4.countLabel:SetPoint("TOPLEFT", 16, -12)
 
-    local openLiveBtn = ns:CreateMaterialButton(p5, "Open Target Dossier", 142, 24, 0, 0, "PRIMARY", function()
+    local openLiveBtn = ns:CreateMaterialButton(p4, "Open Target Dossier", 142, 24, 0, 0, "PRIMARY", function()
         ns:OpenTargetDossier()
     end)
     openLiveBtn:ClearAllPoints()
-    openLiveBtn:SetPoint("TOPRIGHT", p5, "TOPRIGHT", -16, -8)
+    openLiveBtn:SetPoint("TOPRIGHT", p4, "TOPRIGHT", -16, -8)
 
-    p5.searchBox = ns:CreateMaterialEditBox(p5, nil, "Search by Name, Title, House, or Note...", 16, -38, 250, 26, function(txt)
+    p4.searchBox = ns:CreateMaterialEditBox(p4, nil, "Search by Name, Title, House, or Note...", 16, -38, 250, 26, function(txt)
         knownSearchFilter = txt or ""
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
-    p5.searchBox:SetScript("OnTextChanged", function(self)
+    p4.searchBox:SetScript("OnTextChanged", function(self)
         knownSearchFilter = self:GetText() or ""
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
 
-    p5.notesOnlyBtn = ns:CreateMaterialButton(p5, "[ ] Notes Only", 102, 26, 272, -38, nil, function()
+    p4.notesOnlyBtn = ns:CreateMaterialButton(p4, "[ ] Notes Only", 102, 26, 272, -38, nil, function()
         knownNotesOnly = not knownNotesOnly
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
 
-    p5.sortBtn = ns:CreateMaterialButton(p5, "Sort: Recent", 90, 26, 382, -38, "PRIMARY", function()
+    p4.sortBtn = ns:CreateMaterialButton(p4, "Sort: Recent", 90, 26, 382, -38, "PRIMARY", function()
         knownSortMode = (knownSortMode == "RECENT") and "NAME" or "RECENT"
         knownListPage = 1
         ns:RefreshTargetCard()
     end)
 
-    p5.prevPageBtn = ns:CreateMaterialButton(p5, "< Prev", 54, 26, 478, -38, nil, function()
+    p4.prevPageBtn = ns:CreateMaterialButton(p4, "< Prev", 54, 26, 478, -38, nil, function()
         knownListPage = math.max(1, knownListPage - 1)
         ns:RefreshTargetCard()
     end)
 
-    p5.pageLabel = p5:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p5.pageLabel:SetJustifyH("CENTER")
+    p4.pageLabel = p4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p4.pageLabel:SetJustifyH("CENTER")
 
-    p5.nextPageBtn = ns:CreateMaterialButton(p5, "Next >", 54, 26, 586, -38, nil, function()
+    p4.nextPageBtn = ns:CreateMaterialButton(p4, "Next >", 54, 26, 586, -38, nil, function()
         knownListPage = knownListPage + 1
         ns:RefreshTargetCard()
     end)
 
-    AttachWheelScroller(p5, function(step)
+    AttachWheelScroller(p4, function(step)
         knownListPage = knownListPage + step
         ns:RefreshTargetCard()
     end)
 
-    p5.knownRows = {}
+    p4.knownRows = {}
     for i = 1, 8 do
         local rowY = -72 - (i - 1) * 35
-        local rowBtn = ns:CreateMaterialButton(p5, "", 624, 32, 16, rowY, nil, function(self)
+        local rowBtn = ns:CreateMaterialButton(p4, "", 624, 32, 16, rowY, nil, function(self)
             if self.profileKey and ns.OpenTargetDossier then
                 ns:OpenTargetDossier(self.profileKey)
             end
         end)
-        rowBtn:SetPoint("RIGHT", p5, "RIGHT", -16, 0)
+        rowBtn:SetPoint("RIGHT", p4, "RIGHT", -16, 0)
         rowBtn.directoryRowIndex = i
 
         rowBtn.seenLabel = rowBtn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -3241,10 +3205,70 @@ function ns:InitControllerUI()
             ns:RefreshTargetCard()
         end)
 
-        p5.knownRows[i] = rowBtn
+        p4.knownRows[i] = rowBtn
     end
 
-    -- TAB 6: GRATITUDE STUDIO
+    local pProf = tabPanels[5]
+    local profHeader = pProf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    profHeader:SetPoint("TOPLEFT", 16, -10)
+    profHeader:SetText("|cff8ab4f8PROFILE MANAGER|r  -  Switch, create, rename, or delete saved profiles")
+
+    pProf.profNameBox = ns:CreateMaterialEditBox(pProf, "Active Profile Name", "e.g., Main Character", 16, -42, 260, 26, function()
+        CommitModifiedBoxesToProfile(false)
+        RefreshHeaderBanner()
+        RefreshProfilesTab()
+    end)
+    pProf.newProfBtn = ns:CreateMaterialButton(pProf, "+ New Profile", 148, 26, 288, -42, "PRIMARY", function()
+        CommitModifiedBoxesToProfile(false)
+        ns:CreateNewProfile()
+        RefreshProfilesTab()
+    end)
+    pProf.delProfBtn = ns:CreateMaterialButton(pProf, "Delete Active Profile", 166, 26, 448, -42, "CORAL", function(self)
+        local now = GetTime()
+        if now < confirmDeleteProfileUntil then
+            confirmDeleteProfileUntil = 0
+            self:SetText("Delete Active Profile")
+            ns:DeleteCurrentProfile()
+            RefreshProfilesTab()
+        else
+            confirmDeleteProfileUntil = now + 4
+            self:SetText("|cfff28b82Confirm Delete?|r")
+        end
+    end)
+
+    pProf.exportBtn = ns:CreateMaterialButton(pProf, "Export / Import Profile String", 280, 26, 16, -80, "AMBER", function()
+        CommitModifiedBoxesToProfile(false)
+        if tabPanels[7] and tabPanels[7].openExpBtn then
+            tabPanels[7].openExpBtn:Click("LeftButton")
+        end
+    end)
+    pProf.prevBtn = ns:CreateMaterialButton(pProf, "< Prev", 60, 26, 310, -80, nil, function()
+        profileListPage = math.max(1, profileListPage - 1)
+        RefreshProfilesTab()
+    end)
+    pProf.pageLabel = pProf:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    pProf.pageLabel:SetJustifyH("CENTER")
+    pProf.nextBtn = ns:CreateMaterialButton(pProf, "Next >", 60, 26, 460, -80, nil, function()
+        profileListPage = profileListPage + 1
+        RefreshProfilesTab()
+    end)
+
+    pProf.rows = {}
+    for i = 1, 6 do
+        local row = {}
+        row.selectBtn = ns:CreateMaterialButton(pProf, "", 624, 32, 16, -116 - (i - 1) * 38, nil, function(btn)
+            if btn.profileId and ns.SwitchProfile then
+                CommitModifiedBoxesToProfile(false)
+                ns:SwitchProfile(btn.profileId)
+                RefreshProfilesTab()
+                ns:ShowStatusToast("Switched to profile: " .. (ns.profile.profileName or btn.profileId))
+            end
+        end)
+        row.selectBtn:SetPoint("RIGHT", pProf, "RIGHT", -16, 0)
+        row.selectBtn.label:SetJustifyH("LEFT")
+        pProf.rows[i] = row
+    end
+
     local p6 = tabPanels[6]
     p6.modeBtn = ns:CreateMaterialButton(p6, "Gratitude Mode [v]", 624, 30, 16, -10, "PRIMARY", function()
         if mainFrame.expDropdown then mainFrame.expDropdown:Hide() end
@@ -3434,7 +3458,6 @@ function ns:InitControllerUI()
     quickThankBottom:SetPoint("BOTTOMLEFT", p6, "BOTTOMLEFT", 16, 14)
     quickThankBottom:SetPoint("BOTTOMRIGHT", p6, "BOTTOMRIGHT", -16, 14)
 
-    -- TAB 7: SETTINGS
     local p7 = tabPanels[7]
     p7.scaleMinusBtn = ns:CreateMaterialButton(p7, "Scale -", 68, 28, 16, -14, nil, function() ns.db.ui.scale = math.max(0.8, (ns.db.ui.scale or 1.0) - 0.05); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
     p7.scaleLabel = p7:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -3497,7 +3520,6 @@ function ns:InitControllerUI()
     end)
     mainFrame.exportModal = expModal
 
-    -- TAB 8: DEV TAB (HIDDEN UNLESS DEVELOPER MODE IS CHECKED)
     local p8 = tabPanels[8]
     p8.diagText = p8:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     p8.diagText:SetPoint("TOPLEFT", 16, -12)

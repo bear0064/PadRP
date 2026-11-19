@@ -202,20 +202,44 @@ function ns:FocusFirstInScope()
         ns:SetControllerFocus(nil)
         return
     end
+
+    local preferredContainer = nil
+    if scope == ns.mainFrame and ns.mainFrame.tabPanels and ns.mainFrame.activeTab then
+        preferredContainer = ns.mainFrame.tabPanels[ns.mainFrame.activeTab]
+    end
+
     local bestWidget, bestScore = nil, 999999
 
-    for _, w in ipairs(ns.focusables) do
-        if w:IsVisible() and IsFrameDescendantOf(w, scope) and not w.isTabBarBtn then
-            local l, t = w:GetLeft(), w:GetTop()
-            if l and t then
-                local score = (-t * 2) + l
-                if score < bestScore then
-                    bestScore = score
-                    bestWidget = w
+    if preferredContainer and preferredContainer:IsShown() then
+        for _, w in ipairs(ns.focusables) do
+            if w:IsVisible() and IsFrameDescendantOf(w, preferredContainer) and not w.isTabBarBtn then
+                local l, t = w:GetLeft(), w:GetTop()
+                if l and t then
+                    local score = (-t * 2) + l
+                    if score < bestScore then
+                        bestScore = score
+                        bestWidget = w
+                    end
                 end
             end
         end
     end
+
+    if not bestWidget then
+        for _, w in ipairs(ns.focusables) do
+            if w:IsVisible() and IsFrameDescendantOf(w, scope) and not w.isTabBarBtn then
+                local l, t = w:GetLeft(), w:GetTop()
+                if l and t then
+                    local score = (-t * 2) + l
+                    if score < bestScore then
+                        bestScore = score
+                        bestWidget = w
+                    end
+                end
+            end
+        end
+    end
+
     ns:SetControllerFocus(bestWidget)
 end
 
