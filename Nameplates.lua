@@ -1,6 +1,5 @@
 local _, ns = ...
 
--- Weak-keyed state table so we never write custom properties onto Blizzard's protected UnitFrame tables (prevents taint)
 local plateState = setmetatable({}, { __mode = "k" })
 
 local SOLID_BACKDROP = {
@@ -10,14 +9,14 @@ local SOLID_BACKDROP = {
     insets   = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
-local STANDING_SUFFIX = {
-    Ally         = " |cff81c995[Ally]|r",
-    Friendly     = " |cff81c995[Friendly]|r",
-    Neutral      = " |cff8ab4f8[Neutral]|r",
-    Unfriendly   = " |cfff28b82[Unfriendly]|r",
-    Acquaintance = " |cff8ab4f8[Known]|r",
-    Rival        = " |cfff28b82[Rival]|r",
-    Marked       = " |cfffdd663[Marked]|r",
+local STANDING_COLORS = {
+    Ally         = { 0.00, 0.90, 1.00, 1.00 }, -- Bright Cyan
+    Friendly     = { 0.18, 0.95, 0.50, 1.00 }, -- Vivid Green
+    Neutral      = { 0.36, 0.68, 1.00, 1.00 }, -- Sky Blue
+    Acquaintance = { 0.58, 0.55, 1.00, 1.00 }, -- Periwinkle
+    Marked       = { 1.00, 0.80, 0.12, 1.00 }, -- Bright Gold
+    Unfriendly   = { 1.00, 0.45, 0.10, 1.00 }, -- Deep Orange
+    Rival        = { 1.00, 0.16, 0.35, 1.00 }, -- Bold Crimson
 }
 
 local WALKUP_PIP = {
@@ -29,6 +28,90 @@ local WALKUP_PIP = {
 local function StripColorCodes(text)
     if type(text) ~= "string" then return "" end
     return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+end
+
+local function NormalizeKey(k)
+    return string.lower(strtrim(tostring(k or "")))
+end
+
+local function GetStandingColor(standingName)
+    if not standingName or standingName == "" or standingName == "None" then
+        return nil
+    end
+    if STANDING_COLORS[standingName] then
+        return STANDING_COLORS[standingName]
+    end
+    local lower = string.lower(strtrim(tostring(standingName)))
+    for k, col in pairs(STANDING_COLORS) do
+        if string.lower(k) == lower then
+            return col
+        end
+    end
+    if ns.GetStandingTone then
+        local tone = ns:GetStandingTone(standingName)
+        if tone == "MINT" then
+            return { 0.18, 0.95, 0.50, 1.00 }
+        elseif tone == "PRIMARY" then
+            return { 0.36, 0.68, 1.00, 1.00 }
+        elseif tone == "CORAL" then
+            return { 1.00, 0.16, 0.35, 1.00 }
+        elseif tone == "AMBER" then
+            return { 1.00, 0.80, 0.12, 1.00 }
+        end
+    end
+    return nil
+end
+
+local function ResolveStandingForKey(key, unit)
+    local notes = ns.db and ns.db.notes
+    if type(notes) ~= "table" then return nil end
+
+    if key and type(notes[key]) == "table" then
+        local st = notes[key].standing
+        if st and st ~= "" and st ~= "None" then
+            return st
+        end
+    end
+
+    local candidates = {}
+    local function AddCandidate(val)
+        if not val or val == "" then return end
+        local norm = NormalizeKey(val)
+        if norm ~= "" then
+            candidates[norm] = true
+            local shortName = strsplit("-", norm)
+            if shortName and shortName ~= "" then
+                candidates[shortName] = true
+            end
+        end
+    end
+
+    AddCandidate(key)
+    if ns.GetUnitKey and unit and UnitExists(unit) then
+        AddCandidate(ns:GetUnitKey(unit))
+    end
+    if unit and UnitExists(unit) then
+        local uName, uRealm = UnitName(unit)
+        AddCandidate(uName)
+        if uName and uRealm and uRealm ~= "" then
+            AddCandidate(uName .. "-" .. uRealm)
+        end
+    end
+
+    for noteKey, rec in pairs(notes) do
+        if type(rec) == "table" then
+            local nk = NormalizeKey(noteKey)
+            local nShort = strsplit("-", nk)
+            if candidates[nk] or (nShort and candidates[nShort]) then
+                local st = rec.standing
+                if st and st ~= "" and st ~= "None" then
+                    return st
+                end
+            end
+        end
+    end
+
+    return nil
 end
 
 local function GetNameFontString(nameplate)
@@ -82,6 +165,36 @@ local function GetOrCreateSideBadge(nameplate, state)
     return badge
 end
 
+local function GetOrCreateStandingPip(nameplate, state)
+    if state.standingPip then
+        return state.standingPip
+    end
+
+    local ring = nameplate:CreateTexture(nil, "OVERLAY", nil, 6)
+    ring:SetSize(12, 12)
+    ring:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+    ring:SetVertexColor(0.02, 0.03, 0.04, 0.95)
+    ring:Hide()
+
+    local dot = nameplate:CreateTexture(nil, "OVERLAY", nil, 7)
+    dot:SetSize(9, 9)
+    dot:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+    dot:Hide()
+
+    dot.ring = ring
+    state.standingPip = dot
+    return dot
+end
+
+local function HideStandingPip(state)
+    if state and state.standingPip then
+        state.standingPip:Hide()
+        if state.standingPip.ring then
+            state.standingPip.ring:Hide()
+        end
+    end
+end
+
 local function RestoreNameplateDefault(nameplate, unit)
     if not nameplate then return end
     local state = plateState[nameplate]
@@ -90,6 +203,7 @@ local function RestoreNameplateDefault(nameplate, unit)
     if state.sideBadge then
         state.sideBadge:Hide()
     end
+    HideStandingPip(state)
 
     local nameFS = GetNameFontString(nameplate)
     if nameFS and state.styled then
@@ -106,7 +220,7 @@ local function RestoreNameplateDefault(nameplate, unit)
     end
 end
 
-function ns:StyleFriendlyNameplate(unit)
+local function StyleFriendlyNameplateInternal(unit)
     if not unit or not C_NamePlate or not C_NamePlate.GetNamePlateForUnit then return end
     if not string.find(unit, "^nameplate%d+$") then return end
 
@@ -159,7 +273,6 @@ function ns:StyleFriendlyNameplate(unit)
     local hasProfile = (cleanRPName ~= "")
     local isIC = hasProfile and (data.FC == "2")
 
-    -- 1. Color & set the original nameplate name directly
     if nameFS then
         local displayName = (ui.nameplateRPNames and hasProfile) and cleanRPName or (UnitName(unit) or state.origText)
         local nameHex = "ffffffff"
@@ -179,27 +292,19 @@ function ns:StyleFriendlyNameplate(unit)
             nameFS:SetTextColor(state.origR, state.origG, state.origB)
         end
 
-        local standingSuffix = ""
-        if ui.nameplateStatusTags and hasProfile then
-            local noteRec = key and ns.db and ns.db.notes and ns.db.notes[key]
-            if noteRec and noteRec.standing and STANDING_SUFFIX[noteRec.standing] then
-                standingSuffix = STANDING_SUFFIX[noteRec.standing]
-            end
-        end
-
         if nameFS.SetWordWrap then
             nameFS:SetWordWrap(false)
         end
 
-        nameFS:SetText(string.format("|c%s%s|r%s", nameHex, displayName, standingSuffix))
+        nameFS:SetText(string.format("|c%s%s|r", nameHex, displayName))
         state.styled = true
     end
 
-    -- 2. Anchor [IC] / [OOC] status badge directly to the LEFT of the healthbar
     if not ui.nameplateStatusTags or not hasProfile then
         if state.sideBadge then
             state.sideBadge:Hide()
         end
+        HideStandingPip(state)
         return
     end
 
@@ -227,6 +332,29 @@ function ns:StyleFriendlyNameplate(unit)
     local textW = badge.text:GetStringWidth() or 22
     badge:SetWidth(math.max(28, textW + 10))
     badge:Show()
+
+    local standing = ResolveStandingForKey(key, unit)
+    local pipColor = GetStandingColor(standing)
+
+    if pipColor then
+        local dot = GetOrCreateStandingPip(nameplate, state)
+        dot:ClearAllPoints()
+        dot:SetPoint("BOTTOM", badge, "TOP", 0, 2)
+        dot:SetVertexColor(pipColor[1], pipColor[2], pipColor[3], pipColor[4])
+        dot:Show()
+
+        if dot.ring then
+            dot.ring:ClearAllPoints()
+            dot.ring:SetPoint("CENTER", dot, "CENTER", 0, 0)
+            dot.ring:Show()
+        end
+    else
+        HideStandingPip(state)
+    end
+end
+
+function ns:StyleFriendlyNameplate(unit)
+    pcall(StyleFriendlyNameplateInternal, unit)
 end
 
 function ns:RefreshAllNameplates()
