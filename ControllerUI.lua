@@ -641,7 +641,6 @@ local function UpdateResponsiveLayouts()
         }, 16, 16, 8)
 
         local pc = p1.pageCore
-
         if pc then
             LayoutRow(pc, -22, {
                 { w = p1.pxBox, weight = 0.16 },
