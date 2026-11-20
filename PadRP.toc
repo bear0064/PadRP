@@ -19,4 +19,5 @@ Gratitude.lua
 TargetHUD.lua
 UIWidgets.lua
 DossierWindow.lua
+IconPool.lua
 ControllerUI.lua

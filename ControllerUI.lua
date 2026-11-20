@@ -30,8 +30,6 @@ local lastPickerApplyTime = 0
 local pickerReopenGuardUntil = 0
 local leftTriggerHeld = false
 
-local verifiedIconPool = nil
-
 local RP_EXPERIENCE_LIST = {
     { code = "1", label = "Normal" },
     { code = "2", label = "Casual" },
@@ -72,65 +70,6 @@ local POOL_LIST = {
     { key = "SPECIAL", label = "5. Portals, Healthstones & Major Cooldowns" },
 }
 
-local CURATED_RP_ICONS = {
-    "INV_Misc_Book_09",            "INV_Misc_Book_07",            "INV_Misc_Book_11",            "INV_Misc_Book_04",
-    "INV_Misc_Book_06",            "INV_Scroll_02",               "INV_Scroll_05",               "INV_Scroll_08",
-    "INV_Misc_Note_01",            "INV_Misc_Note_02",            "INV_Feather_16",              "INV_Letter_15",
-    "INV_Letter_18",               "INV_Misc_Map_01",             "INV_Misc_Spyglass_02",        "INV_Misc_PocketWatch_01",
-    "INV_Helmet_46",               "INV_Helmet_24",               "INV_Helmet_52",               "INV_Crown_01",
-    "INV_Misc_Cape_18",            "INV_Misc_Cape_02",            "INV_Misc_Cape_16",            "INV_Shirt_GuildTabard_01",
-    "INV_Chest_Cloth_21",          "INV_Chest_Leather_09",        "INV_Chest_Plate06",           "INV_Shoulder_23",
-    "INV_Boots_05",                "INV_Gauntlets_05",            "INV_Belt_15",                 "INV_Bracer_07",
-    "INV_Jewelry_Ring_03",         "INV_Jewelry_Ring_22",         "INV_Jewelry_Ring_36",         "INV_Jewelry_Necklace_07",
-    "INV_Jewelry_Necklace_11",     "INV_Jewelry_Talisman_07",     "INV_Jewelry_Amulet_04",       "INV_Misc_Coin_01",
-    "INV_Misc_Coin_02",            "INV_Misc_Gem_Ruby_02",        "INV_Misc_Gem_Sapphire_02",    "INV_Misc_Gem_Emerald_02",
-    "INV_Misc_Gem_Amethyst_02",    "INV_Misc_Key_04",             "INV_Misc_Key_10",             "INV_Misc_Bell_01",
-    "INV_Sword_04",                "INV_Sword_39",                "INV_Sword_27",                "INV_Weapon_ShortBlade_05",
-    "INV_Weapon_ShortBlade_15",    "INV_Staff_13",                "INV_Staff_30",                "INV_Wand_07",
-    "INV_Shield_06",               "INV_Shield_14",               "INV_Weapon_Bow_07",           "INV_Weapon_Rifle_08",
-    "INV_Hammer_05",               "INV_Axe_09",                  "INV_Spear_06",                "INV_Mace_08",
-    "Spell_Shadow_Charm",          "Spell_Shadow_SoulGem",        "Spell_Shadow_Metamorphosis",  "Spell_Shadow_DeathCoil",
-    "Spell_Shadow_ShadowBolt",     "Spell_Shadow_SummonImp",      "Spell_Shadow_SummonVoidWalker","Spell_Shadow_DemonForm",
-    "Spell_Fire_Fire",             "Spell_Fire_FlameBolt",        "Spell_Fire_BlueFlameRing",    "Spell_Frost_FrostBolt02",
-    "Spell_Frost_IceShard",        "Spell_Arcane_Blink",          "Spell_Arcane_PortalStormwind","Spell_Arcane_Arcane01",
-    "Spell_Holy_HolyBolt",         "Spell_Holy_PowerWordShield",  "Spell_Holy_Resurrection",     "Spell_Holy_SealOfLight",
-    "Spell_Nature_Rejuvenation",   "Spell_Nature_Lightning",      "Spell_Nature_StarFall",       "Spell_Nature_MoonGlow",
-    "INV_Potion_54",               "INV_Potion_20",               "INV_Potion_93",               "INV_Drink_05",
-    "INV_Drink_03",                "INV_Drink_11",                "INV_Misc_Food_15",            "INV_Misc_Food_64",
-    "INV_Misc_Bag_10",             "INV_Misc_Bag_17",             "INV_Misc_Pipe_01",            "INV_Misc_Lantern_01",
-    "INV_Torch_Lit",               "INV_Misc_Candle_02",          "INV_Misc_Campfire_01",        "INV_Misc_Flute_01",
-    "INV_Misc_Bone_HumanSkull_01", "INV_Misc_Eye_01",             "INV_Misc_MonsterClaw_04",     "INV_Misc_Head_Dragon_01",
-    "Ability_Racial_BloodRage",    "Ability_Hunter_BeastTaming",  "Ability_Stealth",             "Ability_DualWield",
-    "Ability_Mount_RidingHorse",   "Ability_Mount_BlackDireWolf", "Ability_Druid_CatForm",       "Ability_Paladin_HammeroftheRighteous",
-    "INV_Misc_Flower_02",          "INV_Misc_Herb_16",            "INV_Fishingpole_02",          "INV_Misc_Fish_02",
-    "Trade_Engineering",           "Trade_Alchemy",               "Trade_BlackSmithing",         "Trade_Tailoring",
-    "Trade_Enchanting",            "Trade_LeatherWorking",        "Trade_Herbalism",             "Trade_Mining",
-}
-
-local EXTRA_VERIFIED_RP_ICONS = {
-    "INV_Misc_Lantern_02",         "INV_Misc_Candle_01",          "INV_Misc_Candle_03",          "INV_Misc_Compass_01",
-    "INV_Misc_Horn_01",            "INV_Misc_Horn_02",            "INV_Misc_Drum_01",            "INV_Misc_Lute_01",
-    "INV_Misc_Tome_07",            "INV_Misc_Tome_08",            "INV_Misc_Tome_09",            "INV_Misc_Tome_10",
-    "INV_Misc_Quill_01",           "INV_Misc_Ink_01",             "INV_Misc_Parachute_01",       "INV_Misc_rope_01",
-    "INV_Misc_Gear_01",            "INV_Misc_Gear_02",            "INV_Misc_Wrench_01",          "INV_Misc_Lantern_01",
-    "INV_Jewelry_Ring_01",         "INV_Jewelry_Ring_05",         "INV_Jewelry_Ring_10",         "INV_Jewelry_Ring_14",
-    "INV_Jewelry_Necklace_01",     "INV_Jewelry_Necklace_03",     "INV_Jewelry_Necklace_09",     "INV_Jewelry_Necklace_14",
-    "INV_Misc_Gem_Diamond_01",     "INV_Misc_Gem_Opal_01",        "INV_Misc_Gem_Pearl_01",       "INV_Misc_Gem_Topaz_01",
-    "INV_Weapon_Rifle_01",         "INV_Weapon_Rifle_06",         "INV_Weapon_Crossbow_01",      "INV_Weapon_Bow_01",
-    "INV_Sword_01",                "INV_Sword_12",                "INV_Sword_24",                "INV_Sword_33",
-    "INV_Staff_01",                "INV_Staff_09",                "INV_Staff_20",                "INV_Staff_29",
-    "INV_Shield_01",               "INV_Shield_04",               "INV_Shield_19",               "INV_Shield_28",
-    "Spell_Arcane_Portaldarnassus","Spell_Arcane_Portalironforge","Spell_Arcane_Portalorgrimmar","Spell_Arcane_Portalthundbluff",
-    "Spell_Holy_GreaterHeal",      "Spell_Holy_Renew",            "Spell_Holy_FlashHeal",        "Spell_Holy_PrayerOfHealing",
-    "Spell_Nature_HealingTouch",   "Spell_Nature_Regrowth",       "Spell_Nature_Thorns",         "Spell_Nature_Polymorph",
-    "Spell_Shadow_LifeDrain",      "Spell_Shadow_Fear",           "Spell_Shadow_MindControl",    "Spell_Shadow_CurseOfSargeras",
-    "INV_Misc_Food_01",            "INV_Misc_Food_10",            "INV_Misc_Food_23",            "INV_Misc_Food_42",
-    "INV_Drink_01",                "INV_Drink_07",                "INV_Drink_14",                "INV_Drink_18",
-    "INV_Potion_01",               "INV_Potion_12",               "INV_Potion_25",               "INV_Potion_41",
-    "Ability_Warrior_BattleShout", "Ability_Rogue_Sprint",        "Ability_Hunter_AspectOfTheMonkey","Ability_Mage_Invisibility",
-    "Ability_Paladin_ShieldOfTemplar","Ability_Priest_FlashOfLight","Ability_Shaman_ChainLightning","Ability_Warlock_DemonicEmpowerment",
-}
-
 local BASE_STANDING_BUCKETS = {
     { key = "Ally",       label = "Ally",       colorHex = "ff81c995", tone = "MINT" },
     { key = "Friendly",   label = "Friendly",   colorHex = "ff81c995", tone = "MINT" },
@@ -139,6 +78,10 @@ local BASE_STANDING_BUCKETS = {
     { key = "Rival",      label = "Rival",      colorHex = "fff28b82", tone = "CORAL" },
     { key = "Marked",     label = "Marked",     colorHex = "fffdd663", tone = "AMBER" },
 }
+
+local function GetDefaultIconFallback()
+    return (ns.IconPool and ns.IconPool.defaultFallback) or 134400
+end
 
 local function GetStandingBuckets()
     local buckets = {}
@@ -187,32 +130,56 @@ local function NormalizeIconInput(icon)
     return "Interface\\Icons\\" .. clean
 end
 
+local function UnpackIconEntry(entry)
+    if type(entry) == "table" then
+        local id = tonumber(entry[1])
+        local name = entry[2] and strtrim(tostring(entry[2])) or ""
+        local displayVal = (name ~= "" and name) or tostring(id or "")
+        return id, name, displayVal, entry
+    end
+    local raw = tostring(entry or "")
+    local numId = tonumber(raw)
+    return numId, raw, raw, entry
+end
+
 local function SetIconTextureSafe(tex, icon, fallback)
     if not tex then return end
-    local target = NormalizeIconInput(icon) or NormalizeIconInput(fallback) or "Interface\\Icons\\INV_Misc_Book_09"
-    if ns.ResolveIconTexture and type(icon) == "string" and strtrim(icon) ~= "" and not tonumber(strtrim(icon)) then
-        local resolved = ns:ResolveIconTexture(strtrim(icon), nil)
-        if type(resolved) == "number" and resolved > 0 then
-            target = resolved
-        elseif type(resolved) == "string" and strtrim(resolved) ~= "" then
-            target = strtrim(resolved)
+    local fbDefault = fallback or GetDefaultIconFallback()
+    local target = nil
+    if ns.IconPool and ns.IconPool.ResolveTexture then
+        target = ns.IconPool:ResolveTexture(icon, fbDefault)
+    else
+        target = NormalizeIconInput(icon) or NormalizeIconInput(fbDefault) or 134400
+        if ns.ResolveIconTexture and type(icon) == "string" and strtrim(icon) ~= "" and not tonumber(strtrim(icon)) then
+            local resolved = ns:ResolveIconTexture(strtrim(icon), nil)
+            if type(resolved) == "number" and resolved > 0 then
+                target = resolved
+            elseif type(resolved) == "string" and strtrim(resolved) ~= "" then
+                target = strtrim(resolved)
+            end
         end
     end
     tex:SetTexture(nil)
     pcall(function() tex:SetTexture(target) end)
     if not tex:GetTexture() then
-        local fb = NormalizeIconInput(fallback) or "Interface\\Icons\\INV_Misc_Book_09"
+        local fb = (ns.IconPool and ns.IconPool.ResolveTexture and ns.IconPool:ResolveTexture(fbDefault, 134400))
+            or NormalizeIconInput(fbDefault)
+            or 134400
         pcall(function() tex:SetTexture(fb) end)
     end
 end
 
-local function FormatPickerIconReadout(prefix, iconVal, texObj)
-    local rawStr = tostring(iconVal or "")
+local function FormatPickerIconReadout(prefix, iconVal, knownID, texObj)
+    local labelStr = tostring(iconVal or "")
+    local idStr = knownID and tostring(knownID) or nil
     local appliedTex = texObj and texObj:GetTexture()
-    if appliedTex and tostring(appliedTex) ~= rawStr then
-        return string.format("|cff8ab4f8%s|r |cffe8eaed%s|r  |cfffdd663(ID: %s)|r", prefix, rawStr, tostring(appliedTex))
+    if not idStr and appliedTex and tostring(appliedTex) ~= labelStr then
+        idStr = tostring(appliedTex)
     end
-    return string.format("|cff8ab4f8%s|r |cffe8eaed%s|r", prefix, rawStr)
+    if idStr and idStr ~= labelStr then
+        return string.format("|cff8ab4f8%s|r |cffe8eaed%s|r  |cfffdd663(ID: %s)|r", prefix, labelStr, idStr)
+    end
+    return string.format("|cff8ab4f8%s|r |cffe8eaed%s|r", prefix, labelStr)
 end
 
 local function EnsureTopicConsentTable()
@@ -909,152 +876,6 @@ local function UpdateResponsiveLayouts()
     end
 end
 
-local function IsIconTextureValid(icon)
-    local target = NormalizeIconInput(icon)
-    if not target then return false end
-    if ns.ResolveIconTexture and type(icon) == "string" and strtrim(icon) ~= "" and not tonumber(strtrim(icon)) then
-        local resolved = ns:ResolveIconTexture(strtrim(icon), nil)
-        if type(resolved) == "number" and resolved > 0 then
-            target = resolved
-        elseif type(resolved) == "string" and strtrim(resolved) ~= "" then
-            target = strtrim(resolved)
-        end
-    end
-    local probe = UIParent:CreateTexture()
-    local ok = pcall(function() probe:SetTexture(target) end)
-    local tex = ok and probe:GetTexture()
-    probe:Hide()
-    return tex ~= nil and tex ~= "" and tex ~= 0
-end
-
-local function EnsureVerifiedIconPool()
-    if verifiedIconPool then return verifiedIconPool end
-    verifiedIconPool = {}
-    local seen = {}
-
-    local function TryAdd(icon)
-        if icon == nil or icon == false then return end
-        local rawStr = strtrim(tostring(icon))
-        if rawStr == "" then return end
-
-        local storeVal = rawStr
-        local numId = tonumber(rawStr)
-        if numId and numId > 0 then
-            storeVal = numId
-        elseif ns.ResolveIconTexture then
-            local resolved = ns:ResolveIconTexture(rawStr, nil)
-            if type(resolved) == "number" and resolved > 0 then
-                storeVal = resolved
-            elseif type(resolved) == "string" and strtrim(resolved) ~= "" then
-                storeVal = strtrim(resolved)
-            end
-        end
-
-        local dedupKey = string.lower(tostring(storeVal))
-        if seen[dedupKey] then return end
-        if IsIconTextureValid(storeVal) then
-            seen[dedupKey] = true
-            table.insert(verifiedIconPool, storeVal)
-        end
-    end
-
-    for _, name in ipairs(CURATED_RP_ICONS) do
-        TryAdd(name)
-    end
-    for _, name in ipairs(EXTRA_VERIFIED_RP_ICONS) do
-        TryAdd(name)
-    end
-
-    if _G.GetNumClasses and _G.GetClassInfo then
-        pcall(function()
-            local numC = _G.GetNumClasses()
-            if type(numC) == "number" then
-                for cIdx = 1, numC do
-                    local _, classFile = _G.GetClassInfo(cIdx)
-                    if classFile then
-                        TryAdd("ClassIcon_" .. classFile)
-                    end
-                end
-            end
-        end)
-    end
-
-    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookSkillLineInfo and C_SpellBook.GetSpellBookItemInfo then
-        pcall(function()
-            local bank = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
-            local numLines = C_SpellBook.GetNumSpellBookSkillLines() or 0
-            for line = 1, numLines do
-                local info = C_SpellBook.GetSpellBookSkillLineInfo(line)
-                if info and info.itemIndexOffset and info.numSpellBookItems then
-                    for idx = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
-                        local itemInfo = C_SpellBook.GetSpellBookItemInfo(idx, bank)
-                        if itemInfo and itemInfo.iconID then
-                            TryAdd(itemInfo.iconID)
-                        end
-                    end
-                end
-            end
-        end)
-    end
-
-    for slot = 1, 19 do
-        pcall(function()
-            local texId = GetInventoryItemTexture and GetInventoryItemTexture("player", slot)
-            if texId then TryAdd(texId) end
-        end)
-    end
-
-    if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
-        pcall(function()
-            local maxBag = NUM_TOTAL_EQUIPPED_BAG_SLOTS or 4
-            for bag = 0, maxBag do
-                local numSlots = C_Container.GetContainerNumSlots(bag) or 0
-                for slot = 1, numSlots do
-                    local info = C_Container.GetContainerItemInfo(bag, slot)
-                    if info and info.iconFileID then
-                        TryAdd(info.iconFileID)
-                    end
-                end
-            end
-        end)
-    end
-
-    if C_MountJournal and C_MountJournal.GetMountIDs and C_MountJournal.GetMountInfoByID then
-        pcall(function()
-            local mountIDs = C_MountJournal.GetMountIDs()
-            for _, mID in ipairs(mountIDs or {}) do
-                local _, _, icon = C_MountJournal.GetMountInfoByID(mID)
-                if icon then TryAdd(icon) end
-            end
-        end)
-    end
-
-    if C_ToyBox and C_ToyBox.GetNumToys and C_ToyBox.GetToyFromIndex and C_ToyBox.GetToyInfo then
-        pcall(function()
-            local numToys = C_ToyBox.GetNumToys() or 0
-            for i = 1, numToys do
-                local itemID = C_ToyBox.GetToyFromIndex(i)
-                if itemID then
-                    local _, _, icon = C_ToyBox.GetToyInfo(itemID)
-                    if icon then TryAdd(icon) end
-                end
-            end
-        end)
-    end
-
-    if C_PetJournal and C_PetJournal.GetNumPets and C_PetJournal.GetPetInfoByIndex then
-        pcall(function()
-            local numPets = C_PetJournal.GetNumPets() or 0
-            for i = 1, numPets do
-                local _, _, _, _, _, _, _, _, _, icon = C_PetJournal.GetPetInfoByIndex(i)
-                if icon then TryAdd(icon) end
-            end
-        end)
-    end
-
-    return verifiedIconPool
-end
-
 function ns:ShowStatusToast(msg)
     if not mainFrame or not mainFrame.statusToast then return end
     mainFrame.statusToast:SetText("|cff81c995" .. (msg or "Saved") .. "|r")
@@ -1576,6 +1397,7 @@ local function LoadAllGlancesIntoUI()
     local p2 = tabPanels[2]
     if not p2 or not p2.cards or not ns.profile then return end
     local p = ns.profile
+    local fallbackIcon = GetDefaultIconFallback()
     local placeholders = {
         { title = "e.g., Singed Cuffs",   detail = "e.g., Faint arcane scorch marks line the hems of his sleeves." },
         { title = "e.g., Worn Satchel",   detail = "e.g., Stuffed with rolled parchment, ink vials, and dried herbs." },
@@ -1587,10 +1409,10 @@ local function LoadAllGlancesIntoUI()
     for slot = 1, 5 do
         local card = p2.cards[slot]
         if card then
-            local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
+            local g = p.glances[slot] or { icon = fallbackIcon, title = "", detail = "" }
             card.slotIndex = slot
             card.slotBadge:SetText("|cff8ab4f8GLANCE #" .. slot .. "|r")
-            SetIconTextureSafe(card.iconTex, g.icon, CURATED_RP_ICONS[1])
+            SetIconTextureSafe(card.iconTex, g.icon, fallbackIcon)
             card.titleBox.placeholder:SetText(placeholders[slot].title)
             card.detailBox.placeholder:SetText(placeholders[slot].detail)
             card.titleBox:SetCleanText(g.title)
@@ -1753,9 +1575,10 @@ local function RefreshHeaderBanner()
     local p = ns.profile
     local M3 = ns.M3
     local activeHex = GetPlayerActiveClassColorHex()
+    local fallbackIcon = GetDefaultIconFallback()
 
     if mainFrame.portraitTex then
-        SetIconTextureSafe(mainFrame.portraitTex, p.icon, "INV_Helmet_46")
+        SetIconTextureSafe(mainFrame.portraitTex, p.icon, fallbackIcon)
     end
 
     local nameParts = {}
@@ -2154,8 +1977,9 @@ function ns:RefreshControllerUI()
 
     p1.relBtn:SetText("Relationship: |cfffdd663" .. ns:GetRelationshipLabel(p.relationship) .. "|r")
     p1.styleBtn:SetText("RP Style: |cff8ab4f8" .. GetRPExperienceLabelText(p.rpStyle) .. "|r")
+    local fallbackIcon = GetDefaultIconFallback()
     if p1.portraitPickBtn then
-        SetIconTextureSafe(p1.portraitPickBtn.iconTex, p.icon, "INV_Helmet_46")
+        SetIconTextureSafe(p1.portraitPickBtn.iconTex, p.icon, fallbackIcon)
         p1.portraitPickBtn:SetText("Portrait")
     end
 
@@ -2188,8 +2012,8 @@ function ns:RefreshControllerUI()
     for slot = 1, 5 do
         local card = p2.cards[slot]
         if card then
-            local g = p.glances[slot] or { icon = CURATED_RP_ICONS[slot], title = "", detail = "" }
-            SetIconTextureSafe(card.iconTex, g.icon, CURATED_RP_ICONS[1])
+            local g = p.glances[slot] or { icon = fallbackIcon, title = "", detail = "" }
+            SetIconTextureSafe(card.iconTex, g.icon, fallbackIcon)
             if not card.titleBox:HasFocus() and not card.titleBox.isDirty then card.titleBox:SetCleanText(g.title) end
             if not card.detailBox:HasFocus() and not card.detailBox.isDirty then card.detailBox:SetCleanText(g.detail) end
         end
@@ -2627,7 +2451,6 @@ function ns:InitControllerUI()
     picker:Hide()
 
     picker.mode = "GLANCE"
-    picker.sourceMode = "CURATED"
     picker.targetSlot = 1
     picker.page = 1
     picker.searchQuery = ""
@@ -2646,19 +2469,12 @@ function ns:InitControllerUI()
         end
     end)
 
-    picker.curatedBtn = ns:CreateMaterialButton(picker, "Curated RP", 118, 24, 16, -34, "PRIMARY", function()
-        picker.sourceMode = "CURATED"
-        picker.page = 1
-        picker:RebuildFilter()
-    end)
+    local poolCount = (ns.IconPool and ns.IconPool.entries and #ns.IconPool.entries) or 0
+    picker.catalogBadge = picker:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    picker.catalogBadge:SetPoint("TOPLEFT", 16, -39)
+    picker.catalogBadge:SetText(string.format("|cff8ab4f8Catalog (%d)|r", poolCount))
 
-    picker.nativeBtn = ns:CreateMaterialButton(picker, "More RP Icons", 142, 24, 140, -34, nil, function()
-        picker.sourceMode = "VERIFIED"
-        picker.page = 1
-        picker:RebuildFilter()
-    end)
-
-    picker.searchBox = ns:CreateMaterialEditBox(picker, nil, "Search by name or ID...", 288, -34, 162, 24, function(txt)
+    picker.searchBox = ns:CreateMaterialEditBox(picker, nil, "Search by name or ID...", 150, -34, 300, 24, function(txt)
         picker.searchQuery = txt or ""
         picker.page = 1
         picker:RebuildFilter()
@@ -2716,7 +2532,7 @@ function ns:InitControllerUI()
         cell:SetScript("OnEnter", function(self)
             ns:SetControllerFocus(self)
             if self.iconName then
-                picker.hoverLabel:SetText(FormatPickerIconReadout("Selected:", self.iconName, self.tex))
+                picker.hoverLabel:SetText(FormatPickerIconReadout("Selected:", self.iconName, self.iconID, self.tex))
             end
         end)
         cell:SetScript("OnClick", function(self)
@@ -2729,7 +2545,7 @@ function ns:InitControllerUI()
                 self:SetBackdropColor(unpack(M3.surfaceBright))
                 self:SetBackdropBorderColor(unpack(M3.primary))
                 if self.iconName then
-                    picker.hoverLabel:SetText(FormatPickerIconReadout("Selected:", self.iconName, self.tex))
+                    picker.hoverLabel:SetText(FormatPickerIconReadout("Selected:", self.iconName, self.iconID, self.tex))
                 end
             else
                 self:SetBackdropColor(unpack(M3.surface))
@@ -2771,63 +2587,67 @@ function ns:InitControllerUI()
 
     picker.RebuildFilter = function(self)
         wipe(self.filteredIcons)
-        local pool = (self.sourceMode == "VERIFIED") and EnsureVerifiedIconPool() or CURATED_RP_ICONS
         local q = strtrim(string.lower(self.searchQuery or ""))
 
-        if q == "" then
-            for _, ic in ipairs(pool) do
-                table.insert(self.filteredIcons, ic)
-            end
-        else
-            for _, ic in ipairs(pool) do
-                if string.find(string.lower(tostring(ic)), q, 1, true) then
-                    table.insert(self.filteredIcons, ic)
-                end
+        if ns.IconPool and ns.IconPool.Search then
+            local matches = ns.IconPool:Search(q)
+            for _, entry in ipairs(matches or {}) do
+                table.insert(self.filteredIcons, entry)
             end
         end
 
-        self.curatedBtn:SetTone(self.sourceMode == "CURATED" and "PRIMARY" or nil)
-        self.nativeBtn:SetTone(self.sourceMode == "VERIFIED" and "PRIMARY" or nil)
-        self.curatedBtn:SetText(string.format("Curated RP (%d)", #CURATED_RP_ICONS))
-        if self.sourceMode == "VERIFIED" then
-            self.nativeBtn:SetText(string.format("Expanded RP (%d)", #pool))
-        else
-            self.nativeBtn:SetText("More RP Icons")
+        local totalPool = (ns.IconPool and ns.IconPool.entries and #ns.IconPool.entries) or #self.filteredIcons
+        if self.catalogBadge then
+            self.catalogBadge:SetText(string.format("|cff8ab4f8Catalog (%d)|r", totalPool))
         end
 
         self:RefreshGrid()
     end
 
     picker.RefreshGrid = function(self)
+        local fallbackIcon = GetDefaultIconFallback()
         local currentIcon
         if self.mode == "PORTRAIT" then
-            currentIcon = tostring((ns.profile and ns.profile.icon) or "INV_Helmet_46")
+            currentIcon = tostring((ns.profile and ns.profile.icon) or fallbackIcon)
             self.title:SetText("|cff8ab4f8SELECT CHARACTER PORTRAIT ICON|r")
         else
             local slot = self.targetSlot or 1
-            currentIcon = tostring((ns.profile.glances[slot] and ns.profile.glances[slot].icon) or CURATED_RP_ICONS[1])
+            currentIcon = tostring((ns.profile.glances[slot] and ns.profile.glances[slot].icon) or fallbackIcon)
             self.title:SetText("|cff8ab4f8SELECT ICON FOR GLANCE #" .. slot .. "|r")
         end
 
-        local total = #self.filteredIcons
-        local totalPages = math.max(1, math.ceil(total / ICONS_PER_PAGE))
-        self.page = math.max(1, math.min(totalPages, self.page))
+        local pageItems, totalPages, total, clampedPage = {}, 1, #self.filteredIcons, self.page
+        if ns.IconPool and ns.IconPool.GetPage then
+            pageItems, totalPages, total, clampedPage = ns.IconPool:GetPage(self.filteredIcons, self.page, ICONS_PER_PAGE)
+            self.page = clampedPage
+        else
+            totalPages = math.max(1, math.ceil(total / ICONS_PER_PAGE))
+            self.page = math.max(1, math.min(totalPages, self.page))
+            local startIndex = (self.page - 1) * ICONS_PER_PAGE
+            for i = 1, ICONS_PER_PAGE do
+                local item = self.filteredIcons[startIndex + i]
+                if item then table.insert(pageItems, item) end
+            end
+        end
+
         self.pageText:SetText(string.format("Page %d / %d  (|cff9aa0a6%d icons|r)", self.page, totalPages, total))
         if not self.customBox:HasFocus() then
             self.customBox:SetCleanText(currentIcon)
         end
-        self.hoverLabel:SetText(FormatPickerIconReadout("Current:", currentIcon, nil))
+        self.hoverLabel:SetText(FormatPickerIconReadout("Current:", currentIcon, nil, nil))
 
-        local startIndex = (self.page - 1) * ICONS_PER_PAGE
         for i = 1, ICONS_PER_PAGE do
             local cell = self.cells[i]
-            local iconName = self.filteredIcons[startIndex + i]
-            if iconName then
-                cell.iconName = iconName
-                SetIconTextureSafe(cell.tex, iconName, CURATED_RP_ICONS[1])
+            local rawItem = pageItems[i]
+            if rawItem then
+                local id, _, displayVal = UnpackIconEntry(rawItem)
+                cell.iconName = displayVal
+                cell.iconID = id
+                SetIconTextureSafe(cell.tex, id or displayVal, fallbackIcon)
                 cell:Show()
             else
                 cell.iconName = nil
+                cell.iconID = nil
                 cell:Hide()
             end
         end
@@ -3332,7 +3152,7 @@ function ns:InitControllerUI()
     local function StepGlanceScroll(step)
         if not glanceScroll then return end
         local cur = glanceScroll:GetVerticalScroll() or 0
-        local maxS = (glanceScroll.GetVerticalScrollRange and glanceScroll:GetVerticalScrollRange()) or 0
+        local maxS = (glanceScroll.GetVerticalScrollRange and glanceScroll.GetVerticalScrollRange()) or 0
         glanceScroll:SetVerticalScroll(math.max(0, math.min(maxS, cur + (step * 72))))
     end
 
