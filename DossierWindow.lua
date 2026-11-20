@@ -6,21 +6,136 @@ local lastRenderedKey = nil
 local activeSubView = "CHAR"
 local lastRenderedSubView = nil
 local SUB_VIEWS = { "CHAR", "ABOUT", "GLANCES", "NOTES" }
-local STANDINGS = { "None", "Ally", "Acquaintance", "Rival", "Marked" }
+
+local CORE_STANDINGS = {
+    { key = "None",       tone = nil,       colorHex = "ff9aa0a6" },
+    { key = "Ally",       tone = "MINT",    colorHex = "ff81c995" },
+    { key = "Friendly",   tone = "MINT",    colorHex = "ff81c995" },
+    { key = "Neutral",    tone = "PRIMARY", colorHex = "ff8ab4f8" },
+    { key = "Unfriendly", tone = "CORAL",   colorHex = "fff28b82" },
+    { key = "Rival",      tone = "CORAL",   colorHex = "fff28b82" },
+    { key = "Marked",     tone = "AMBER",   colorHex = "fffdd663" },
+}
+
+local DEFAULT_PORTRAIT_ICON = "INV_Misc_Book_09"
+local FALLBACK_TEXTURE_ID = 133741
+
+local function SanitizeStandingsData()
+    ns.db = ns.db or {}
+    if type(ns.db.customStandings) == "table" then
+        local cleaned = {}
+        for _, item in ipairs(ns.db.customStandings) do
+            local lbl = type(item) == "table" and item.label or item
+            local sLbl = lbl and strtrim(tostring(lbl)) or ""
+            if sLbl ~= "" and string.lower(sLbl) ~= "fool" then
+                local tone = (type(item) == "table" and item.tone) or "AMBER"
+                table.insert(cleaned, { label = sLbl, tone = tone })
+            end
+        end
+        ns.db.customStandings = cleaned
+    end
+    if type(ns.db.notes) == "table" then
+        for _, rec in pairs(ns.db.notes) do
+            if type(rec) == "table" and rec.standing and string.lower(tostring(rec.standing)) == "fool" then
+                rec.standing = "None"
+            end
+        end
+    end
+end
+
+local function GetAllStandingsList()
+    SanitizeStandingsData()
+    local list = {}
+    local seen = {}
+    for _, item in ipairs(CORE_STANDINGS) do
+        table.insert(list, item.key)
+        seen[string.lower(item.key)] = true
+    end
+    for _, item in ipairs((ns.db and ns.db.customStandings) or {}) do
+        local lbl = type(item) == "table" and item.label or item
+        if lbl and strtrim(tostring(lbl)) ~= "" then
+            local clean = strtrim(tostring(lbl))
+            local lk = string.lower(clean)
+            if not seen[lk] then
+                seen[lk] = true
+                table.insert(list, clean)
+            end
+        end
+    end
+    return list
+end
+
+function ns:GetStandingTone(standingName)
+    if not standingName or standingName == "None" then return nil end
+    for _, item in ipairs(CORE_STANDINGS) do
+        if string.lower(item.key) == string.lower(tostring(standingName)) then
+            return item.tone
+        end
+    end
+    for _, item in ipairs((ns.db and ns.db.customStandings) or {}) do
+        if type(item) == "table" and string.lower(tostring(item.label or "")) == string.lower(tostring(standingName)) then
+            return item.tone or "AMBER"
+        end
+    end
+    return "AMBER"
+end
+
+function ns:GetStandingColorHex(standingName)
+    if not standingName or standingName == "None" then return "ff9aa0a6" end
+    for _, item in ipairs(CORE_STANDINGS) do
+        if string.lower(item.key) == string.lower(tostring(standingName)) then
+            return item.colorHex or "fffdd663"
+        end
+    end
+    local tone = ns:GetStandingTone(standingName)
+    if tone == "MINT" then return "ff81c995"
+    elseif tone == "PRIMARY" then return "ff8ab4f8"
+    elseif tone == "CORAL" then return "fff28b82"
+    end
+    return "fffdd663"
+end
+
+function ns:AddCustomStanding(label, tone)
+    local clean = strtrim(tostring(label or ""))
+    if clean == "" or string.lower(clean) == "fool" then return nil end
+    ns.db = ns.db or {}
+    ns.db.customStandings = ns.db.customStandings or {}
+    for _, item in ipairs(ns.db.customStandings) do
+        if type(item) == "table" and string.lower(tostring(item.label or "")) == string.lower(clean) then
+            if tone then item.tone = tone end
+            return clean
+        end
+    end
+    table.insert(ns.db.customStandings, { label = clean, tone = tone or "AMBER" })
+    return clean
+end
 
 local function EnsureNoteRecord(key)
+    SanitizeStandingsData()
     ns.db.notes = ns.db.notes or {}
     local rec = ns.db.notes[key]
     if type(rec) ~= "table" then
-        rec = { standing = "None", accountNote = "", charNotes = {} }
+        rec = { standing = "None", accountNote = "", charNotes = {}, charRelationships = {}, customRelationship = "" }
         ns.db.notes[key] = rec
     end
     rec.standing = rec.standing or "None"
     rec.charNotes = rec.charNotes or {}
+    rec.charRelationships = rec.charRelationships or {}
+    rec.customRelationship = rec.customRelationship or ""
     if rec.accountNote == nil then
         rec.accountNote = rec.note or ""
     end
     return rec
+end
+
+function ns:GetAssignedRelationship(key)
+    if not key or not ns.db or not ns.db.notes then return "" end
+    local rec = ns.db.notes[key]
+    if type(rec) ~= "table" then return "" end
+    local charKey = ns.GetPlayerCharKey and ns:GetPlayerCharKey() or "Default"
+    local cRel = type(rec.charRelationships) == "table" and strtrim(tostring(rec.charRelationships[charKey] or "")) or ""
+    if cRel ~= "" then return cRel end
+    return strtrim(tostring(rec.customRelationship or ""))
 end
 
 local function SaveCurrentNotes()
@@ -29,15 +144,42 @@ local function SaveCurrentNotes()
     local charKey = ns:GetPlayerCharKey()
     local charTxt = dossierFrame.charNoteBox:GetText() or ""
     local acctTxt = dossierFrame.acctNoteBox:GetText() or ""
+    local relTxt = strtrim(dossierFrame.relEditBox and dossierFrame.relEditBox:GetText() or "")
+
     rec.charNotes[charKey] = charTxt
     rec.accountNote = acctTxt
     rec.note = acctTxt
+    rec.charRelationships[charKey] = relTxt
+    rec.customRelationship = relTxt
+
     dossierFrame.charNoteBox.isDirty = false
     dossierFrame.acctNoteBox.isDirty = false
+    if dossierFrame.relEditBox then
+        dossierFrame.relEditBox.isDirty = false
+    end
+
     if ns.RefreshTargetHUD then ns:RefreshTargetHUD() end
     if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
     if ns.mainFrame and ns.mainFrame:IsShown() and ns.RefreshTargetCard then
         ns:RefreshTargetCard()
+    end
+end
+
+local function ApplyStandingSelection(standingName)
+    if not dossierFrame or not selectedDossierKey then return end
+    local rec = EnsureNoteRecord(selectedDossierKey)
+    rec.standing = standingName or "None"
+    if dossierFrame.standingDropdown then
+        dossierFrame.standingDropdown:Hide()
+    end
+    ns:RefreshDossierWindow()
+    ns:RefreshTargetHUD()
+    if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
+    if ns.mainFrame and ns.mainFrame:IsShown() and ns.RefreshTargetCard then
+        ns:RefreshTargetCard()
+    end
+    if dossierFrame.standingBtn and dossierFrame.standingBtn:IsVisible() and ns.SetControllerFocus then
+        ns:SetControllerFocus(dossierFrame.standingBtn)
     end
 end
 
@@ -79,6 +221,45 @@ local function StripColorCodes(str)
     return clean
 end
 
+local function GetRealCharacterName(key, isSelf)
+    if isSelf and UnitName then
+        local uName = UnitName("player")
+        if uName and strtrim(uName) ~= "" then
+            return strtrim(uName)
+        end
+    end
+    local base = strsplit("-", tostring(key or ""))
+    return strtrim(tostring(base or ""))
+end
+
+local function ApplyPortraitTexture(iconVal)
+    if not dossierFrame or not dossierFrame.portraitTex then return end
+    local clean = iconVal and strtrim(tostring(iconVal)) or ""
+    if clean == "" then
+        clean = DEFAULT_PORTRAIT_ICON
+    end
+
+    local resolved = nil
+    if ns.ResolveIconTexture then
+        resolved = ns:ResolveIconTexture(clean, DEFAULT_PORTRAIT_ICON)
+    end
+
+    if resolved then
+        dossierFrame.portraitTex:SetTexture(resolved)
+    else
+        local iconPath = string.find(clean, "\\", 1, true) and clean or ("Interface\\Icons\\" .. clean)
+        dossierFrame.portraitTex:SetTexture(iconPath)
+    end
+
+    if not dossierFrame.portraitTex:GetTexture() then
+        dossierFrame.portraitTex:SetTexture("Interface\\Icons\\" .. DEFAULT_PORTRAIT_ICON)
+    end
+    if not dossierFrame.portraitTex:GetTexture() then
+        dossierFrame.portraitTex:SetTexture(FALLBACK_TEXTURE_ID)
+    end
+    dossierFrame.portraitTex:Show()
+end
+
 local function CleanOOCDisplayText(raw)
     if not raw then return "" end
     local clean = strtrim(StripColorCodes(raw))
@@ -111,7 +292,20 @@ local function FormatRow(label, value, valueColorHex)
     return string.format("|cff9aa0a6%s:|r  |cffe8eaed%s|r", label, raw)
 end
 
-local function BuildCharacteristicsText(data, isSelf)
+local function ResolveRelationshipDisplay(rsVal, assignedRel)
+    if assignedRel and strtrim(assignedRel) ~= "" then
+        return "|cfffdd663" .. strtrim(assignedRel) .. "|r"
+    end
+    if not rsVal then return nil end
+    local s = strtrim(StripColorCodes(tostring(rsVal)))
+    if s == "" or s == "0" then return nil end
+    if tonumber(s) and ns.GetRelationshipLabel then
+        return ns:GetRelationshipLabel(s)
+    end
+    return s
+end
+
+local function BuildCharacteristicsText(data, isSelf, key)
     local lines = {}
     local basic = {}
     local classHex = (isSelf and ns.GetPlayerClassColorCode and ns:GetPlayerClassColorCode()) or nil
@@ -133,8 +327,11 @@ local function BuildCharacteristicsText(data, isSelf)
     AddBasic("Eye Color", StripColorCodes(data.AE or ""), eyeColorCode)
     AddBasic("Birthplace", data.HB)
     AddBasic("Residence", data.HH)
-    if data.RS and data.RS ~= "" and data.RS ~= "0" then
-        AddBasic("Relationship", ns:GetRelationshipLabel(data.RS))
+
+    local assignedRel = (not isSelf and key and ns:GetAssignedRelationship(key)) or ""
+    local relText = ResolveRelationshipDisplay(data.RS, assignedRel)
+    if relText then
+        AddBasic("Relationship", relText)
     end
     if data.FR and data.FR ~= "" and data.FR ~= "0" then
         AddBasic("RP Proficiency", ns:GetRPStyleLabel(data.FR))
@@ -149,7 +346,6 @@ local function BuildCharacteristicsText(data, isSelf)
         local r = FormatRow(lbl, val)
         if r then table.insert(extra, r) end
     end
-    AddExtra("Nickname", data.NI)
     AddExtra("House / Clan", data.NH)
     AddExtra("Motto", data.MO)
     if isSelf and ns.profile then
@@ -259,6 +455,7 @@ end
 function ns:CycleDossierTab(delta)
     if not dossierFrame or not dossierFrame:IsShown() then return end
     if activeSubView == "NOTES" then SaveCurrentNotes() end
+    if dossierFrame.standingDropdown then dossierFrame.standingDropdown:Hide() end
     local curIdx = 1
     for i, v in ipairs(SUB_VIEWS) do
         if v == activeSubView then curIdx = i break end
@@ -283,7 +480,7 @@ function ns:RefreshDossierWindow()
     dossierFrame.tabNotes:SetTone(activeSubView == "NOTES" and "PRIMARY" or nil)
 
     if not key then
-        dossierFrame.portraitTex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        ApplyPortraitTexture(nil)
         dossierFrame.modeBadge:SetText("|cff9aa0a6[NO PROFILE SELECTED]|r")
         dossierFrame.headerName:SetText("|cff9aa0a6Select a Player from Known RP or Target Someone|r")
         dossierFrame.vitalsText:SetText("")
@@ -299,6 +496,7 @@ function ns:RefreshDossierWindow()
     lastRenderedSubView = activeSubView
 
     local isSelf = IsPlayerSelfKey(key)
+    local realCharName = GetRealCharacterName(key, isSelf)
     local isLiveTarget = UnitExists("target") and UnitIsPlayer("target") and (ns:GetUnitKey("target") == key)
     local tHex = "ff8ab4f8"
     if isSelf and ns.GetPlayerClassColorCode then
@@ -308,32 +506,26 @@ function ns:RefreshDossierWindow()
         tHex = (tClass and RAID_CLASS_COLORS and RAID_CLASS_COLORS[tClass] and RAID_CLASS_COLORS[tClass].colorStr) or "ffffffff"
     end
 
+    local topMetaParts = {}
     if isLiveTarget then
-        dossierFrame.modeBadge:SetText("|cff81c995[LIVE TARGET DOSSIER]|r  |cff9aa0a6(" .. key .. ")|r")
-    else
-        dossierFrame.modeBadge:SetText("|cff8ab4f8[CACHED PROFILE DOSSIER]|r  |cff9aa0a6(" .. key .. ")|r")
+        table.insert(topMetaParts, "|cff81c995[LIVE TARGET]|r")
     end
+    if realCharName ~= "" then
+        table.insert(topMetaParts, "|cff9aa0a6(" .. realCharName .. ")|r")
+    end
+    dossierFrame.modeBadge:SetText(table.concat(topMetaParts, "  "))
 
     local data = ns:GetCachedMSP(key)
     local standing, charNote, acctNote, hasNote = ns:GetNoteInfo(key)
+    local assignedRel = ns:GetAssignedRelationship(key)
 
     dossierFrame.tabNotes:SetText(hasNote and "Notes |cff81c995*|r" or "Notes")
 
     local activeIcon = (isSelf and ns.profile and ns.profile.icon) or (data and data.IC)
-    if activeIcon and strtrim(tostring(activeIcon)) ~= "" then
-        if ns.ResolveIconTexture then
-            dossierFrame.portraitTex:SetTexture(ns:ResolveIconTexture(activeIcon, "INV_Helmet_46"))
-        else
-            local iconPath = string.find(tostring(activeIcon), "\\", 1, true) and tostring(activeIcon) or ("Interface\\Icons\\" .. strtrim(tostring(activeIcon)))
-            dossierFrame.portraitTex:SetTexture(iconPath)
-        end
-    else
-        dossierFrame.portraitTex:SetTexture("Interface\\Icons\\INV_Helmet_46")
-    end
+    ApplyPortraitTexture(activeIcon)
 
     if not data or not data.NA then
-        local shortName = strsplit("-", key)
-        dossierFrame.headerName:SetText("|c" .. tHex .. shortName .. "|r")
+        dossierFrame.headerName:SetText("|c" .. tHex .. (realCharName ~= "" and realCharName or key) .. "|r")
         if ns.IsScanPending and ns:IsScanPending(key) then
             dossierFrame.vitalsText:SetText("|cff8ab4f8Scanning LibMSP profile... Waiting for reply...|r")
         else
@@ -350,12 +542,12 @@ function ns:RefreshDossierWindow()
         if data.PX and strtrim(data.PX) ~= "" and not string.find(displayName, strtrim(data.PX), 1, true) then
             displayName = strtrim(data.PX) .. " " .. displayName
         end
-        local titleStr = (data.NT and data.NT ~= "") and ("  |cfffdd663<" .. data.NT .. ">|r") or ""
+        local titleStr = (data.NT and data.NT ~= "") and ("   |cfffdd663<" .. data.NT .. ">|r") or ""
         dossierFrame.headerName:SetText("|c" .. tHex .. displayName .. "|r" .. titleStr)
 
         local icBadge = (data.FC == "2") and "|cff81c995[IC]|r" or "|cfff28b82[OOC]|r"
         local wuBadge = ns:GetTargetWalkUpInfo(data)
-        local statusBadges = wuBadge and (icBadge .. " " .. wuBadge) or icBadge
+        local statusBadges = wuBadge and (icBadge .. "   " .. wuBadge) or icBadge
 
         local racePart = strtrim(data.RA or "")
         local rawClass = strtrim(tostring(data.RC or ""))
@@ -369,19 +561,26 @@ function ns:RefreshDossierWindow()
                 classPart = "|cffe8eaed" .. rawClass .. "|r"
             end
         end
-        local raceClass = strtrim((racePart ~= "" and ("|cffe8eaed" .. racePart .. "|r ") or "") .. classPart)
+        local raceClass = strtrim((racePart ~= "" and ("|cffe8eaed" .. racePart .. "|r   ") or "") .. classPart)
 
         local seenStr = ""
         if data.lastSeen and data.lastSeen > 0 then
-            seenStr = "   |cff9aa0a6Seen:|r " .. date("%m/%d %H:%M", data.lastSeen)
+            seenStr = "     |cff9aa0a6Seen:|r " .. date("%m/%d %H:%M", data.lastSeen)
         end
-        dossierFrame.vitalsText:SetText(string.format("%s   %s%s", statusBadges, raceClass, seenStr))
+        local leftMeta = (raceClass ~= "") and (statusBadges .. "     " .. raceClass) or statusBadges
+        dossierFrame.vitalsText:SetText(leftMeta .. seenStr)
     end
 
     if activeSubView == "NOTES" then
         dossierFrame.readerBox:Hide()
         dossierFrame.notesPanel:Show()
-        dossierFrame.standingBtn:SetText("Standing: |cfffdd663" .. standing .. "|r")
+        local sHex = ns:GetStandingColorHex(standing)
+        dossierFrame.standingBtn:SetText("Standing: |c" .. sHex .. standing .. "|r")
+        dossierFrame.standingBtn:SetTone(ns:GetStandingTone(standing))
+
+        if dossierFrame.relEditBox and not dossierFrame.relEditBox:HasFocus() and not dossierFrame.relEditBox.isDirty then
+            dossierFrame.relEditBox:SetCleanText(assignedRel)
+        end
 
         local myCharDisplay = (ns.profile and ns.profile.firstName and ns.profile.firstName ~= "") and ns.profile.firstName or (UnitName("player") or "Character")
         if ns.profile and ns.profile.lastName and strtrim(ns.profile.lastName) ~= "" then
@@ -396,6 +595,7 @@ function ns:RefreshDossierWindow()
             dossierFrame.acctNoteBox:SetCleanText(acctNote)
         end
     else
+        if dossierFrame.standingDropdown then dossierFrame.standingDropdown:Hide() end
         dossierFrame.notesPanel:Hide()
         dossierFrame.readerBox:Show()
 
@@ -406,7 +606,7 @@ function ns:RefreshDossierWindow()
         elseif activeSubView == "GLANCES" then
             dossierFrame.scrollText:SetText(BuildGlancesStatusText(data, isSelf))
         else
-            dossierFrame.scrollText:SetText(BuildCharacteristicsText(data, isSelf))
+            dossierFrame.scrollText:SetText(BuildCharacteristicsText(data, isSelf, key))
         end
 
         local scrollW = dossierFrame.scrollFrame:GetWidth()
@@ -443,6 +643,7 @@ function ns:OpenTargetDossier(specificKey)
     activeSubView = "CHAR"
     lastRenderedKey = nil
     lastRenderedSubView = nil
+    if dossierFrame.standingDropdown then dossierFrame.standingDropdown:Hide() end
     dossierFrame:SetScale((ns.db and ns.db.ui and ns.db.ui.scale) or 1.0)
     dossierFrame:Show()
     dossierFrame:Raise()
@@ -455,7 +656,7 @@ function ns:InitDossierWindow()
 
     dossierFrame = CreateFrame("Frame", "PadRP_DossierWindow", UIParent, "BackdropTemplate")
     ns.dossierFrame = dossierFrame
-    dossierFrame:SetSize(656, 520)
+    dossierFrame:SetSize(656, 524)
     dossierFrame:SetPoint("CENTER", UIParent, "CENTER", 40, -10)
     dossierFrame:SetFrameStrata("DIALOG")
     dossierFrame:SetFrameLevel(40)
@@ -465,6 +666,7 @@ function ns:InitDossierWindow()
     dossierFrame:SetScript("OnDragStart", dossierFrame.StartMoving)
     dossierFrame:SetScript("OnDragStop", dossierFrame.StopMovingOrSizing)
     dossierFrame:SetScript("OnHide", function()
+        if dossierFrame.standingDropdown then dossierFrame.standingDropdown:Hide() end
         SaveCurrentNotes()
     end)
     ns:ApplySurface(dossierFrame, M3.surfaceDim, M3.primary)
@@ -473,63 +675,65 @@ function ns:InitDossierWindow()
     tinsert(UISpecialFrames, "PadRP_DossierWindow")
 
     local portraitBox = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
-    portraitBox:SetSize(48, 48)
+    portraitBox:SetSize(50, 50)
     portraitBox:SetPoint("TOPLEFT", 16, -12)
     ns:ApplySurface(portraitBox, M3.surface, M3.primary)
-    dossierFrame.portraitTex = portraitBox:CreateTexture(nil, "ARTWORK")
-    dossierFrame.portraitTex:SetSize(42, 42)
+    dossierFrame.portraitTex = portraitBox:CreateTexture(nil, "OVERLAY")
+    dossierFrame.portraitTex:SetSize(44, 44)
     dossierFrame.portraitTex:SetPoint("CENTER")
     dossierFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    ApplyPortraitTexture(nil)
 
     dossierFrame.modeBadge = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dossierFrame.modeBadge:SetPoint("TOPLEFT", 74, -12)
+    dossierFrame.modeBadge:SetPoint("TOPLEFT", 78, -10)
 
-    local closeBtn = ns:CreateMaterialButton(dossierFrame, "X", 28, 24, 616, -8, "CORAL", function()
+    local closeBtn = ns:CreateMaterialButton(dossierFrame, "X", 28, 24, 616, -10, "CORAL", function()
         dossierFrame:Hide()
     end)
     closeBtn:ClearAllPoints()
-    closeBtn:SetPoint("TOPRIGHT", dossierFrame, "TOPRIGHT", -12, -8)
+    closeBtn:SetPoint("TOPRIGHT", dossierFrame, "TOPRIGHT", -14, -10)
 
     dossierFrame.headerName = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    dossierFrame.headerName:SetPoint("TOPLEFT", 74, -27)
-    dossierFrame.headerName:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
+    dossierFrame.headerName:SetPoint("TOPLEFT", 78, -25)
+    dossierFrame.headerName:SetPoint("RIGHT", closeBtn, "LEFT", -12, 0)
     dossierFrame.headerName:SetJustifyH("LEFT")
     dossierFrame.headerName:SetWordWrap(false)
 
     dossierFrame.vitalsText = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    dossierFrame.vitalsText:SetPoint("TOPLEFT", 74, -48)
-    dossierFrame.vitalsText:SetPoint("TOPRIGHT", -16, -48)
+    dossierFrame.vitalsText:SetPoint("TOPLEFT", 78, -50)
+    dossierFrame.vitalsText:SetPoint("TOPRIGHT", -16, -50)
     dossierFrame.vitalsText:SetJustifyH("LEFT")
     dossierFrame.vitalsText:SetWordWrap(false)
 
     local function SwitchSubView(viewName)
         if activeSubView == "NOTES" then SaveCurrentNotes() end
+        if dossierFrame.standingDropdown then dossierFrame.standingDropdown:Hide() end
         activeSubView = viewName
         ns:RefreshDossierWindow()
     end
 
-    dossierFrame.tabChar = ns:CreateMaterialButton(dossierFrame, "Characteristics", 150, 26, 16, -68, "PRIMARY", function()
+    dossierFrame.tabChar = ns:CreateMaterialButton(dossierFrame, "Characteristics", 151, 26, 16, -70, "PRIMARY", function()
         SwitchSubView("CHAR")
     end)
-    dossierFrame.tabAbout = ns:CreateMaterialButton(dossierFrame, "About (Bio)", 150, 26, 174, -68, nil, function()
+    dossierFrame.tabAbout = ns:CreateMaterialButton(dossierFrame, "About (Bio)", 151, 26, 173, -70, nil, function()
         SwitchSubView("ABOUT")
     end)
-    dossierFrame.tabGlances = ns:CreateMaterialButton(dossierFrame, "Glances & Status", 150, 26, 332, -68, nil, function()
+    dossierFrame.tabGlances = ns:CreateMaterialButton(dossierFrame, "Glances & Status", 151, 26, 330, -70, nil, function()
         SwitchSubView("GLANCES")
     end)
-    dossierFrame.tabNotes = ns:CreateMaterialButton(dossierFrame, "Notes", 150, 26, 490, -68, nil, function()
+    dossierFrame.tabNotes = ns:CreateMaterialButton(dossierFrame, "Notes", 151, 26, 487, -70, nil, function()
         SwitchSubView("NOTES")
     end)
 
     local readerBox = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
-    readerBox:SetPoint("TOPLEFT", 16, -100)
+    readerBox:SetPoint("TOPLEFT", 16, -104)
     readerBox:SetPoint("BOTTOMRIGHT", -16, 16)
     ns:ApplySurface(readerBox, M3.surfaceLow, M3.outline)
     ns:EnableClipping(readerBox)
     dossierFrame.readerBox = readerBox
 
     local scrollFrame = CreateFrame("ScrollFrame", "PadRP_DossierScrollFrame", readerBox, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 12, -10)
+    scrollFrame:SetPoint("TOPLEFT", 14, -12)
     scrollFrame:SetPoint("BOTTOMRIGHT", -28, 12)
     scrollFrame:EnableMouseWheel(true)
     ns:EnableClipping(scrollFrame)
@@ -556,39 +760,74 @@ function ns:InitDossierWindow()
     dossierFrame.scrollText:SetSpacing(3)
 
     local notesPanel = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
-    notesPanel:SetPoint("TOPLEFT", 16, -100)
+    notesPanel:SetPoint("TOPLEFT", 16, -104)
     notesPanel:SetPoint("BOTTOMRIGHT", -16, 16)
     ns:ApplySurface(notesPanel, M3.surfaceLow, M3.outline)
     ns:EnableClipping(notesPanel)
     notesPanel:Hide()
     dossierFrame.notesPanel = notesPanel
 
-    dossierFrame.standingBtn = ns:CreateMaterialButton(notesPanel, "Standing: None", 180, 26, 12, -10, "AMBER", function()
-        local key = selectedDossierKey
-        if not key then return end
-        local rec = EnsureNoteRecord(key)
-        local cur = rec.standing or "None"
-        local nextIdx = 1
-        for i, s in ipairs(STANDINGS) do if s == cur then nextIdx = (i % #STANDINGS) + 1 break end end
-        rec.standing = STANDINGS[nextIdx]
-        ns:RefreshDossierWindow()
-        ns:RefreshTargetHUD()
-        if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
-        if ns.mainFrame and ns.mainFrame:IsShown() and ns.RefreshTargetCard then ns:RefreshTargetCard() end
+    local standingDropdown = CreateFrame("Frame", "PadRP_DossierStandingDropdown", notesPanel, "BackdropTemplate")
+    standingDropdown:SetSize(192, 224)
+    standingDropdown:SetFrameStrata("DIALOG")
+    standingDropdown:SetFrameLevel(notesPanel:GetFrameLevel() + 30)
+    ns:ApplySurface(standingDropdown, M3.surfaceDim, M3.primary)
+    ns:EnableClipping(standingDropdown)
+    standingDropdown:EnableMouse(true)
+    standingDropdown:Hide()
+    standingDropdown.rows = {}
+    dossierFrame.standingDropdown = standingDropdown
+
+    standingDropdown.Rebuild = function(self)
+        for _, r in ipairs(self.rows) do
+            r:Hide()
+        end
+        local options = GetAllStandingsList()
+        local curStanding = (selectedDossierKey and EnsureNoteRecord(selectedDossierKey).standing) or "None"
+        self:SetHeight(#options * 27 + 12)
+        for idx, optName in ipairs(options) do
+            local btn = self.rows[idx]
+            if not btn then
+                btn = ns:CreateMaterialButton(self, "", 176, 24, 8, -6 - (idx - 1) * 27, nil, function(b)
+                    ApplyStandingSelection(b.standingValue)
+                end)
+                btn.label:SetJustifyH("LEFT")
+                self.rows[idx] = btn
+            end
+            btn.standingValue = optName
+            local isSel = (string.lower(optName) == string.lower(curStanding))
+            local sHex = ns:GetStandingColorHex(optName)
+            btn:SetText((isSel and "> " or "  ") .. "|c" .. sHex .. optName .. "|r")
+            btn:SetTone(ns:GetStandingTone(optName))
+            btn:Show()
+        end
+    end
+
+    dossierFrame.standingBtn = ns:CreateMaterialButton(notesPanel, "Standing: None", 190, 26, 12, -12, nil, function(self)
+        if standingDropdown:IsShown() then
+            standingDropdown:Hide()
+            if ns.SetControllerFocus then ns:SetControllerFocus(self) end
+        else
+            standingDropdown:ClearAllPoints()
+            standingDropdown:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
+            standingDropdown:Rebuild()
+            standingDropdown:Show()
+            if ns.FocusFirstInScope then ns:FocusFirstInScope() end
+        end
     end)
 
-    local noteHint = notesPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    noteHint:SetPoint("LEFT", dossierFrame.standingBtn, "RIGHT", 10, 0)
-    noteHint:SetText("|cff9aa0a6Saved notes display a |TInterface\\Icons\\INV_Misc_Note_01:13:13|t icon in tooltips.|r")
+    dossierFrame.relEditBox = ns:CreateMaterialEditBox(notesPanel, nil, "Optional relation label (e.g., Oath-Kin)...", 212, -12, 400, 26, function()
+        SaveCurrentNotes()
+    end)
 
     dossierFrame.charNoteLabel = notesPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dossierFrame.charNoteLabel:SetPoint("TOPLEFT", 12, -44)
-    dossierFrame.charNoteLabel:SetText("|cff81c995Character-Specific Notes|r")
+    dossierFrame.charNoteLabel:SetPoint("TOPLEFT", 12, -50)
+    dossierFrame.charNoteLabel:SetText("|cff81c995Notes from " .. (UnitName("player") or "Character") .. "|r  |cff9aa0a6(Character-Specific)|r")
 
     dossierFrame.charNoteBox = ns:CreateScrollableTextEditor(
         notesPanel,
         "Private RP notes from this character's perspective (e.g., how you met, debts, impressions)...",
-        12, -62, 600, 148,
+        12, -68, 600, 140,
         function() SaveCurrentNotes() end
     )
 
@@ -599,7 +838,7 @@ function ns:InitDossierWindow()
     dossierFrame.acctNoteBox = ns:CreateScrollableTextEditor(
         notesPanel,
         "OOC / Account-wide notes about this player...",
-        12, -238, 600, 148,
+        12, -238, 600, 140,
         function() SaveCurrentNotes() end
     )
 

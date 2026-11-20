@@ -132,13 +132,42 @@ local EXTRA_VERIFIED_RP_ICONS = {
     "Ability_Paladin_ShieldOfTemplar","Ability_Priest_FlashOfLight","Ability_Shaman_ChainLightning","Ability_Warlock_DemonicEmpowerment",
 }
 
-local STANDING_BUCKETS = {
-    { key = "Ally",         label = "Ally",         colorHex = "ff81c995", tone = "MINT" },
-    { key = "Acquaintance", label = "Acquaintance", colorHex = "ff8ab4f8", tone = "PRIMARY" },
-    { key = "Rival",        label = "Rival",        colorHex = "fff28b82", tone = "CORAL" },
-    { key = "Marked",       label = "Marked",       colorHex = "fffdd663", tone = "AMBER" },
-    { key = "Other",        label = "Other",        colorHex = "ff9aa0a6", tone = nil },
+local BASE_STANDING_BUCKETS = {
+    { key = "Ally",       label = "Ally",       colorHex = "ff81c995", tone = "MINT" },
+    { key = "Friendly",   label = "Friendly",   colorHex = "ff81c995", tone = "MINT" },
+    { key = "Neutral",    label = "Neutral",    colorHex = "ff8ab4f8", tone = "PRIMARY" },
+    { key = "Unfriendly", label = "Unfriendly", colorHex = "fff28b82", tone = "CORAL" },
+    { key = "Rival",      label = "Rival",      colorHex = "fff28b82", tone = "CORAL" },
+    { key = "Marked",     label = "Marked",     colorHex = "fffdd663", tone = "AMBER" },
 }
+
+local function GetStandingBuckets()
+    local buckets = {}
+    local seen = {}
+    for _, b in ipairs(BASE_STANDING_BUCKETS) do
+        table.insert(buckets, b)
+        seen[string.lower(b.key)] = true
+    end
+    for _, item in ipairs((ns.db and ns.db.customStandings) or {}) do
+        local lbl = type(item) == "table" and item.label or item
+        if lbl and strtrim(tostring(lbl)) ~= "" then
+            local clean = strtrim(tostring(lbl))
+            local lk = string.lower(clean)
+            if not seen[lk] and lk ~= "fool" then
+                seen[lk] = true
+                local tone = (type(item) == "table" and item.tone) or "AMBER"
+                local hex = "fffdd663"
+                if tone == "MINT" then hex = "ff81c995"
+                elseif tone == "PRIMARY" then hex = "ff8ab4f8"
+                elseif tone == "CORAL" then hex = "fff28b82"
+                end
+                table.insert(buckets, { key = clean, label = clean, colorHex = hex, tone = tone })
+            end
+        end
+    end
+    table.insert(buckets, { key = "Other", label = "Other", colorHex = "ff9aa0a6", tone = nil })
+    return buckets
+end
 
 local function FormatCheckbox(label, isChecked, activeColorHex)
     local box = isChecked and ("|c" .. (activeColorHex or "ff81c995") .. "[X]|r ") or "|cff9aa0a6[ ]|r "
@@ -903,6 +932,11 @@ end
 local function BuildDirectoryRows()
     local seen, entries = {}, {}
     local q = strtrim(string.lower(knownSearchFilter or ""))
+    local buckets = GetStandingBuckets()
+    local bucketLookup = {}
+    for _, b in ipairs(buckets) do
+        bucketLookup[string.lower(b.key)] = b.key
+    end
 
     local function CheckNoteStatus(k)
         if ns.GetNoteInfo then
@@ -918,7 +952,8 @@ local function BuildDirectoryRows()
         if seen[k] then return end
         seen[k] = true
         local standing, charNote, acctNote, hasNote = CheckNoteStatus(k)
-        local bucketKey = (standing and standing ~= "None") and standing or "Other"
+        local matchedBucket = standing and bucketLookup[string.lower(tostring(standing))] or nil
+        local bucketKey = matchedBucket or "Other"
         local isNotable = (bucketKey ~= "Other") or hasNote
 
         if knownNotableOnly and not isNotable then return end
@@ -981,7 +1016,7 @@ local function BuildDirectoryRows()
     end
 
     local groups = {}
-    for _, bInfo in ipairs(STANDING_BUCKETS) do
+    for _, bInfo in ipairs(buckets) do
         groups[bInfo.key] = {}
     end
     for _, item in ipairs(entries) do
@@ -989,7 +1024,7 @@ local function BuildDirectoryRows()
     end
 
     local rows = {}
-    for _, bInfo in ipairs(STANDING_BUCKETS) do
+    for _, bInfo in ipairs(buckets) do
         local members = groups[bInfo.key]
         if #members > 0 then
             local isCollapsed = collapsedBuckets[bInfo.key] and true or false
@@ -1253,6 +1288,11 @@ end
 
 local function CloseAnyOpenPopup()
     if not mainFrame then return false end
+    if ns.dossierFrame and ns.dossierFrame.standingDropdown and ns.dossierFrame.standingDropdown:IsShown() then
+        ns.dossierFrame.standingDropdown:Hide()
+        if ns.dossierFrame.standingBtn then ns:SetControllerFocus(ns.dossierFrame.standingBtn) end
+        return true
+    end
     if mainFrame.expDropdown and mainFrame.expDropdown:IsShown() then
         mainFrame.expDropdown:Hide()
         if mainFrame.bannerExpBtn then ns:SetControllerFocus(mainFrame.bannerExpBtn) end
@@ -1346,12 +1386,12 @@ function ns:ControllerCancelAction()
         ns.activeEditBox:ClearFocus()
         return
     end
-    if ns.dossierFrame and ns.dossierFrame:IsShown() then
-        ns.dossierFrame:Hide()
-        return
-    end
     if CloseAnyOpenPopup() then
         ns:PlayUISound()
+        return
+    end
+    if ns.dossierFrame and ns.dossierFrame:IsShown() then
+        ns.dossierFrame:Hide()
         return
     end
     if scope == ns.hudFrame then
@@ -1665,11 +1705,13 @@ local function FormatDirectoryEntryText(k, d, item)
     end
     if not item.indented and item.standing and item.standing ~= "None" then
         local bInfo
-        for _, sb in ipairs(STANDING_BUCKETS) do
-            if sb.key == item.standing then bInfo = sb break end
+        for _, sb in ipairs(GetStandingBuckets()) do
+            if string.lower(sb.key) == string.lower(item.standing) then bInfo = sb break end
         end
         if bInfo then
             table.insert(parts, "|c" .. bInfo.colorHex .. "[" .. string.upper(bInfo.label) .. "]|r")
+        else
+            table.insert(parts, "|cfffdd663[" .. string.upper(tostring(item.standing)) .. "]|r")
         end
     end
 
@@ -1689,6 +1731,11 @@ local function FormatDirectoryEntryText(k, d, item)
     local realmPart = (charOnly and charOnly ~= cleanName) and (" |cff8ab4f8(" .. k .. ")|r") or ""
     local displayColor = activeHex or "ffe8eaed"
     table.insert(parts, "|c" .. displayColor .. cleanName .. "|r" .. realmPart)
+
+    local assignedRel = ns.GetAssignedRelationship and ns:GetAssignedRelationship(k) or ""
+    if assignedRel ~= "" then
+        table.insert(parts, "|cfffdd663[" .. assignedRel .. "]|r")
+    end
 
     local statusBadges = {}
     if d.FC == "2" then

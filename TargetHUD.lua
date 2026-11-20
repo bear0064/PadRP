@@ -16,6 +16,14 @@ local STANDING_COLORS = {
     Marked       = "|cfffdd663[MARKED]|r ",
 }
 
+local function GetStandingBadgePrefix(standing)
+    if not standing or standing == "None" then return "" end
+    if STANDING_COLORS[standing] then
+        return STANDING_COLORS[standing]
+    end
+    return "|cfffdd663[" .. string.upper(tostring(standing)) .. "]|r "
+end
+
 local function HexToRGB(hex)
     if type(hex) ~= "string" then return nil end
     local clean = hex:gsub("^|c", ""):gsub("^#", "")
@@ -183,7 +191,7 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         if cr then r, g, b = cr, cg, cb end
     end
 
-    local standingTag = (standing and STANDING_COLORS[standing]) or ""
+    local standingTag = GetStandingBadgePrefix(standing)
     local noteIcon = hasNote and " |TInterface\\Icons\\INV_Misc_Note_01:14:14:0:0:64:64:4:60:4:60|t" or ""
 
     local tName = tooltip:GetName()
@@ -508,13 +516,15 @@ function ns:RefreshTargetHUD()
     local tHex = (tClass and RAID_CLASS_COLORS and RAID_CLASS_COLORS[tClass] and RAID_CLASS_COLORS[tClass].colorStr) or "ff8ab4f8"
     local rawName = UnitName(activeUnit) or "Unknown"
     local standing, _, _, hasNote = ns:GetNoteInfo(activeKey)
-    local standingTag = (standing and STANDING_COLORS[standing]) or ""
+    local standingTag = GetStandingBadgePrefix(standing)
+    local assignedRel = activeKey and ns.GetAssignedRelationship and ns:GetAssignedRelationship(activeKey) or ""
+    local relTag = (assignedRel ~= "") and ("  |cfffdd663[" .. assignedRel .. "]|r") or ""
     local noteTag = hasNote and " |TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t" or ""
 
     if data and data.NA and data.NA ~= "" then
         local cleanNA = StripColorCodes(data.NA)
         local titleStr = (data.NT and data.NT ~= "") and ("  |cfffdd663<" .. data.NT .. ">|r") or ""
-        hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. cleanNA .. "|r" .. titleStr .. noteTag)
+        hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. cleanNA .. "|r" .. titleStr .. relTag .. noteTag)
         local isIC = (data.FC == "2")
         local icDot = isIC and "|cff81c995[IC]|r" or "|cfff28b82[OOC]|r"
         local wuBadge = ns:GetTargetWalkUpInfo(data)
@@ -524,7 +534,7 @@ function ns:RefreshTargetHUD()
         hudFrame.hintText:SetText("|cff81c995Focus / Click to Open Dossier|r")
         hudFrame.accentBar:SetColorTexture(isIC and 0.51 or 0.95, isIC and 0.79 or 0.55, isIC and 0.58 or 0.51, 1)
     else
-        hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. rawName .. "|r" .. noteTag)
+        hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. rawName .. "|r" .. relTag .. noteTag)
         hudFrame.subText:SetText("|cff9aa0a6Standard Player (No RP Profile Cached)|r")
         hudFrame.hintText:SetText("Focus / Click to Open Dossier")
         hudFrame.accentBar:SetColorTexture(0.35, 0.39, 0.46, 0.65)
