@@ -5,6 +5,10 @@ local ldbObject
 local LDBIcon
 local fallbackMinimapBtn
 local hudDismissedKey = nil
+local lastActiveHUDKey = nil
+
+local TOOLTIP_FADE_DURATION = 0.45
+local HUD_POLL_INTERVAL = 0.15
 
 local tooltipState = setmetatable({}, { __mode = "k" })
 local isDecoratingTooltip = false
@@ -97,6 +101,69 @@ local function IsHardTargetedOtherPlayer()
     return UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player")
 end
 
+local function CancelHUDFadeOut()
+    if not hudFrame then return end
+    hudFrame._isFadingOut = false
+    hudFrame._fadeRemaining = 0
+    hudFrame:SetAlpha(1)
+end
+
+local function StartHUDFadeOut(duration)
+    if not hudFrame then return end
+    if not hudFrame:IsShown() then
+        hudFrame._isFadingOut = false
+        hudFrame._fadeRemaining = 0
+        hudFrame:SetAlpha(1)
+        return
+    end
+    if hudFrame._isFadingOut then
+        return
+    end
+    local fadeLen = tonumber(duration) or TOOLTIP_FADE_DURATION
+    if fadeLen <= 0 then
+        hudFrame._isFadingOut = false
+        hudFrame._fadeRemaining = 0
+        hudFrame:SetAlpha(1)
+        hudFrame:Hide()
+        return
+    end
+    hudFrame._isFadingOut = true
+    hudFrame._fadeDuration = fadeLen
+    hudFrame._fadeRemaining = math.max(0.05, fadeLen * (hudFrame:GetAlpha() or 1))
+end
+
+local function UpdateHUDFrame(self, elapsed)
+    if self._isFadingOut then
+        local rem = (self._fadeRemaining or 0) - (elapsed or 0)
+        local dur = self._fadeDuration or TOOLTIP_FADE_DURATION
+        if rem <= 0 or dur <= 0 then
+            self._isFadingOut = false
+            self._fadeRemaining = 0
+            self:SetAlpha(1)
+            self:Hide()
+            return
+        end
+        self._fadeRemaining = rem
+        self:SetAlpha(math.max(0, math.min(1, rem / dur)))
+        return
+    end
+
+    if not self:IsShown() then return end
+    self._pollElapsed = (self._pollElapsed or 0) + (elapsed or 0)
+    if self._pollElapsed < HUD_POLL_INTERVAL then return end
+    self._pollElapsed = 0
+
+    local activeUnit = GetActiveOtherPlayerUnit()
+    if not activeUnit then
+        lastActiveHUDKey = nil
+        hudDismissedKey = nil
+        StartHUDFadeOut(TOOLTIP_FADE_DURATION)
+        if ns.currentFocus == self and ns.SetControllerFocus then
+            ns:SetControllerFocus(nil)
+        end
+    end
+end
+
 local function RegisterHUDWithConsolePort()
     if not hudFrame or not ConsolePort then return end
     pcall(function()
@@ -114,7 +181,7 @@ end
 function ns:DismissTargetHUDFocus()
     if hudFrame then
         hudDismissedKey = hudFrame.inspectedKey or "__ACTIVE__"
-        hudFrame:Hide()
+        StartHUDFadeOut(TOOLTIP_FADE_DURATION)
     end
     if ns.SetControllerFocus then
         ns:SetControllerFocus(nil)
@@ -348,6 +415,15 @@ local function InitTooltipHook()
         pcall(function()
             GameTooltip:HookScript("OnTooltipCleared", function(self)
                 tooltipState[self] = nil
+                if not IsHardTargetedOtherPlayer() and ns.RefreshTargetHUD then
+                    ns:RefreshTargetHUD()
+                end
+            end)
+            GameTooltip:HookScript("OnHide", function(self)
+                tooltipState[self] = nil
+                if not IsHardTargetedOtherPlayer() and ns.RefreshTargetHUD then
+                    ns:RefreshTargetHUD()
+                end
             end)
         end)
     end
@@ -472,7 +548,7 @@ local function SyncHUDFocusState(shouldShow, activeKey)
     end
 
     if shouldShow and hudDismissedKey == curKey then
-        hudFrame:Hide()
+        StartHUDFadeOut(TOOLTIP_FADE_DURATION)
         if ns.currentFocus == hudFrame and ns.SetControllerFocus then
             ns:SetControllerFocus(nil)
         end
@@ -499,18 +575,25 @@ local function SyncHUDFocusState(shouldShow, activeKey)
         if ns.UpdateControllerBindings then
             ns:UpdateControllerBindings()
         end
+        if not shouldShow then
+            StartHUDFadeOut(TOOLTIP_FADE_DURATION)
+        end
+    elseif not shouldShow then
+        StartHUDFadeOut(TOOLTIP_FADE_DURATION)
     end
 end
 
 function ns:RefreshTargetHUD()
     if not hudFrame then return end
     if not ns.db or not ns.db.ui.showTargetHUD then
-        hudFrame:Hide()
+        lastActiveHUDKey = nil
+        StartHUDFadeOut(TOOLTIP_FADE_DURATION)
         SyncHUDFocusState(false)
         return
     end
     if ns.db.ui.hideInCombat and InCombatLockdown() then
-        hudFrame:Hide()
+        lastActiveHUDKey = nil
+        StartHUDFadeOut(TOOLTIP_FADE_DURATION)
         SyncHUDFocusState(false)
         return
     end
@@ -518,21 +601,29 @@ function ns:RefreshTargetHUD()
     local activeUnit = GetActiveOtherPlayerUnit()
     if not activeUnit then
         hudDismissedKey = nil
-        hudFrame:Hide()
+        lastActiveHUDKey = nil
+        StartHUDFadeOut(TOOLTIP_FADE_DURATION)
         SyncHUDFocusState(false)
         return
     end
 
     local data, activeKey = ns:GetCachedMSP(activeUnit)
+    local resolvedKey = activeKey or UnitGUID(activeUnit) or UnitName(activeUnit) or "__ACTIVE__"
+    if resolvedKey ~= lastActiveHUDKey then
+        lastActiveHUDKey = resolvedKey
+        hudDismissedKey = nil
+        CancelHUDFadeOut()
+    end
+
     if ns.db.ui.hudOnlyRP and (not data or not data.NA) then
-        hudFrame:Hide()
-        SyncHUDFocusState(false, activeKey)
+        StartHUDFadeOut(TOOLTIP_FADE_DURATION)
+        SyncHUDFocusState(false, resolvedKey)
         return
     end
 
-    if hudDismissedKey and hudDismissedKey == (activeKey or "__ACTIVE__") then
-        hudFrame:Hide()
-        SyncHUDFocusState(false, activeKey)
+    if hudDismissedKey and hudDismissedKey == resolvedKey then
+        StartHUDFadeOut(TOOLTIP_FADE_DURATION)
+        SyncHUDFocusState(false, resolvedKey)
         return
     end
 
@@ -564,10 +655,11 @@ function ns:RefreshTargetHUD()
         hudFrame.accentBar:SetColorTexture(0.35, 0.39, 0.46, 0.65)
     end
 
+    CancelHUDFadeOut()
     hudFrame.inspectedKey = activeKey
     hudFrame:SetScale(ns.db.ui.scale or 1.0)
     hudFrame:Show()
-    SyncHUDFocusState(true, activeKey)
+    SyncHUDFocusState(true, resolvedKey)
 end
 
 function ns:InitTargetHUD()
@@ -584,6 +676,7 @@ function ns:InitTargetHUD()
     hudFrame:RegisterForDrag("LeftButton")
     hudFrame:SetScript("OnDragStart", hudFrame.StartMoving)
     hudFrame:SetScript("OnDragStop", hudFrame.StopMovingOrSizing)
+    hudFrame:SetScript("OnUpdate", UpdateHUDFrame)
     hudFrame:Hide()
 
     hudFrame:SetBackdrop({
@@ -647,7 +740,9 @@ function ns:InitTargetHUD()
 
     hudFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     hudFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    hudFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
     hudFrame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+    hudFrame:RegisterEvent("CURSOR_CHANGED")
     hudFrame:SetScript("OnEvent", function() ns:RefreshTargetHUD() end)
 
     ns:CreateBindButton("PadRP_InspectTargetButton", function()

@@ -6,17 +6,26 @@ local sessionThanked = {}
 local lastPhraseUsed = ""
 ns.lastHelper = nil
 
-local MODES = { "SMART", "AUTO_EMOTE", "AUTO_WHISPER", "DO_EMOTE", "MANUAL", "OFF" }
+local MODES = { "DEFAULT_NO_WHISPER", "DO_EMOTE", "MANUAL", "WHISPER", "OFF" }
 local MODE_LABELS = {
-    SMART        = "Smart Auto (Emote Nearby / Whisper Far)",
-    AUTO_EMOTE   = "Auto Custom Emote (/e)",
-    AUTO_WHISPER = "Auto Custom Whisper (/w)",
-    DO_EMOTE     = "Blizzard Voice Emote (/thank)",
-    MANUAL       = "Manual Only (Quick-Thank Controller Bind)",
-    OFF          = "Disabled (Off)",
+    DEFAULT_NO_WHISPER = "Default (No Whisper: Pool Emote / /thank)",
+    DO_EMOTE           = "Blizzard Voice Emote (/thank)",
+    MANUAL             = "Manual Only (Quick-Thank Controller Bind)",
+    WHISPER            = "Opt-In Whisper (/w)",
+    OFF                = "Disabled (Off)",
 }
 
-local function NormalizeWhisperTarget(rawName)
+local function NormalizeGratitudeMode(rawMode)
+    local m = tostring(rawMode or "DEFAULT_NO_WHISPER")
+    if m == "SMART" or m == "AUTO_EMOTE" then
+        return "DEFAULT_NO_WHISPER"
+    elseif m == "AUTO_WHISPER" then
+        return "WHISPER"
+    end
+    return MODE_LABELS[m] and m or "DEFAULT_NO_WHISPER"
+end
+
+local function NormalizeUnitName(rawName)
     if not rawName or rawName == "" then return nil end
     local localRealm = GetNormalizedRealmName and GetNormalizedRealmName()
     if not localRealm or localRealm == "" then
@@ -33,14 +42,19 @@ local function NormalizeWhisperTarget(rawName)
 end
 
 function ns:GetGratitudeModeLabel()
-    return MODE_LABELS[ns.db.gratitude.mode] or ns.db.gratitude.mode
+    local activeMode = NormalizeGratitudeMode(ns.db and ns.db.gratitude and ns.db.gratitude.mode)
+    return MODE_LABELS[activeMode] or activeMode
 end
 
 function ns:CycleGratitudeMode()
-    local cur = ns.db.gratitude.mode
+    ns.db.gratitude = ns.db.gratitude or {}
+    local cur = NormalizeGratitudeMode(ns.db.gratitude.mode)
     local idx = 1
     for i, m in ipairs(MODES) do
-        if m == cur then idx = (i % #MODES) + 1 break end
+        if m == cur then
+            idx = (i % #MODES) + 1
+            break
+        end
     end
     ns.db.gratitude.mode = MODES[idx]
     print("|cff8ab4f8[PadRP]|r Gratitude Mode: |cfffdd663" .. ns:GetGratitudeModeLabel() .. "|r")
@@ -104,41 +118,45 @@ local function PickRandomPhrase(category)
 end
 
 function ns:PerformThank(targetRawName, spellLabel, isManualHardwarePress, category)
-    local cleanTarget = NormalizeWhisperTarget(targetRawName)
+    local cleanTarget = NormalizeUnitName(targetRawName)
     if not cleanTarget then return false end
 
-    local mode = ns.db.gratitude.mode
+    ns.db.gratitude = ns.db.gratitude or {}
+    local mode = NormalizeGratitudeMode(ns.db.gratitude.mode)
+    ns.db.gratitude.mode = mode
+
     if mode == "OFF" then return false end
     if mode == "MANUAL" and not isManualHardwarePress then
         return false
     end
 
-    local template = PickRandomPhrase(category or "STANDARD")
-    local formatted = ns:FormatTokens(template, cleanTarget, spellLabel or "aid")
     local inInstance = IsInInstance and select(1, IsInInstance())
     local sentOk = false
 
-    if mode == "DO_EMOTE" and not isManualHardwarePress then
-        local ok = pcall(DoEmote, "THANK", cleanTarget)
-        sentOk = ok and true or false
-    elseif mode == "AUTO_WHISPER" then
-        local ok = pcall(SendChatMessage, formatted, "WHISPER", nil, cleanTarget)
-        sentOk = ok and true or false
-    elseif isManualHardwarePress or inInstance then
-        local ok = pcall(SendChatMessage, formatted, "EMOTE")
-        sentOk = ok and true or false
-    else
-        -- Open-world automatic trigger: whisper helper instead of protected EMOTE send
-        local ok = pcall(SendChatMessage, formatted, "WHISPER", nil, cleanTarget)
-        if not ok then
-            ok = pcall(DoEmote, "THANK", cleanTarget)
+    if mode == "WHISPER" then
+        local template = PickRandomPhrase(category or "STANDARD")
+        local formatted = ns:FormatTokens(template, cleanTarget, spellLabel or "aid")
+        sentOk = pcall(SendChatMessage, formatted, "WHISPER", nil, cleanTarget) and true or false
+        if not sentOk then
+            sentOk = pcall(DoEmote, "THANK", cleanTarget) and true or false
         end
-        sentOk = ok and true or false
+    elseif mode == "DO_EMOTE" and not isManualHardwarePress then
+        sentOk = pcall(DoEmote, "THANK", cleanTarget) and true or false
+    elseif isManualHardwarePress or inInstance then
+        local template = PickRandomPhrase(category or "STANDARD")
+        local formatted = ns:FormatTokens(template, cleanTarget, spellLabel or "aid")
+        sentOk = pcall(SendChatMessage, formatted, "EMOTE") and true or false
+        if not sentOk then
+            sentOk = pcall(DoEmote, "THANK", cleanTarget) and true or false
+        end
+    else
+        -- Default no-whisper behavior: voice emote on open-world auto triggers
+        sentOk = pcall(DoEmote, "THANK", cleanTarget) and true or false
     end
 
     if sentOk then
         local displayName = ns:GetUnitRPName(cleanTarget, true)
-        print(string.format("|cff81c995[PadRP]|r Thanked |cfffdd663%s|r (%s) with custom pool phrase.", displayName, spellLabel or "aid"))
+        print(string.format("|cff81c995[PadRP]|r Thanked |cfffdd663%s|r (%s).", displayName, spellLabel or "aid"))
     end
     return sentOk
 end
@@ -156,9 +174,12 @@ end
 
 local function QueueGratitudeForHelper(sourceKey, sourceName, matchedAction, category)
     local g = ns.db.gratitude
-    if not g or g.mode == "OFF" then return end
+    if not g then return end
+    local mode = NormalizeGratitudeMode(g.mode)
+    g.mode = mode
+    if mode == "OFF" then return end
 
-    local cleanTarget = NormalizeWhisperTarget(sourceName)
+    local cleanTarget = NormalizeUnitName(sourceName)
     if not cleanTarget then return end
 
     if g.ignoreParty and (UnitInParty(cleanTarget) or UnitInRaid(cleanTarget)) then
@@ -176,7 +197,7 @@ local function QueueGratitudeForHelper(sourceKey, sourceName, matchedAction, cat
     ns.lastHelper = { name = cleanTarget, spellName = matchedAction, category = category, time = now }
     if ns.RefreshTargetHUD then ns:RefreshTargetHUD() end
 
-    if g.mode == "MANUAL" then
+    if mode == "MANUAL" then
         print(string.format("|cff8ab4f8[PadRP]|r %s cast |cfffdd663%s|r on you. Press Quick-Thank to respond!", ns:GetUnitRPName(cleanTarget, true), matchedAction))
         return
     end
@@ -204,7 +225,7 @@ end
 
 local function HandleCombatLogEvent()
     local g = ns.db.gratitude
-    if not g or g.mode == "OFF" or not CombatLogGetCurrentEventInfo then return end
+    if not g or NormalizeGratitudeMode(g.mode) == "OFF" or not CombatLogGetCurrentEventInfo then return end
 
     local ok, _, subEvent, _, sourceGUID, sourceName, sourceFlags, _, destGUID, _, _, _, _, spellName, _, arg15, arg16 = pcall(CombatLogGetCurrentEventInfo)
     if not ok or not subEvent then return end
@@ -243,7 +264,7 @@ end
 
 local function HandlePlayerAuraUpdate(updateInfo)
     local g = ns.db.gratitude
-    if not g or g.mode == "OFF" or not updateInfo or not C_UnitAuras then return end
+    if not g or NormalizeGratitudeMode(g.mode) == "OFF" or not updateInfo or not C_UnitAuras then return end
 
     local aurasToCheck = {}
     if updateInfo.addedAuras then
@@ -280,6 +301,8 @@ local function HandlePlayerAuraUpdate(updateInfo)
 end
 
 function ns:InitGratitude()
+    ns.db.gratitude = ns.db.gratitude or {}
+    ns.db.gratitude.mode = NormalizeGratitudeMode(ns.db.gratitude.mode)
     ns:CreateBindButton("PadRP_QuickThankButton", function() ns:QuickThankAction() end)
 
     local frame = CreateFrame("Frame")

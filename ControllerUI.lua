@@ -57,12 +57,11 @@ local RP_STYLE_TOPICS = {
 }
 
 local MODE_LIST = {
-    { key = "SMART",        label = "Smart Auto (IC Emote Nearby / Whisper Far)" },
-    { key = "AUTO_EMOTE",   label = "Auto Custom Emote (/e)" },
-    { key = "AUTO_WHISPER", label = "Auto Custom Whisper (/w)" },
-    { key = "DO_EMOTE",     label = "Blizzard Voice Emote (/thank)" },
-    { key = "MANUAL",       label = "Manual Only (Quick-Thank Controller Bind)" },
-    { key = "OFF",          label = "Disabled (Off)" },
+    { key = "DEFAULT_NO_WHISPER", label = "Default (No Whisper: Pool Emote / /thank)" },
+    { key = "DO_EMOTE",           label = "Blizzard Voice Emote (/thank)" },
+    { key = "MANUAL",             label = "Manual Only (Quick-Thank Controller Bind)" },
+    { key = "WHISPER",            label = "Opt-In Whisper (/w)" },
+    { key = "OFF",                label = "Disabled (Off)" },
 }
 
 local POOL_LIST = {
@@ -642,6 +641,7 @@ local function UpdateResponsiveLayouts()
         }, 16, 16, 8)
 
         local pc = p1.pageCore
+
         if pc then
             LayoutRow(pc, -22, {
                 { w = p1.pxBox, weight = 0.16 },
@@ -2323,6 +2323,17 @@ local function TriggerBackdoorToggle()
     if (now - (lastBackdoorToggleTime or 0)) < 0.35 then return end
     lastBackdoorToggleTime = now
     ns:ToggleMainFrame()
+    if mainFrame and mainFrame:IsShown() then
+        if ns.UpdateControllerBindings then ns:UpdateControllerBindings() end
+        if ns.FocusFirstInScope then ns:FocusFirstInScope() end
+        if ConsolePort and ConsolePort.SetCursorNode and mainFrame then
+            pcall(function()
+                if ns.currentFocus and ns.currentFocus.GetCenter then
+                    ConsolePort:SetCursorNode(ns.currentFocus)
+                end
+            end)
+        end
+    end
 end
 
 function PadRP_ActionBarToggle()
@@ -2959,7 +2970,12 @@ function ns:InitControllerUI()
         ns:ShowStatusToast("Cleared Currently status")
     end)
 
-    p1.oocNotesBox = ns:CreateMaterialEditBox(pageCore, "Other Information (OOC)", "e.g., New to WoW RP.", 16, -174, 624, 28, AutoCommitTab1)
+    p1.oocNotesBox = ns:CreateScrollableTextEditor(
+        pageCore,
+        "Other Information (OOC) — add spaced notes, paragraphs, or boundaries...",
+        16, -174, 624, 92,
+        AutoCommitTab1
+    )
 
     local dropdown = CreateFrame("Frame", nil, pageCore, "BackdropTemplate")
     dropdown:SetSize(426, 194)
@@ -3125,7 +3141,7 @@ function ns:InitControllerUI()
         ns:RefreshControllerUI()
     end)
 
-    local saveIdentityBtn = ns:CreateMaterialButton(p1, "Save & Broadcast Profile via LibMSP", 470, 36, 16, -354, "PRIMARY", function()
+    local saveIdentityBtn = ns:CreateMaterialButton(p1, "Save Profile", 470, 36, 16, -354, "PRIMARY", function()
         CommitModifiedBoxesToProfile(true)
         RefreshHeaderBanner()
         ns:ShowStatusToast("Profile permanently saved & synced!")
@@ -3243,7 +3259,7 @@ function ns:InitControllerUI()
         p2.cards[slot] = card
     end
 
-    local saveGlanceBtn = ns:CreateMaterialButton(p2, "Save & Broadcast All 5 First Glances Now", 624, 36, 16, -354, "PRIMARY", function()
+    local saveGlanceBtn = ns:CreateMaterialButton(p2, "Save First Glances", 624, 36, 16, -354, "PRIMARY", function()
         CommitModifiedBoxesToProfile(true)
         ns:ShowStatusToast("All 5 First Glances saved & synced!")
     end)
