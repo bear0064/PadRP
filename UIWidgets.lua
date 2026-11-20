@@ -1,12 +1,23 @@
 local _, ns = ...
 
-ns.focusables = {}
+-- PadRP UI widgets and controller focus management.
+-- Native gamepad focus integration is intentionally cooperative: PadRP never
+-- registers its windows with Blizzard's private FrameControlsManager and never
+-- binds PADBACK (Xbox View / Change Focus Frame).
+
+ns.focusables = ns.focusables or {}
 ns.currentFocus = nil
 ns.activeEditBox = nil
+ns.lastFocusByScope = ns.lastFocusByScope or {}
+
 local lastPadInputTime = 0
 local focusRing = nil
 local bindingOwner = nil
 local pendingBindingSync = false
+local focusCallbackOwner = {}
+local focusCallbackRegistered = false
+local focusRefreshQueued = false
+local focusVisualsSuspended = false
 
 ns.M3 = {
     surfaceDim     = { 0.05, 0.06, 0.08, 0.98 },
@@ -34,17 +45,23 @@ local SOLID_BACKDROP = {
 }
 
 local function ScrollFrameByDelta(scrollFrame, deltaPixels)
-    if not scrollFrame or not scrollFrame.GetVerticalScroll or not scrollFrame.SetVerticalScroll then return false end
+    if not scrollFrame or not scrollFrame.GetVerticalScroll or not scrollFrame.SetVerticalScroll then
+        return false
+    end
+
     local cur = scrollFrame:GetVerticalScroll() or 0
-    local maxS = (scrollFrame.GetVerticalScrollRange and scrollFrame.GetVerticalScrollRange()) or 0
+    local maxS = (scrollFrame.GetVerticalScrollRange and scrollFrame:GetVerticalScrollRange()) or 0
     if maxS <= 2 then return false end
+
     local nextVal = math.max(0, math.min(maxS, cur + deltaPixels))
     if math.abs(nextVal - cur) < 0.5 then return false end
+
     scrollFrame:SetVerticalScroll(nextVal)
     return true
 end
 
 function ns:ApplySurface(frame, bgColor, borderColor)
+    if not frame then return end
     frame:SetBackdrop(SOLID_BACKDROP)
     frame:SetBackdropColor(unpack(bgColor or ns.M3.surface))
     frame:SetBackdropBorderColor(unpack(borderColor or ns.M3.outline))
@@ -56,30 +73,79 @@ function ns:EnableClipping(frame)
     end
 end
 
+-- A short shared debounce protects actions from duplicate hardware events.
+-- Directional movement remains responsive; binding buttons themselves should
+-- normally fire on one click phase only (see CreateBindButton in the core file).
 function ns:CanProcessPadAction()
-    local now = GetTime()
-    if (now - lastPadInputTime) < 0.18 then return false end
+    local now = (GetTime and GetTime()) or 0
+    if (now - lastPadInputTime) < 0.14 then return false end
     lastPadInputTime = now
     return true
 end
 
-function ns:RegisterFocusable(widget, activateFn, onFocusChange)
-    widget.ActivateFromPad = activateFn
-    widget.OnFocusHighlight = onFocusChange
-    table.insert(ns.focusables, widget)
-end
-
 local function IsFrameDescendantOf(frame, ancestor)
+    if not frame or not ancestor then return false end
+
     local p = frame
     while p do
         if p == ancestor then return true end
+        if not p.GetParent then break end
         p = p:GetParent()
     end
+
     return false
+end
+
+ns.IsFrameDescendantOf = IsFrameDescendantOf
+
+function ns:IsFocusableInScope(widget, scope)
+    if not widget or not scope then return false end
+    if not widget.IsVisible or not widget:IsVisible() then return false end
+    if widget.IsEnabled and not widget:IsEnabled() then return false end
+    return IsFrameDescendantOf(widget, scope)
+end
+
+function ns:RegisterFocusable(widget, activateFn, onFocusChange)
+    if not widget then return end
+
+    widget.ActivateFromPad = activateFn
+    widget.OnFocusHighlight = onFocusChange
+
+    if widget._padRPFocusableRegistered then return end
+    widget._padRPFocusableRegistered = true
+    table.insert(ns.focusables, widget)
+end
+
+-- WoW Forever currently exposes this private manager to addons. It is not a
+-- supported/public API, so every access is guarded and failure falls back to
+-- PadRP's normal local navigation behaviour.
+local function GetNativeGamepadFocusFrame()
+    local gamepadMode = _G.GamepadMode
+    local manager = gamepadMode and gamepadMode.FrameControlsManager
+    if not manager or type(manager.GetActiveFrame) ~= "function" then
+        return nil
+    end
+
+    local ok, frame = pcall(manager.GetActiveFrame, manager)
+    if ok then return frame end
+    return nil
+end
+
+ns.GetNativeGamepadFocusFrame = GetNativeGamepadFocusFrame
+
+local function HideFocusRingPreservingSelection()
+    if not focusVisualsSuspended then
+        focusVisualsSuspended = true
+        if ns.currentFocus and ns.currentFocus.OnFocusHighlight then
+            ns.currentFocus:OnFocusHighlight(false)
+        end
+    end
+    if focusRing then focusRing:Hide() end
 end
 
 local function GetOrCreateFocusRing()
     if focusRing then return focusRing end
+
     focusRing = CreateFrame("Frame", "PadRP_FocusRing", UIParent, "BackdropTemplate")
     focusRing:SetBackdrop({
         bgFile   = "Interface\\Buttons\\WHITE8x8",
@@ -91,22 +157,102 @@ local function GetOrCreateFocusRing()
     focusRing:SetBackdropBorderColor(0.54, 0.71, 0.97, 0.90)
     focusRing:EnableMouse(false)
     focusRing:SetScript("OnUpdate", function()
-        if not ns.currentFocus or not ns.currentFocus:IsVisible() then
+        if not ns.currentFocus then
+            focusRing:Hide()
+            return
+        end
+
+        if not ns.currentFocus.IsVisible or not ns.currentFocus:IsVisible() then
             ns:SetControllerFocus(nil)
+            return
+        end
+
+        -- Do not display PadRP's local ring while a Blizzard gamepad window
+        -- owns native focus. Keep the selected widget for the return handoff.
+        if GetNativeGamepadFocusFrame() then
+            HideFocusRingPreservingSelection()
         end
     end)
     focusRing:Hide()
     return focusRing
 end
 
+local function RestorePadRPFocusAfterNativeHandoff()
+    local nativeFrame = GetNativeGamepadFocusFrame()
+    if nativeFrame then
+        HideFocusRingPreservingSelection()
+        return
+    end
+
+    local scope = ns:GetActiveModalScope()
+    if not scope or not scope.IsShown or not scope:IsShown() then
+        ns:UpdateControllerBindings()
+        return
+    end
+
+    local remembered = ns.lastFocusByScope[scope]
+    if ns:IsFocusableInScope(remembered, scope) then
+        ns:SetControllerFocus(remembered)
+    elseif ns:IsFocusableInScope(ns.currentFocus, scope) then
+        ns:SetControllerFocus(ns.currentFocus)
+    else
+        ns:FocusFirstInScope()
+    end
+
+    ns:UpdateControllerBindings()
+end
+
+local function QueueGamepadFocusRefresh()
+    if focusRefreshQueued then return end
+    focusRefreshQueued = true
+
+    local function Refresh()
+        focusRefreshQueued = false
+
+        if InCombatLockdown and InCombatLockdown() then
+            pendingBindingSync = true
+            HideFocusRingPreservingSelection()
+            return
+        end
+
+        RestorePadRPFocusAfterNativeHandoff()
+    end
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, Refresh)
+    else
+        Refresh()
+    end
+end
+
+local function RegisterGamepadFocusObserver()
+    if focusCallbackRegistered then return end
+    if not EventRegistry or type(EventRegistry.RegisterCallback) ~= "function" then
+        return
+    end
+
+    local ok = pcall(function()
+        EventRegistry:RegisterCallback(
+            "Gamepad.RefreshFrameFocus",
+            QueueGamepadFocusRefresh,
+            focusCallbackOwner
+        )
+    end)
+
+    focusCallbackRegistered = ok
+end
+
 local function EnsureBindingOwner()
     if bindingOwner then return bindingOwner end
+
     bindingOwner = CreateFrame("Frame", "PadRP_PadBindingOwner", UIParent)
     bindingOwner:RegisterEvent("PLAYER_REGEN_DISABLED")
     bindingOwner:RegisterEvent("PLAYER_REGEN_ENABLED")
     bindingOwner:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_REGEN_DISABLED" then
-            ClearOverrideBindings(bindingOwner)
+            if ClearOverrideBindings then
+                pcall(ClearOverrideBindings, bindingOwner)
+            end
             pendingBindingSync = true
         elseif event == "PLAYER_REGEN_ENABLED" then
             if pendingBindingSync then
@@ -115,46 +261,74 @@ local function EnsureBindingOwner()
             end
         end
     end)
+
+    RegisterGamepadFocusObserver()
     return bindingOwner
+end
+
+local function BindPadClick(owner, key, buttonName)
+    if not SetOverrideBindingClick or not _G[buttonName] then return end
+    SetOverrideBindingClick(owner, true, key, buttonName, "LeftButton")
 end
 
 function ns:UpdateControllerBindings()
     local owner = EnsureBindingOwner()
-    local modalOpen = (ns.dossierFrame and ns.dossierFrame:IsShown())
-        or (ns.mainFrame and ns.mainFrame:IsShown())
-    local hudFocused = (ns.hudFrame and ns.hudFrame:IsShown() and ns.currentFocus == ns.hudFrame)
+    local nativeFrame = GetNativeGamepadFocusFrame()
+
+    local dossierOpen = ns.dossierFrame and ns.dossierFrame:IsShown()
+    local mainOpen = ns.mainFrame and ns.mainFrame:IsShown()
+    local modalOpen = dossierOpen or mainOpen
+    local hudFocused = ns.hudFrame
+        and ns.hudFrame:IsShown()
+        and ns.currentFocus == ns.hudFrame
+
+    if InCombatLockdown and InCombatLockdown() then
+        pendingBindingSync = true
+        if nativeFrame then HideFocusRingPreservingSelection() end
+        return
+    end
+
+    if ClearOverrideBindings then
+        ClearOverrideBindings(owner)
+    end
+
+    -- Native Blizzard focus always wins. Do not claim the D-pad, shoulders,
+    -- A or B while a native gamepad frame is active.
+    if nativeFrame then
+        HideFocusRingPreservingSelection()
+        pendingBindingSync = false
+        return
+    end
 
     if not modalOpen and not hudFocused then
         ns:SetControllerFocus(nil)
     end
 
-    if InCombatLockdown() then
-        pendingBindingSync = true
-        return
-    end
-
-    ClearOverrideBindings(owner)
-
     if modalOpen then
-        SetOverrideBindingClick(owner, true, "PADLSHOULDER", "PadRP_PrevTabBtn")
-        SetOverrideBindingClick(owner, true, "PADRSHOULDER", "PadRP_NextTabBtn")
-        SetOverrideBindingClick(owner, true, "PADDUP",       "PadRP_PadUpBtn")
-        SetOverrideBindingClick(owner, true, "PADDDOWN",     "PadRP_PadDownBtn")
-        SetOverrideBindingClick(owner, true, "PADDLEFT",     "PadRP_PadLeftBtn")
-        SetOverrideBindingClick(owner, true, "PADDRIGHT",    "PadRP_PadRightBtn")
-        SetOverrideBindingClick(owner, true, "PAD1",         "PadRP_PadConfirmBtn")
-        SetOverrideBindingClick(owner, true, "PAD2",         "PadRP_PadCancelBtn")
+        BindPadClick(owner, "PADLSHOULDER", "PadRP_PrevTabBtn")
+        BindPadClick(owner, "PADRSHOULDER", "PadRP_NextTabBtn")
+        BindPadClick(owner, "PADDUP",       "PadRP_PadUpBtn")
+        BindPadClick(owner, "PADDDOWN",     "PadRP_PadDownBtn")
+        BindPadClick(owner, "PADDLEFT",     "PadRP_PadLeftBtn")
+        BindPadClick(owner, "PADDRIGHT",    "PadRP_PadRightBtn")
+        BindPadClick(owner, "PAD1",         "PadRP_PadConfirmBtn")
+        BindPadClick(owner, "PAD2",         "PadRP_PadCancelBtn")
     elseif hudFocused then
-        -- Keep D-pad free for normal gameplay while only the top notifier bar is focused
-        SetOverrideBindingClick(owner, true, "PAD1", "PadRP_PadConfirmBtn")
-        SetOverrideBindingClick(owner, true, "PAD2", "PadRP_PadCancelBtn")
+        -- Keep D-pad and shoulders free for normal gameplay while only the
+        -- small target notifier is selected.
+        BindPadClick(owner, "PAD1", "PadRP_PadConfirmBtn")
+        BindPadClick(owner, "PAD2", "PadRP_PadCancelBtn")
     end
 
+    -- PADBACK is deliberately never bound: that is the native View button.
     pendingBindingSync = false
 end
 
 function ns:GetActiveModalScope()
     if ns.dossierFrame and ns.dossierFrame:IsShown() then
+        if ns.dossierFrame.standingDropdown and ns.dossierFrame.standingDropdown:IsShown() then
+            return ns.dossierFrame
+        end
         return ns.dossierFrame
     end
 
@@ -163,6 +337,7 @@ function ns:GetActiveModalScope()
         if mf.iconPicker and mf.iconPicker:IsShown() then return mf.iconPicker end
         if mf.exportModal and mf.exportModal:IsShown() then return mf.exportModal end
         if mf.presetDropdown and mf.presetDropdown:IsShown() then return mf.presetDropdown end
+        if mf.expDropdown and mf.expDropdown:IsShown() then return mf.expDropdown end
         if mf.modeDropdown and mf.modeDropdown:IsShown() then return mf.modeDropdown end
         if mf.poolDropdown and mf.poolDropdown:IsShown() then return mf.poolDropdown end
         return mf
@@ -176,21 +351,36 @@ function ns:GetActiveModalScope()
 end
 
 function ns:SetControllerFocus(widget)
-    local ring = GetOrCreateFocusRing()
-
     if ns.currentFocus and ns.currentFocus ~= widget and ns.currentFocus.OnFocusHighlight then
         ns.currentFocus:OnFocusHighlight(false)
     end
 
-    if not widget or not widget:IsVisible() then
+    if not widget or not widget.IsVisible or not widget:IsVisible()
+        or (widget.IsEnabled and not widget:IsEnabled()) then
         ns.currentFocus = nil
-        ring:Hide()
+        if focusRing then focusRing:Hide() end
         return
     end
 
     ns.currentFocus = widget
-    if widget.OnFocusHighlight then widget:OnFocusHighlight(true) end
 
+    local scope = ns:GetActiveModalScope()
+    if scope and ns:IsFocusableInScope(widget, scope) then
+        ns.lastFocusByScope[scope] = widget
+    end
+
+    if GetNativeGamepadFocusFrame() then
+        HideFocusRingPreservingSelection()
+        return
+    end
+
+    -- The native focus handoff has ended; re-enable PadRP's local focus visuals.
+    focusVisualsSuspended = false
+    if widget.OnFocusHighlight then
+        widget:OnFocusHighlight(true)
+    end
+
+    local ring = GetOrCreateFocusRing()
     local strata = (widget.GetFrameStrata and widget:GetFrameStrata()) or "DIALOG"
     local level = (widget.GetFrameLevel and widget:GetFrameLevel()) or 40
     ring:SetFrameStrata(strata)
@@ -206,18 +396,30 @@ function ns:SetControllerFocus(widget)
         ring:SetBackdropColor(0.54, 0.71, 0.97, 0.05)
         ring:SetBackdropBorderColor(0.54, 0.71, 0.97, 0.90)
     end
+
     ring:Show()
 end
 
 function ns:FocusFirstInScope()
     local scope = ns:GetActiveModalScope()
-    if not scope or not scope:IsShown() then
+    if not scope or not scope.IsShown or not scope:IsShown() then
         ns:SetControllerFocus(nil)
+        return
+    end
+
+    if GetNativeGamepadFocusFrame() then
+        HideFocusRingPreservingSelection()
         return
     end
 
     if scope == ns.hudFrame then
         ns:SetControllerFocus(ns.hudFrame)
+        return
+    end
+
+    local remembered = ns.lastFocusByScope[scope]
+    if ns:IsFocusableInScope(remembered, scope) then
+        ns:SetControllerFocus(remembered)
         return
     end
 
@@ -230,7 +432,7 @@ function ns:FocusFirstInScope()
 
     if preferredContainer and preferredContainer:IsShown() then
         for _, w in ipairs(ns.focusables) do
-            if w:IsVisible() and IsFrameDescendantOf(w, preferredContainer) and not w.isTabBarBtn then
+            if ns:IsFocusableInScope(w, preferredContainer) and not w.isTabBarBtn then
                 local l, t = w:GetLeft(), w:GetTop()
                 if l and t then
                     local score = (-t * 2) + l
@@ -245,7 +447,7 @@ function ns:FocusFirstInScope()
 
     if not bestWidget then
         for _, w in ipairs(ns.focusables) do
-            if w:IsVisible() and IsFrameDescendantOf(w, scope) and not w.isTabBarBtn then
+            if ns:IsFocusableInScope(w, scope) and not w.isTabBarBtn then
                 local l, t = w:GetLeft(), w:GetTop()
                 if l and t then
                     local score = (-t * 2) + l
@@ -262,10 +464,15 @@ function ns:FocusFirstInScope()
 end
 
 function ns:MoveControllerFocus(dir)
-    local scope = ns:GetActiveModalScope()
-    if not scope or not ns:CanProcessPadAction() then return end
+    if GetNativeGamepadFocusFrame() then
+        HideFocusRingPreservingSelection()
+        return
+    end
 
-    if ns.activeEditBox and ns.activeEditBox:HasFocus() then
+    local scope = ns:GetActiveModalScope()
+    if not scope or not self:CanProcessPadAction() then return end
+
+    if ns.activeEditBox and ns.activeEditBox.HasFocus and ns.activeEditBox:HasFocus() then
         if not ns.activeEditBox:IsMultiLine() and (dir == "UP" or dir == "DOWN") then
             ns.activeEditBox:ClearFocus()
         else
@@ -274,16 +481,15 @@ function ns:MoveControllerFocus(dir)
     end
 
     local cur = ns.currentFocus
+    if not ns:IsFocusableInScope(cur, scope) then
+        ns:FocusFirstInScope()
+        return
+    end
 
-    if cur and cur.directoryRowIndex and (dir == "UP" or dir == "DOWN") and ns.TrySeamlessDirectoryStep then
+    if cur.directoryRowIndex and (dir == "UP" or dir == "DOWN") and ns.TrySeamlessDirectoryStep then
         if ns:TrySeamlessDirectoryStep(cur.directoryRowIndex, dir) then
             return
         end
-    end
-
-    if not cur or not cur:IsVisible() or not IsFrameDescendantOf(cur, scope) then
-        ns:FocusFirstInScope()
-        return
     end
 
     local cx, cy = cur:GetCenter()
@@ -294,10 +500,12 @@ function ns:MoveControllerFocus(dir)
     end
 
     local bestCandidate, bestScore = nil, 999999
+
     for _, w in ipairs(ns.focusables) do
-        if w ~= cur and w:IsVisible() and IsFrameDescendantOf(w, scope) and not w.isTabBarBtn then
+        if w ~= cur and ns:IsFocusableInScope(w, scope) and not w.isTabBarBtn then
             local wx, wy = w:GetCenter()
             local wl, wr, wt, wb = w:GetLeft(), w:GetRight(), w:GetTop(), w:GetBottom()
+
             if wx and wy and wl and wr and wt and wb then
                 local dx, dy = wx - cx, wy - cy
                 local valid, score = false, 999999
@@ -307,19 +515,27 @@ function ns:MoveControllerFocus(dir)
                 if dir == "RIGHT" and dx > 12 and wl >= cl + 10 then
                     valid = true
                     local edgeGap = math.max(0, wl - cr)
-                    score = (overlapY > 2 or math.abs(dy) <= 18) and (edgeGap + dx * 0.2 + math.abs(dy)) or (5000 + math.abs(dy) * 20 + edgeGap)
+                    score = (overlapY > 2 or math.abs(dy) <= 18)
+                        and (edgeGap + dx * 0.2 + math.abs(dy))
+                        or (5000 + math.abs(dy) * 20 + edgeGap)
                 elseif dir == "LEFT" and dx < -12 and wr <= cr - 10 then
                     valid = true
                     local edgeGap = math.max(0, cl - wr)
-                    score = (overlapY > 2 or math.abs(dy) <= 18) and (edgeGap - dx * 0.2 + math.abs(dy)) or (5000 + math.abs(dy) * 20 + edgeGap)
+                    score = (overlapY > 2 or math.abs(dy) <= 18)
+                        and (edgeGap - dx * 0.2 + math.abs(dy))
+                        or (5000 + math.abs(dy) * 20 + edgeGap)
                 elseif dir == "DOWN" and dy < -10 and wt <= ct - 6 then
                     valid = true
                     local vertGap = math.max(0, cb - wt)
-                    score = (overlapX > 2) and (vertGap + math.abs(dx) * 0.15) or (2000 + vertGap + math.abs(dx) * 8)
+                    score = (overlapX > 2)
+                        and (vertGap + math.abs(dx) * 0.15)
+                        or (2000 + vertGap + math.abs(dx) * 8)
                 elseif dir == "UP" and dy > 10 and wb >= cb + 6 then
                     valid = true
                     local vertGap = math.max(0, wb - ct)
-                    score = (overlapX > 2) and (vertGap + math.abs(dx) * 0.15) or (2000 + vertGap + math.abs(dx) * 8)
+                    score = (overlapX > 2)
+                        and (vertGap + math.abs(dx) * 0.15)
+                        or (2000 + vertGap + math.abs(dx) * 8)
                 end
 
                 if valid and score < bestScore then
@@ -333,6 +549,7 @@ function ns:MoveControllerFocus(dir)
     if bestCandidate then
         ns:PlayUISound()
         ns:SetControllerFocus(bestCandidate)
+
         if bestCandidate.glanceScrollFrame and bestCandidate.glanceIndex then
             local sf = bestCandidate.glanceScrollFrame
             local maxS = (sf.GetVerticalScrollRange and sf:GetVerticalScrollRange()) or 0
@@ -346,11 +563,15 @@ function ns:MoveControllerFocus(dir)
 
     if dir == "UP" or dir == "DOWN" then
         local stepPx = (dir == "DOWN") and 96 or -96
+
         if cur.scrollFrame and ScrollFrameByDelta(cur.scrollFrame, stepPx) then
             return
         elseif cur.glanceScrollFrame and ScrollFrameByDelta(cur.glanceScrollFrame, stepPx) then
             return
-        elseif scope == ns.dossierFrame and ns.dossierFrame.scrollFrame and ns.dossierFrame.readerBox and ns.dossierFrame.readerBox:IsShown() then
+        elseif scope == ns.dossierFrame
+            and ns.dossierFrame.scrollFrame
+            and ns.dossierFrame.readerBox
+            and ns.dossierFrame.readerBox:IsShown() then
             ScrollFrameByDelta(ns.dossierFrame.scrollFrame, stepPx)
         end
     end
@@ -409,15 +630,17 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
     box.padBtn = padBtn
 
     local function UpdatePlaceholder(self)
-        if self:GetText() == "" and not self:HasFocus() then self.placeholder:Show() else self.placeholder:Hide() end
+        if self:GetText() == "" and not self:HasFocus() then
+            self.placeholder:Show()
+        else
+            self.placeholder:Hide()
+        end
     end
 
     box.SetCleanText = function(self, txt)
         self.isDirty = false
         self:SetText(txt or "")
-        if self.SetCursorPosition then
-            self:SetCursorPosition(0)
-        end
+        if self.SetCursorPosition then self:SetCursorPosition(0) end
         UpdatePlaceholder(self)
     end
 
@@ -425,6 +648,7 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
         if userInput then self.isDirty = true end
         UpdatePlaceholder(self)
     end)
+
     box:SetScript("OnEditFocusGained", function(self)
         ns.activeEditBox = self
         padBtn:Hide()
@@ -432,8 +656,11 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
         self:SetBackdropColor(unpack(M3.surfaceHigh))
         self.bottomBar:SetColorTexture(0.51, 0.79, 0.58, 1.0)
         UpdatePlaceholder(self)
-        if ns.ShowStatusToast then ns:ShowStatusToast("Typing Mode: Press [A], [B], or [Enter] when finished") end
+        if ns.ShowStatusToast then
+            ns:ShowStatusToast("Typing Mode: Press [A], [B], or [Enter] when finished")
+        end
     end)
+
     box:SetScript("OnEditFocusLost", function(self)
         if ns.activeEditBox == self then ns.activeEditBox = nil end
         padBtn:Show()
@@ -443,6 +670,7 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
         UpdatePlaceholder(self)
         if self.isDirty and onCommit then onCommit(self:GetText()) end
     end)
+
     box:SetScript("OnEnterPressed", function(self)
         self.isDirty = true
         self:ClearFocus()
@@ -464,6 +692,7 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
             self.bottomBar:SetColorTexture(0.37, 0.40, 0.46, 0.85)
         end
     end)
+
     return box
 end
 
@@ -531,7 +760,11 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
 
     local function UpdateState()
         local txt = editBox:GetText() or ""
-        if txt == "" and not editBox:HasFocus() then placeholder:Show() else placeholder:Hide() end
+        if txt == "" and not editBox:HasFocus() then
+            placeholder:Show()
+        else
+            placeholder:Hide()
+        end
         counter:SetText(string.format("%d / 2500 chars", #txt))
     end
 
@@ -550,7 +783,9 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
         container:SetBackdropColor(unpack(M3.surfaceHigh))
         container.bottomBar:SetColorTexture(0.51, 0.79, 0.58, 1)
         UpdateState()
-        if ns.ShowStatusToast then ns:ShowStatusToast("Editing Text: Press [B] or [Escape] when finished") end
+        if ns.ShowStatusToast then
+            ns:ShowStatusToast("Editing Text: Press [B] or [Escape] when finished")
+        end
     end)
     editBox:SetScript("OnEditFocusLost", function()
         if ns.activeEditBox == container then ns.activeEditBox = nil end
@@ -564,13 +799,23 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
     container.editBox = editBox
-    container.SetCleanText = function(self, txt) self.isDirty = false; editBox:SetText(txt or ""); UpdateState() end
-    container.SetText = function(_, txt) editBox:SetText(txt or ""); UpdateState() end
+    container.SetCleanText = function(self, txt)
+        self.isDirty = false
+        editBox:SetText(txt or "")
+        UpdateState()
+    end
+    container.SetText = function(_, txt)
+        editBox:SetText(txt or "")
+        UpdateState()
+    end
     container.GetText = function() return editBox:GetText() end
     container.HasFocus = function() return editBox:HasFocus() end
     container.ClearFocus = function() editBox:ClearFocus() end
     container.IsMultiLine = function() return true end
-    container.SetPlaceholder = function(_, newHint) placeholder:SetText(newHint); UpdateState() end
+    container.SetPlaceholder = function(_, newHint)
+        placeholder:SetText(newHint)
+        UpdateState()
+    end
 
     ns:RegisterFocusable(container, function()
         ns:PlayUISound()
@@ -585,6 +830,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
             self.bottomBar:SetColorTexture(0.37, 0.40, 0.46, 0.85)
         end
     end)
+
     return container
 end
 
@@ -631,7 +877,7 @@ function ns:CreateMaterialButton(parent, text, width, height, x, y, tone, onClic
     end)
     btn:SetScript("OnClick", function(self)
         ns:PlayUISound()
-        onClick(self)
+        if onClick then onClick(self) end
     end)
 
     ns:RegisterFocusable(btn, function() btn:Click("LeftButton") end, function(self, isFocused)
@@ -643,5 +889,6 @@ function ns:CreateMaterialButton(parent, text, width, height, x, y, tone, onClic
             self:SetBackdropBorderColor(unpack(self.defaultBorder or M3.outline))
         end
     end)
+
     return btn
 end

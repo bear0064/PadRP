@@ -538,15 +538,30 @@ function ns:DeleteCurrentProfile()
 end
 
 function ns:CreateBindButton(name, onClick)
+    if type(name) ~= "string" or name == "" then
+        error("PadRP: CreateBindButton requires a non-empty global button name.")
+    end
+    if type(onClick) ~= "function" then
+        error("PadRP: CreateBindButton requires an OnClick callback for " .. name)
+    end
+
     local btn = _G[name] or CreateFrame("Button", name, UIParent)
-    btn:RegisterForClicks("AnyDown", "AnyUp")
+
+    -- Bind-click buttons should fire once on release. Registering AnyDown and
+    -- AnyUp together can execute the same action twice for one controller press.
+    btn:RegisterForClicks("AnyUp")
+
     local lastFire = 0
-    btn:SetScript("OnClick", function()
-        local now = GetTime()
-        if (now - lastFire) < 0.12 then return end
+    btn:SetScript("OnClick", function(self, button)
+        local now = (GetTime and GetTime()) or 0
+        if (now - lastFire) < 0.12 then
+            return
+        end
+
         lastFire = now
-        onClick()
+        onClick(self, button)
     end)
+
     return btn
 end
 
@@ -697,11 +712,18 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 end)
 
 SLASH_PADRP1 = "/padrp"
+SLASH_PADRP2 = "/padtoggle"
 SlashCmdList["PADRP"] = function(msg)
     local cmd = strtrim(string.lower(msg or ""))
+
     if cmd == "minimap" then
-        if ns.ResetMinimapButton then ns:ResetMinimapButton() end
+        if ns.ResetMinimapButton then
+            ns:ResetMinimapButton()
+        end
         return
     end
-    if ns.ToggleMainFrame then ns:ToggleMainFrame() end
+
+    if ns.ToggleMainFrame then
+        ns:ToggleMainFrame()
+    end
 end

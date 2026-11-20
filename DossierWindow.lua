@@ -743,6 +743,15 @@ function ns:OpenTargetDossier(specificKey)
     dossierFrame:Show()
     dossierFrame:Raise()
     ns:RefreshDossierWindow()
+
+    -- Refresh after the dossier content has been rebuilt so focus selection
+    -- cannot land on an old/hidden control from the previous dossier view.
+    if ns.UpdateControllerBindings then
+        ns:UpdateControllerBindings()
+    end
+    if ns.FocusFirstInScope then
+        ns:FocusFirstInScope()
+    end
 end
 
 function ns:InitDossierWindow()
@@ -761,8 +770,26 @@ function ns:InitDossierWindow()
     dossierFrame:SetScript("OnDragStart", dossierFrame.StartMoving)
     dossierFrame:SetScript("OnDragStop", dossierFrame.StopMovingOrSizing)
     dossierFrame:SetScript("OnHide", function()
-        if dossierFrame.standingDropdown then dossierFrame.standingDropdown:Hide() end
+        if dossierFrame.standingDropdown then
+            dossierFrame.standingDropdown:Hide()
+        end
+
         SaveCurrentNotes()
+
+        -- The dossier is no longer the active PadRP scope. Restore bindings
+        -- and focus to whichever PadRP surface remains open (main window/HUD).
+        if ns.UpdateControllerBindings then
+            ns:UpdateControllerBindings()
+        end
+        if ns.FocusFirstInScope then
+            ns:FocusFirstInScope()
+        end
+    end)
+
+    dossierFrame:SetScript("OnShow", function()
+        if ns.UpdateControllerBindings then
+            ns:UpdateControllerBindings()
+        end
     end)
     ns:ApplySurface(dossierFrame, M3.surfaceDim, M3.primary)
     ns:EnableClipping(dossierFrame)

@@ -25,10 +25,8 @@ local confirmClearCacheUntil = 0
 local lastEditFocusTime = 0
 local lastConfirmTime = 0
 local lastConfirmTarget = nil
-local lastBackdoorToggleTime = 0
 local lastPickerApplyTime = 0
 local pickerReopenGuardUntil = 0
-local leftTriggerHeld = false
 
 local RP_EXPERIENCE_LIST = {
     { code = "1", label = "Normal" },
@@ -2092,14 +2090,20 @@ end
 
 function ns:ToggleMainFrame()
     if not mainFrame then return end
+
     if mainFrame:IsShown() then
         mainFrame:Hide()
-    else
-        ns:LoadProfileIntoUI()
-        mainFrame:Show()
-        ns:RefreshControllerUI()
-        ns:FocusFirstInScope()
+        return
     end
+
+    if ns.LoadProfileIntoUI then
+        ns:LoadProfileIntoUI()
+    end
+    if ns.RefreshControllerUI then
+        ns:RefreshControllerUI()
+    end
+
+    mainFrame:Show()
 end
 
 local function PersistColorSelection(mode, hex6, returnWidget)
@@ -2284,89 +2288,9 @@ local function CreateColorSwatchButton(parent, x, y, mode, onReset)
     return btn
 end
 
-local function TriggerBackdoorToggle()
-    local now = (GetTime and GetTime()) or 0
-    if (now - (lastBackdoorToggleTime or 0)) < 0.35 then return end
-    lastBackdoorToggleTime = now
-    ns:ToggleMainFrame()
-    if mainFrame and mainFrame:IsShown() then
-        if ns.UpdateControllerBindings then ns:UpdateControllerBindings() end
-        if ns.FocusFirstInScope then ns:FocusFirstInScope() end
-        if ConsolePort and ConsolePort.SetCursorNode and mainFrame then
-            pcall(function()
-                if ns.currentFocus and ns.currentFocus.GetCenter then
-                    ConsolePort:SetCursorNode(ns.currentFocus)
-                end
-            end)
-        end
-    end
-end
-
 function PadRP_ActionBarToggle()
-    TriggerBackdoorToggle()
-end
-
-local function InitControllerBackdoorChord()
-    if mainFrame and mainFrame._padRPBackdoorHooked then return end
-    if mainFrame then mainFrame._padRPBackdoorHooked = true end
-
-    SLASH_PADRP1 = "/padrp"
-    SLASH_PADRP2 = "/padtoggle"
-    SlashCmdList["PADRP"] = function()
-        TriggerBackdoorToggle()
-    end
-
-    if _G.PadRP_ToggleUIButton then
-        local origPostClick = _G.PadRP_ToggleUIButton:GetScript("OnClick")
-        _G.PadRP_ToggleUIButton:SetScript("OnClick", function(self, ...)
-            if origPostClick then origPostClick(self, ...) end
-        end)
-    end
-
-    local watcher = CreateFrame("Frame")
-    watcher:RegisterEvent("MODIFIER_STATE_CHANGED")
-    pcall(function() watcher:RegisterEvent("GAME_PAD_AXIS_MOTION") end)
-    pcall(function() watcher:RegisterEvent("GAME_PAD_BUTTON_DOWN") end)
-    pcall(function() watcher:RegisterEvent("GAME_PAD_BUTTON_UP") end)
-
-    watcher:SetScript("OnEvent", function(_, event, arg1, arg2)
-        if event == "MODIFIER_STATE_CHANGED" then
-            if arg1 == "LCTRL" or arg1 == "LALT" or arg1 == "LSHIFT" then
-                leftTriggerHeld = (arg2 == 1)
-            end
-        elseif event == "GAME_PAD_AXIS_MOTION" then
-            if type(arg1) == "string" then
-                local up = string.upper(arg1)
-                if string.find(up, "LTRIGGER") or string.find(up, "LT") or string.find(up, "PADL2") then
-                    leftTriggerHeld = (tonumber(arg2) or 0) > 0.35
-                end
-            end
-        elseif event == "GAME_PAD_BUTTON_DOWN" then
-            local btnName = string.upper(tostring(arg1 or ""))
-            if string.find(btnName, "LTRIGGER") or string.find(btnName, "PADL2") then
-                leftTriggerHeld = true
-            end
-            local isFocusBtn = string.find(btnName, "BACK")
-                or string.find(btnName, "VIEW")
-                or string.find(btnName, "SHARE")
-                or string.find(btnName, "CURSOR")
-                or string.find(btnName, "L3")
-                or string.find(btnName, "STICK")
-            if isFocusBtn and (leftTriggerHeld or IsLeftControlKeyDown() or IsLeftAltKeyDown()) then
-                TriggerBackdoorToggle()
-            end
-        elseif event == "GAME_PAD_BUTTON_UP" then
-            local btnName = string.upper(tostring(arg1 or ""))
-            if string.find(btnName, "LTRIGGER") or string.find(btnName, "PADL2") then
-                leftTriggerHeld = false
-            end
-        end
-    end)
-
-    if _G.SetOverrideBindingClick and _G.PadRP_ToggleUIButton then
-        pcall(function()
-            _G.SetOverrideBindingClick(mainFrame, false, "F12", "PadRP_ToggleUIButton", "LeftButton")
-        end)
+    if ns and ns.ToggleMainFrame then
+        ns:ToggleMainFrame()
     end
 end
 
@@ -2389,14 +2313,24 @@ function ns:InitControllerUI()
     ns.mainFrame = mainFrame
     mainFrame:SetSize(savedW, savedH)
     mainFrame:SetPoint("CENTER")
-    mainFrame:SetFrameStrata("DIALOG")
+    mainFrame:SetFrameStrata("MEDIUM")
+    mainFrame:SetFrameLevel(15)
     mainFrame:SetMovable(true)
     mainFrame:SetResizable(true)
     if mainFrame.SetResizeBounds then mainFrame:SetResizeBounds(660, 540, 1050, 840) end
     mainFrame:EnableMouse(true)
     mainFrame:RegisterForDrag("LeftButton")
-    mainFrame:SetScript("OnDragStart", mainFrame.StartMoving)
-    mainFrame:SetScript("OnDragStop", mainFrame.StopMovingOrSizing)
+    mainFrame:SetScript("OnDragStart", function(self)
+        if self:IsMovable() then
+            self:StartMoving()
+        end
+    end)
+    mainFrame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+    end)
+    mainFrame:SetScript("OnMouseUp", function(self)
+        self:StopMovingOrSizing()
+    end)
     ns:EnableClipping(mainFrame)
     mainFrame:Hide()
     ns:ApplySurface(mainFrame, M3.surfaceDim, M3.outline)
@@ -2417,6 +2351,7 @@ function ns:InitControllerUI()
         ns:FocusFirstInScope()
     end)
     mainFrame:SetScript("OnHide", function()
+        mainFrame:StopMovingOrSizing()
         if ns.activeEditBox and ns.activeEditBox:HasFocus() then ns.activeEditBox:ClearFocus() end
         CommitModifiedBoxesToProfile(false)
         ns:PlayUISound(SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_CLOSE)
@@ -2441,9 +2376,20 @@ function ns:InitControllerUI()
         end
     end)
 
+    if _G.CharacterFrame and _G.CharacterFrame.HookScript then
+        pcall(function()
+            _G.CharacterFrame:HookScript("OnShow", function()
+                if mainFrame and mainFrame:IsShown() and mainFrame.Lower then
+                    mainFrame:Lower()
+                end
+            end)
+        end)
+    end
+
     local picker = CreateFrame("Frame", "PadRP_IconPicker", mainFrame, "BackdropTemplate")
     picker:SetSize(512, 412)
     picker:SetPoint("CENTER", mainFrame, "CENTER", 0, -4)
+    picker:SetFrameStrata("DIALOG")
     picker:SetFrameLevel(mainFrame:GetFrameLevel() + 45)
     ns:ApplySurface(picker, M3.surfaceDim, M3.primary)
     ns:EnableClipping(picker)
@@ -3802,7 +3748,6 @@ function ns:InitControllerUI()
 
     ns:LoadProfileIntoUI()
     ns:SelectTab(1)
-    InitControllerBackdoorChord()
 
     if ConsolePort and ConsolePort.AddInterfaceCursorFrame then
         ConsolePort:AddInterfaceCursorFrame("PadRP_MainFrame")
