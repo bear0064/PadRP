@@ -473,8 +473,10 @@ local function BuildCharacteristicsText(data, isSelf, key)
         end
         local lgbtqText = (ns.profile.lgbtqFriendly ~= false) and "|cff81c995Yes|r" or "|cff9aa0a6No|r"
         local erpText = ns.profile.erpFriendly and "|cfffdd663Yes|r" or "|cff9aa0a6No|r"
+        local mdniText = ns.profile.mdni and "|cfff28b82Yes|r" or "|cff9aa0a6No|r"
         table.insert(oocLines, "|cff9aa0a6LGBTQIA2S+ friendly:|r " .. lgbtqText)
         table.insert(oocLines, "|cff9aa0a6ERP:|r " .. erpText)
+        table.insert(oocLines, "|cff9aa0a6MDNI:|r " .. mdniText)
         table.insert(lines, "|cff81c995OTHER INFORMATION (OOC)|r\n" .. table.concat(oocLines, "\n"))
     elseif data.CO and CleanOOCDisplayText(data.CO) ~= "" then
         table.insert(lines, "|cff81c995OTHER INFORMATION (OOC)|r\n" .. CleanOOCDisplayText(data.CO))

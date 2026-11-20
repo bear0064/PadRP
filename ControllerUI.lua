@@ -173,13 +173,46 @@ local function FormatCheckbox(label, isChecked, activeColorHex)
     return box .. label
 end
 
+local function NormalizeIconInput(icon)
+    if icon == nil or icon == false then return nil end
+    local clean = strtrim(tostring(icon))
+    if clean == "" then return nil end
+    local num = tonumber(clean)
+    if num and num > 0 then
+        return num
+    end
+    if string.find(clean, "\\", 1, true) or string.find(clean, "/", 1, true) then
+        return clean
+    end
+    return "Interface\\Icons\\" .. clean
+end
+
 local function SetIconTextureSafe(tex, icon, fallback)
     if not tex then return end
-    if ns.ResolveIconTexture then
-        tex:SetTexture(ns:ResolveIconTexture(icon, fallback))
-    else
-        tex:SetTexture("Interface\\Icons\\" .. tostring(icon or fallback or "INV_Misc_Book_09"))
+    local target = NormalizeIconInput(icon) or NormalizeIconInput(fallback) or "Interface\\Icons\\INV_Misc_Book_09"
+    if ns.ResolveIconTexture and type(icon) == "string" and strtrim(icon) ~= "" and not tonumber(strtrim(icon)) then
+        local resolved = ns:ResolveIconTexture(strtrim(icon), nil)
+        if type(resolved) == "number" and resolved > 0 then
+            target = resolved
+        elseif type(resolved) == "string" and strtrim(resolved) ~= "" then
+            target = strtrim(resolved)
+        end
     end
+    tex:SetTexture(nil)
+    pcall(function() tex:SetTexture(target) end)
+    if not tex:GetTexture() then
+        local fb = NormalizeIconInput(fallback) or "Interface\\Icons\\INV_Misc_Book_09"
+        pcall(function() tex:SetTexture(fb) end)
+    end
+end
+
+local function FormatPickerIconReadout(prefix, iconVal, texObj)
+    local rawStr = tostring(iconVal or "")
+    local appliedTex = texObj and texObj:GetTexture()
+    if appliedTex and tostring(appliedTex) ~= rawStr then
+        return string.format("|cff8ab4f8%s|r |cffe8eaed%s|r  |cfffdd663(ID: %s)|r", prefix, rawStr, tostring(appliedTex))
+    end
+    return string.format("|cff8ab4f8%s|r |cffe8eaed%s|r", prefix, rawStr)
 end
 
 local function EnsureTopicConsentTable()
@@ -194,6 +227,7 @@ local function EnsureTopicConsentTable()
     end
     if ns.profile.lgbtqFriendly == nil then ns.profile.lgbtqFriendly = true end
     if ns.profile.erpFriendly == nil then ns.profile.erpFriendly = false end
+    if ns.profile.mdni == nil then ns.profile.mdni = false end
     return ns.profile.rpStyleTopics
 end
 
@@ -664,9 +698,13 @@ local function UpdateResponsiveLayouts()
                 { w = p1.clearCuBtn,    fixed = 54 },
             }, 16, 16, 6)
 
-            LayoutRow(pc, -190, {
-                { w = p1.oocNotesBox, weight = 1 },
-            }, 16, 16, 0)
+            if p1.oocNotesBox then
+                local curH = p1.oocNotesBox:GetHeight() or 92
+                LayoutRow(pc, -184, {
+                    { w = p1.oocNotesBox, weight = 1 },
+                }, 16, 16, 0)
+                p1.oocNotesBox:SetHeight(curH)
+            end
         end
 
         local pv = p1.pageVitals
@@ -726,6 +764,12 @@ local function UpdateResponsiveLayouts()
                 { w = p1.lgbtqBtn, weight = 1 },
                 { w = p1.erpBtn,   weight = 1 },
             }, 16, 16, 8)
+
+            if p1.mdniBtn then
+                LayoutRow(pe, -182, {
+                    { w = p1.mdniBtn, weight = 1 },
+                }, 16, 16, 8)
+            end
         end
     end
 
@@ -866,17 +910,21 @@ local function UpdateResponsiveLayouts()
 end
 
 local function IsIconTextureValid(icon)
-    if not icon or icon == "" then return false end
-    if ns.ResolveIconTexture then
-        local resolved = ns:ResolveIconTexture(icon, nil)
-        return resolved ~= nil and resolved ~= "" and resolved ~= 0
+    local target = NormalizeIconInput(icon)
+    if not target then return false end
+    if ns.ResolveIconTexture and type(icon) == "string" and strtrim(icon) ~= "" and not tonumber(strtrim(icon)) then
+        local resolved = ns:ResolveIconTexture(strtrim(icon), nil)
+        if type(resolved) == "number" and resolved > 0 then
+            target = resolved
+        elseif type(resolved) == "string" and strtrim(resolved) ~= "" then
+            target = strtrim(resolved)
+        end
     end
-    local path = "Interface\\Icons\\" .. tostring(icon)
     local probe = UIParent:CreateTexture()
-    probe:SetTexture(path)
-    local ok = probe:GetTexture() ~= nil
+    local ok = pcall(function() probe:SetTexture(target) end)
+    local tex = ok and probe:GetTexture()
     probe:Hide()
-    return ok
+    return tex ~= nil and tex ~= "" and tex ~= 0
 end
 
 local function EnsureVerifiedIconPool()
@@ -885,12 +933,28 @@ local function EnsureVerifiedIconPool()
     local seen = {}
 
     local function TryAdd(icon)
-        if not icon or icon == "" then return end
-        local key = tostring(icon)
-        if seen[key] then return end
-        if IsIconTextureValid(key) then
-            seen[key] = true
-            table.insert(verifiedIconPool, key)
+        if icon == nil or icon == false then return end
+        local rawStr = strtrim(tostring(icon))
+        if rawStr == "" then return end
+
+        local storeVal = rawStr
+        local numId = tonumber(rawStr)
+        if numId and numId > 0 then
+            storeVal = numId
+        elseif ns.ResolveIconTexture then
+            local resolved = ns:ResolveIconTexture(rawStr, nil)
+            if type(resolved) == "number" and resolved > 0 then
+                storeVal = resolved
+            elseif type(resolved) == "string" and strtrim(resolved) ~= "" then
+                storeVal = strtrim(resolved)
+            end
+        end
+
+        local dedupKey = string.lower(tostring(storeVal))
+        if seen[dedupKey] then return end
+        if IsIconTextureValid(storeVal) then
+            seen[dedupKey] = true
+            table.insert(verifiedIconPool, storeVal)
         end
     end
 
@@ -902,15 +966,90 @@ local function EnsureVerifiedIconPool()
     end
 
     if _G.GetNumClasses and _G.GetClassInfo then
-        local okC, numC = pcall(_G.GetNumClasses)
-        if okC and type(numC) == "number" then
-            for cIdx = 1, numC do
-                local _, classFile = _G.GetClassInfo(cIdx)
-                if classFile then
-                    TryAdd("ClassIcon_" .. classFile)
+        pcall(function()
+            local numC = _G.GetNumClasses()
+            if type(numC) == "number" then
+                for cIdx = 1, numC do
+                    local _, classFile = _G.GetClassInfo(cIdx)
+                    if classFile then
+                        TryAdd("ClassIcon_" .. classFile)
+                    end
                 end
             end
-        end
+        end)
+    end
+
+    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookSkillLineInfo and C_SpellBook.GetSpellBookItemInfo then
+        pcall(function()
+            local bank = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
+            local numLines = C_SpellBook.GetNumSpellBookSkillLines() or 0
+            for line = 1, numLines do
+                local info = C_SpellBook.GetSpellBookSkillLineInfo(line)
+                if info and info.itemIndexOffset and info.numSpellBookItems then
+                    for idx = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
+                        local itemInfo = C_SpellBook.GetSpellBookItemInfo(idx, bank)
+                        if itemInfo and itemInfo.iconID then
+                            TryAdd(itemInfo.iconID)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    for slot = 1, 19 do
+        pcall(function()
+            local texId = GetInventoryItemTexture and GetInventoryItemTexture("player", slot)
+            if texId then TryAdd(texId) end
+        end)
+    end
+
+    if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
+        pcall(function()
+            local maxBag = NUM_TOTAL_EQUIPPED_BAG_SLOTS or 4
+            for bag = 0, maxBag do
+                local numSlots = C_Container.GetContainerNumSlots(bag) or 0
+                for slot = 1, numSlots do
+                    local info = C_Container.GetContainerItemInfo(bag, slot)
+                    if info and info.iconFileID then
+                        TryAdd(info.iconFileID)
+                    end
+                end
+            end
+        end)
+    end
+
+    if C_MountJournal and C_MountJournal.GetMountIDs and C_MountJournal.GetMountInfoByID then
+        pcall(function()
+            local mountIDs = C_MountJournal.GetMountIDs()
+            for _, mID in ipairs(mountIDs or {}) do
+                local _, _, icon = C_MountJournal.GetMountInfoByID(mID)
+                if icon then TryAdd(icon) end
+            end
+        end)
+    end
+
+    if C_ToyBox and C_ToyBox.GetNumToys and C_ToyBox.GetToyFromIndex and C_ToyBox.GetToyInfo then
+        pcall(function()
+            local numToys = C_ToyBox.GetNumToys() or 0
+            for i = 1, numToys do
+                local itemID = C_ToyBox.GetToyFromIndex(i)
+                if itemID then
+                    local _, _, icon = C_ToyBox.GetToyInfo(itemID)
+                    if icon then TryAdd(icon) end
+                end
+            end
+        end)
+    end
+
+    if C_PetJournal and C_PetJournal.GetNumPets and C_PetJournal.GetPetInfoByIndex then
+        pcall(function()
+            local numPets = C_PetJournal.GetNumPets() or 0
+            for i = 1, numPets do
+                local _, _, _, _, _, _, _, _, _, icon = C_PetJournal.GetPetInfoByIndex(i)
+                if icon then TryAdd(icon) end
+            end
+        end)
     end
 
     return verifiedIconPool
@@ -2038,6 +2177,10 @@ function ns:RefreshControllerUI()
         p1.erpBtn:SetText(FormatCheckbox("ERP Friendly", p.erpFriendly and true or false, "fffdd663"))
         p1.erpBtn:SetTone(p.erpFriendly and "AMBER" or nil)
     end
+    if p1.mdniBtn then
+        p1.mdniBtn:SetText(FormatCheckbox("MDNI (Minors Do Not Interact)", p.mdni and true or false, "fff28b82"))
+        p1.mdniBtn:SetTone(p.mdni and "CORAL" or nil)
+    end
 
     RefreshProfilesTab()
 
@@ -2515,7 +2658,7 @@ function ns:InitControllerUI()
         picker:RebuildFilter()
     end)
 
-    picker.searchBox = ns:CreateMaterialEditBox(picker, nil, "Search (e.g., sword, fire, book, ring)...", 288, -34, 162, 24, function(txt)
+    picker.searchBox = ns:CreateMaterialEditBox(picker, nil, "Search by name or ID...", 288, -34, 162, 24, function(txt)
         picker.searchQuery = txt or ""
         picker.page = 1
         picker:RebuildFilter()
@@ -2573,7 +2716,7 @@ function ns:InitControllerUI()
         cell:SetScript("OnEnter", function(self)
             ns:SetControllerFocus(self)
             if self.iconName then
-                picker.hoverLabel:SetText("|cff8ab4f8Selected:|r |cffe8eaed" .. tostring(self.iconName) .. "|r")
+                picker.hoverLabel:SetText(FormatPickerIconReadout("Selected:", self.iconName, self.tex))
             end
         end)
         cell:SetScript("OnClick", function(self)
@@ -2586,7 +2729,7 @@ function ns:InitControllerUI()
                 self:SetBackdropColor(unpack(M3.surfaceBright))
                 self:SetBackdropBorderColor(unpack(M3.primary))
                 if self.iconName then
-                    picker.hoverLabel:SetText("|cff8ab4f8Selected:|r |cffe8eaed" .. tostring(self.iconName) .. "|r")
+                    picker.hoverLabel:SetText(FormatPickerIconReadout("Selected:", self.iconName, self.tex))
                 end
             else
                 self:SetBackdropColor(unpack(M3.surface))
@@ -2646,8 +2789,11 @@ function ns:InitControllerUI()
         self.curatedBtn:SetTone(self.sourceMode == "CURATED" and "PRIMARY" or nil)
         self.nativeBtn:SetTone(self.sourceMode == "VERIFIED" and "PRIMARY" or nil)
         self.curatedBtn:SetText(string.format("Curated RP (%d)", #CURATED_RP_ICONS))
-        local vPool = EnsureVerifiedIconPool()
-        self.nativeBtn:SetText(string.format("Expanded RP (%d)", #vPool))
+        if self.sourceMode == "VERIFIED" then
+            self.nativeBtn:SetText(string.format("Expanded RP (%d)", #pool))
+        else
+            self.nativeBtn:SetText("More RP Icons")
+        end
 
         self:RefreshGrid()
     end
@@ -2670,7 +2816,7 @@ function ns:InitControllerUI()
         if not self.customBox:HasFocus() then
             self.customBox:SetCleanText(currentIcon)
         end
-        self.hoverLabel:SetText("|cff8ab4f8Current:|r |cffe8eaed" .. currentIcon .. "|r")
+        self.hoverLabel:SetText(FormatPickerIconReadout("Current:", currentIcon, nil))
 
         local startIndex = (self.page - 1) * ICONS_PER_PAGE
         for i = 1, ICONS_PER_PAGE do
@@ -3132,11 +3278,19 @@ function ns:InitControllerUI()
     p1.lgbtqBtn = ns:CreateMaterialButton(pageExtras, "", 304, 26, 16, -148, "MINT", function()
         ns.profile.lgbtqFriendly = not (ns.profile.lgbtqFriendly ~= false)
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        if ns.SyncMSP then ns:SyncMSP() end
         ns:RefreshControllerUI()
     end)
     p1.erpBtn = ns:CreateMaterialButton(pageExtras, "", 304, 26, 336, -148, nil, function()
         ns.profile.erpFriendly = not (ns.profile.erpFriendly and true or false)
         if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        if ns.SyncMSP then ns:SyncMSP() end
+        ns:RefreshControllerUI()
+    end)
+    p1.mdniBtn = ns:CreateMaterialButton(pageExtras, "", 304, 26, 16, -182, nil, function()
+        ns.profile.mdni = not (ns.profile.mdni and true or false)
+        if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
+        if ns.SyncMSP then ns:SyncMSP() end
         ns:RefreshControllerUI()
     end)
 

@@ -340,8 +340,10 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         if isSelf and ns.profile then
             local lgbtqText = (ns.profile.lgbtqFriendly ~= false) and "|cff81c995Yes|r" or "|cff9aa0a6No|r"
             local erpText = ns.profile.erpFriendly and "|cfffdd663Yes|r" or "|cff9aa0a6No|r"
+            local mdniText = ns.profile.mdni and "|cfff28b82Yes|r" or "|cff9aa0a6No|r"
             table.insert(oocBlock, "|cff9aa0a6LGBTQIA2S+ friendly:|r " .. lgbtqText)
             table.insert(oocBlock, "|cff9aa0a6ERP:|r " .. erpText)
+            table.insert(oocBlock, "|cff9aa0a6MDNI:|r " .. mdniText)
         end
         if #oocBlock > 0 then
             tooltip:AddLine(" ")
