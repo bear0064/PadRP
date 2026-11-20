@@ -3149,8 +3149,46 @@ function ns:InitControllerUI()
     glanceScroll:SetScrollChild(glanceChild)
     p2.glanceChild = glanceChild
 
+    local function IsFocusInsideGlanceScroll()
+        local f = ns.currentFocus
+        if not f then return false end
+        if f.glanceScrollFrame == glanceScroll then return true end
+        local parent = f.GetParent and f:GetParent()
+        while parent do
+            if parent == glanceChild or parent == glanceScroll then
+                return true
+            end
+            parent = parent.GetParent and parent:GetParent()
+        end
+        return false
+    end
+
+    local function ClearGlanceFocusHighlight()
+        local f = ns.currentFocus
+        if not f then return end
+        if ns.SetControllerFocus then
+            ns:SetControllerFocus(nil)
+        end
+        if ns.currentFocus == f then
+            if f.OnFocusChanged then
+                pcall(f.OnFocusChanged, f, false)
+            end
+            local onLeave = f.GetScript and f:GetScript("OnLeave")
+            if onLeave then
+                pcall(onLeave, f)
+            end
+            if f.SetBackdropBorderColor and ns.M3 and ns.M3.outline then
+                pcall(f.SetBackdropBorderColor, f, unpack(ns.M3.outline))
+            end
+            ns.currentFocus = nil
+        end
+    end
+
     local function StepGlanceScroll(step)
         if not glanceScroll or not glanceChild then return end
+        if IsFocusInsideGlanceScroll() then
+            ClearGlanceFocusHighlight()
+        end
         local cur = glanceScroll:GetVerticalScroll() or 0
         local viewH = glanceScroll:GetHeight() or 340
         local contentH = glanceChild:GetHeight() or (5 * 112 + 12)
