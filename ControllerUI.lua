@@ -3150,12 +3150,23 @@ function ns:InitControllerUI()
     p2.glanceChild = glanceChild
 
     local function StepGlanceScroll(step)
-        if not glanceScroll then return end
+        if not glanceScroll or not glanceChild then return end
         local cur = glanceScroll:GetVerticalScroll() or 0
-        local maxS = (glanceScroll.GetVerticalScrollRange and glanceScroll.GetVerticalScrollRange()) or 0
+        local viewH = glanceScroll:GetHeight() or 340
+        local contentH = glanceChild:GetHeight() or (5 * 112 + 12)
+        local maxS = math.max(0, contentH - viewH)
+        if glanceScroll.GetVerticalScrollRange then
+            local apiRange = glanceScroll:GetVerticalScrollRange() or 0
+            if apiRange > maxS then
+                maxS = apiRange
+            end
+        end
         glanceScroll:SetVerticalScroll(math.max(0, math.min(maxS, cur + (step * 72))))
     end
 
+    p2:SetScript("OnShow", function()
+        LayoutGlanceCards()
+    end)
     glanceScroll:SetScript("OnSizeChanged", function()
         LayoutGlanceCards()
     end)
@@ -3164,6 +3175,7 @@ function ns:InitControllerUI()
             StepGlanceScroll(delta > 0 and -1 or 1)
         end
     end)
+    AttachWheelScroller(p2, StepGlanceScroll)
     AttachWheelScroller(glanceChild, StepGlanceScroll)
 
     p2.cards = {}
@@ -3224,8 +3236,10 @@ function ns:InitControllerUI()
         AttachWheelScroller(card, StepGlanceScroll)
         AttachWheelScroller(iconBtn, StepGlanceScroll)
         AttachWheelScroller(card.titleBox, StepGlanceScroll)
+        AttachWheelScroller(card.titleBox.editBox, StepGlanceScroll)
         AttachWheelScroller(card.titleBox.padBtn, StepGlanceScroll)
         AttachWheelScroller(card.detailBox, StepGlanceScroll)
+        AttachWheelScroller(card.detailBox.editBox, StepGlanceScroll)
         AttachWheelScroller(card.detailBox.padBtn, StepGlanceScroll)
         AttachWheelScroller(card.clrBtn, StepGlanceScroll)
 
