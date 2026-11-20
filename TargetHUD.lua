@@ -11,7 +11,9 @@ local isDecoratingTooltip = false
 
 local STANDING_COLORS = {
     Ally         = "|cff81c995[ALLY]|r ",
-    Acquaintance = "|cff8ab4f8[KNOWN]|r ",
+    Friendly     = "|cff81c995[FRIENDLY]|r ",
+    Neutral      = "|cff8ab4f8[NEUTRAL]|r ",
+    Unfriendly   = "|cfff28b82[UNFRIENDLY]|r ",
     Rival        = "|cfff28b82[RIVAL]|r ",
     Marked       = "|cfffdd663[MARKED]|r ",
 }
@@ -55,6 +57,30 @@ local function CleanOOCTooltipText(raw)
     clean = clean:gsub("^%s*[•|%-]+%s*", "")
     clean = clean:gsub("%s*[•|%-]+%s*$", "")
     return strtrim(clean)
+end
+
+local function BuildTooltipPortraitTag(iconVal)
+    local clean = iconVal and strtrim(tostring(iconVal)) or ""
+    if clean == "" then return "" end
+
+    local resolved = nil
+    if ns.ResolveIconTexture then
+        resolved = ns:ResolveIconTexture(clean, nil)
+    end
+
+    if type(resolved) == "number" and resolved > 0 then
+        return string.format("|T%d:16:16:0:0:64:64:4:60:4:60|t ", resolved)
+    elseif type(resolved) == "string" and strtrim(resolved) ~= "" then
+        return string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", strtrim(resolved))
+    end
+
+    local numId = tonumber(clean)
+    if numId and numId > 0 then
+        return string.format("|T%d:16:16:0:0:64:64:4:60:4:60|t ", numId)
+    end
+
+    local iconPath = string.find(clean, "\\", 1, true) and clean or ("Interface\\Icons\\" .. clean)
+    return string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", iconPath)
 end
 
 local function GetActiveOtherPlayerUnit()
@@ -176,8 +202,11 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         return
     end
 
+    local customIcon = isSelf and (ns.profile and ns.profile.icon) or (data and data.IC)
+    local portraitTag = BuildTooltipPortraitTag(customIcon)
+
     local state = tooltipState[tooltip]
-    if state and state.taggedKey == key then
+    if state and state.taggedKey == key and state.portraitTag == portraitTag then
         return
     end
 
@@ -201,11 +230,6 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         local isIC = (data.FC == "2")
         local icFlag = isIC and "|cff81c995[IC]|r" or "|cfff28b82[OOC]|r"
         local wuBadge = ns:GetTargetWalkUpInfo(data)
-        local portraitTag = ""
-        if data.IC and strtrim(data.IC) ~= "" then
-            local iconPath = string.find(data.IC, "\\", 1, true) and data.IC or ("Interface\\Icons\\" .. strtrim(data.IC))
-            portraitTag = string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", iconPath)
-        end
 
         local displayName = StripColorCodes(data.NA)
         if data.PX and strtrim(data.PX) ~= "" and not string.find(displayName, strtrim(data.PX), 1, true) then
@@ -268,7 +292,7 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         end
     elseif line1 then
         local rawName = UnitName(unit) or key or "Player"
-        line1:SetText(standingTag .. rawName .. noteIcon)
+        line1:SetText(portraitTag .. standingTag .. rawName .. noteIcon)
         line1:SetTextColor(r, g, b)
     end
 
@@ -282,7 +306,7 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         tooltip:AddLine("|TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t |cff81c995Note:|r " .. preview, 0.85, 0.90, 0.86, true)
     end
 
-    tooltipState[tooltip] = { taggedKey = key }
+    tooltipState[tooltip] = { taggedKey = key, portraitTag = portraitTag }
     tooltip:Show()
 end
 
@@ -297,7 +321,7 @@ function ns:RefreshUnitTooltipNow()
     if InCombatLockdown() or isDecoratingTooltip then return end
     if GameTooltip and GameTooltip:IsShown() and UnitExists("mouseover") and UnitIsPlayer("mouseover") then
         local _, currentUnit = GameTooltip:GetUnit()
-        if currentUnit and UnitIsUnit(currentUnit, "mouseover") and not tooltipState[GameTooltip] then
+        if currentUnit and UnitIsUnit(currentUnit, "mouseover") then
             DecorateUnitTooltip(GameTooltip, nil, true)
         end
     end

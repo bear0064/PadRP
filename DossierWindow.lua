@@ -17,8 +17,38 @@ local CORE_STANDINGS = {
     { key = "Marked",     tone = "AMBER",   colorHex = "fffdd663" },
 }
 
-local DEFAULT_PORTRAIT_ICON = "INV_Misc_Book_09"
-local FALLBACK_TEXTURE_ID = 133741
+local function NormalizeKey(k)
+    return string.lower(strtrim(tostring(k or "")))
+end
+
+local function StripColorCodes(str)
+    if not str then return "" end
+    local clean = string.gsub(tostring(str), "|c%x%x%x%x%x%x%x%x", "")
+    clean = string.gsub(clean, "|r", "")
+    return clean
+end
+
+local function ResolveProfileRecordForKey(key)
+    if not key or key == "" then return nil end
+    if ns.mspCache and type(ns.mspCache) == "table" then
+        if type(ns.mspCache[key]) == "table" then
+            return ns.mspCache[key]
+        end
+        local norm = NormalizeKey(key)
+        for cacheKey, rec in pairs(ns.mspCache) do
+            if type(rec) == "table" and NormalizeKey(cacheKey) == norm then
+                return rec
+            end
+        end
+    end
+    if ns.GetCachedMSP then
+        local ok, rec = pcall(ns.GetCachedMSP, ns, key)
+        if ok and type(rec) == "table" then
+            return rec
+        end
+    end
+    return nil
+end
 
 local function SanitizeStandingsData()
     ns.db = ns.db or {}
@@ -185,7 +215,7 @@ end
 
 local function IsPlayerSelfKey(key)
     if not key or key == "" then return false end
-    local lk = string.lower(strtrim(tostring(key)))
+    local lk = NormalizeKey(key)
     local pName = UnitName("player")
     if pName then
         local shortK = strsplit("-", key)
@@ -195,7 +225,7 @@ local function IsPlayerSelfKey(key)
     end
     if ns.GetUnitKey then
         local selfKey = ns:GetUnitKey("player")
-        if selfKey and string.lower(strtrim(selfKey)) == lk then
+        if selfKey and NormalizeKey(selfKey) == lk then
             return true
         end
     end
@@ -214,13 +244,6 @@ local function IsPlayerSelfKey(key)
     return false
 end
 
-local function StripColorCodes(str)
-    if not str then return "" end
-    local clean = string.gsub(tostring(str), "|c%x%x%x%x%x%x%x%x", "")
-    clean = string.gsub(clean, "|r", "")
-    return clean
-end
-
 local function GetRealCharacterName(key, isSelf)
     if isSelf and UnitName then
         local uName = UnitName("player")
@@ -232,32 +255,90 @@ local function GetRealCharacterName(key, isSelf)
     return strtrim(tostring(base or ""))
 end
 
-local function ApplyPortraitTexture(iconVal)
-    if not dossierFrame or not dossierFrame.portraitTex then return end
-    local clean = iconVal and strtrim(tostring(iconVal)) or ""
-    if clean == "" then
-        clean = DEFAULT_PORTRAIT_ICON
+local function ResolveDossierIconValue(iconVal)
+    if iconVal == nil or iconVal == false then return nil end
+    local clean = strtrim(tostring(iconVal))
+    local lower = string.lower(clean)
+    if clean == "" or lower == "nil" or lower == "none" or lower == "0" then
+        return nil
     end
 
-    local resolved = nil
     if ns.ResolveIconTexture then
-        resolved = ns:ResolveIconTexture(clean, DEFAULT_PORTRAIT_ICON)
+        local resolved = ns:ResolveIconTexture(clean, nil)
+        if type(resolved) == "number" and resolved > 0 then
+            return resolved
+        elseif type(resolved) == "string" then
+            local rClean = strtrim(resolved)
+            local rLower = string.lower(rClean)
+            if rClean ~= "" and rLower ~= "nil" and rLower ~= "none" and rLower ~= "0" then
+                return rClean
+            end
+        end
     end
 
-    if resolved then
-        dossierFrame.portraitTex:SetTexture(resolved)
+    local numId = tonumber(clean)
+    if numId and numId > 0 then
+        return numId
+    end
+
+    return string.find(clean, "\\", 1, true) and clean or ("Interface\\Icons\\" .. clean)
+end
+
+local function ReanchorDossierHeader(hasIcon)
+    if not dossierFrame then return end
+    local leftX = hasIcon and 78 or 18
+    dossierFrame.modeBadge:ClearAllPoints()
+    dossierFrame.modeBadge:SetPoint("TOPLEFT", dossierFrame, "TOPLEFT", leftX, -10)
+
+    dossierFrame.headerName:ClearAllPoints()
+    dossierFrame.headerName:SetPoint("TOPLEFT", dossierFrame, "TOPLEFT", leftX, -25)
+    if dossierFrame.closeBtn then
+        dossierFrame.headerName:SetPoint("RIGHT", dossierFrame.closeBtn, "LEFT", -12, 0)
     else
-        local iconPath = string.find(clean, "\\", 1, true) and clean or ("Interface\\Icons\\" .. clean)
-        dossierFrame.portraitTex:SetTexture(iconPath)
+        dossierFrame.headerName:SetPoint("TOPRIGHT", dossierFrame, "TOPRIGHT", -48, -25)
     end
 
-    if not dossierFrame.portraitTex:GetTexture() then
-        dossierFrame.portraitTex:SetTexture("Interface\\Icons\\" .. DEFAULT_PORTRAIT_ICON)
+    dossierFrame.vitalsText:ClearAllPoints()
+    dossierFrame.vitalsText:SetPoint("TOPLEFT", dossierFrame, "TOPLEFT", leftX, -50)
+    dossierFrame.vitalsText:SetPoint("TOPRIGHT", dossierFrame, "TOPRIGHT", -16, -50)
+end
+
+local function HideDossierPortrait()
+    if not dossierFrame then return end
+    if dossierFrame.portraitTex then
+        dossierFrame.portraitTex:SetTexture(nil)
+        dossierFrame.portraitTex:Hide()
     end
-    if not dossierFrame.portraitTex:GetTexture() then
-        dossierFrame.portraitTex:SetTexture(FALLBACK_TEXTURE_ID)
+    if dossierFrame.portraitBox then
+        dossierFrame.portraitBox:Hide()
     end
+    ReanchorDossierHeader(false)
+end
+
+local function SetDossierPortraitIcon(iconVal)
+    if not dossierFrame or not dossierFrame.portraitBox or not dossierFrame.portraitTex then return end
+    dossierFrame.portraitTex:SetTexture(nil)
+
+    local texVal = ResolveDossierIconValue(iconVal)
+    if not texVal then
+        HideDossierPortrait()
+        return
+    end
+
+    dossierFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local ok = pcall(function()
+        dossierFrame.portraitTex:SetTexture(texVal)
+    end)
+
+    local appliedTex = ok and dossierFrame.portraitTex:GetTexture()
+    if not appliedTex or appliedTex == "" or appliedTex == 0 then
+        HideDossierPortrait()
+        return
+    end
+
+    dossierFrame.portraitBox:Show()
     dossierFrame.portraitTex:Show()
+    ReanchorDossierHeader(true)
 end
 
 local function CleanOOCDisplayText(raw)
@@ -470,7 +551,7 @@ function ns:RefreshDossierWindow()
 
     local key = selectedDossierKey
     if not key and UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
-        key = ns:GetUnitKey("target")
+        key = (ns.GetUnitKey and ns:GetUnitKey("target")) or UnitName("target")
     end
     key = key or ns.lastInspectedKey
 
@@ -480,7 +561,7 @@ function ns:RefreshDossierWindow()
     dossierFrame.tabNotes:SetTone(activeSubView == "NOTES" and "PRIMARY" or nil)
 
     if not key then
-        ApplyPortraitTexture(nil)
+        SetDossierPortraitIcon(nil)
         dossierFrame.modeBadge:SetText("|cff9aa0a6[NO PROFILE SELECTED]|r")
         dossierFrame.headerName:SetText("|cff9aa0a6Select a Player from Known RP or Target Someone|r")
         dossierFrame.vitalsText:SetText("")
@@ -497,7 +578,7 @@ function ns:RefreshDossierWindow()
 
     local isSelf = IsPlayerSelfKey(key)
     local realCharName = GetRealCharacterName(key, isSelf)
-    local isLiveTarget = UnitExists("target") and UnitIsPlayer("target") and (ns:GetUnitKey("target") == key)
+    local isLiveTarget = UnitExists("target") and UnitIsPlayer("target") and ns.GetUnitKey and (ns:GetUnitKey("target") == key)
     local tHex = "ff8ab4f8"
     if isSelf and ns.GetPlayerClassColorCode then
         tHex = ns:GetPlayerClassColorCode()
@@ -515,14 +596,14 @@ function ns:RefreshDossierWindow()
     end
     dossierFrame.modeBadge:SetText(table.concat(topMetaParts, "  "))
 
-    local data = ns:GetCachedMSP(key)
+    local data = ResolveProfileRecordForKey(key)
     local standing, charNote, acctNote, hasNote = ns:GetNoteInfo(key)
     local assignedRel = ns:GetAssignedRelationship(key)
 
     dossierFrame.tabNotes:SetText(hasNote and "Notes |cff81c995*|r" or "Notes")
 
     local activeIcon = (isSelf and ns.profile and ns.profile.icon) or (data and data.IC)
-    ApplyPortraitTexture(activeIcon)
+    SetDossierPortraitIcon(activeIcon)
 
     if not data or not data.NA then
         dossierFrame.headerName:SetText("|c" .. tHex .. (realCharName ~= "" and realCharName or key) .. "|r")
@@ -629,14 +710,26 @@ end
 function ns:OpenTargetDossier(specificKey)
     if not dossierFrame then ns:InitDossierWindow() end
 
+    local shouldScan = false
     if specificKey and specificKey ~= "" then
-        selectedDossierKey = ns:GetUnitKey(specificKey)
-        ns:RequestUnitMSP(selectedDossierKey, true, true)
+        selectedDossierKey = specificKey
+        local cached = ResolveProfileRecordForKey(selectedDossierKey)
+        local isTargetedUnit = UnitExists("target") and UnitIsPlayer("target") and ns.GetUnitKey and (ns:GetUnitKey("target") == selectedDossierKey)
+        if isTargetedUnit or not cached or not cached.NA then
+            shouldScan = true
+        end
     elseif UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
-        selectedDossierKey = ns:GetUnitKey("target")
-        ns:RequestUnitMSP("target", true, true)
+        selectedDossierKey = (ns.GetUnitKey and ns:GetUnitKey("target")) or UnitName("target")
+        shouldScan = true
     elseif ns.lastInspectedKey then
         selectedDossierKey = ns.lastInspectedKey
+        local cached = ResolveProfileRecordForKey(selectedDossierKey)
+        if not cached or not cached.NA then
+            shouldScan = true
+        end
+    end
+
+    if shouldScan and selectedDossierKey and ns.RequestUnitMSP then
         ns:RequestUnitMSP(selectedDossierKey, true, true)
     end
 
@@ -678,32 +771,29 @@ function ns:InitDossierWindow()
     portraitBox:SetSize(50, 50)
     portraitBox:SetPoint("TOPLEFT", 16, -12)
     ns:ApplySurface(portraitBox, M3.surface, M3.primary)
+    dossierFrame.portraitBox = portraitBox
     dossierFrame.portraitTex = portraitBox:CreateTexture(nil, "OVERLAY")
     dossierFrame.portraitTex:SetSize(44, 44)
     dossierFrame.portraitTex:SetPoint("CENTER")
     dossierFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    ApplyPortraitTexture(nil)
-
-    dossierFrame.modeBadge = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dossierFrame.modeBadge:SetPoint("TOPLEFT", 78, -10)
 
     local closeBtn = ns:CreateMaterialButton(dossierFrame, "X", 28, 24, 616, -10, "CORAL", function()
         dossierFrame:Hide()
     end)
     closeBtn:ClearAllPoints()
     closeBtn:SetPoint("TOPRIGHT", dossierFrame, "TOPRIGHT", -14, -10)
+    dossierFrame.closeBtn = closeBtn
 
+    dossierFrame.modeBadge = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     dossierFrame.headerName = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    dossierFrame.headerName:SetPoint("TOPLEFT", 78, -25)
-    dossierFrame.headerName:SetPoint("RIGHT", closeBtn, "LEFT", -12, 0)
     dossierFrame.headerName:SetJustifyH("LEFT")
     dossierFrame.headerName:SetWordWrap(false)
 
     dossierFrame.vitalsText = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    dossierFrame.vitalsText:SetPoint("TOPLEFT", 78, -50)
-    dossierFrame.vitalsText:SetPoint("TOPRIGHT", -16, -50)
     dossierFrame.vitalsText:SetJustifyH("LEFT")
     dossierFrame.vitalsText:SetWordWrap(false)
+
+    SetDossierPortraitIcon(nil)
 
     local function SwitchSubView(viewName)
         if activeSubView == "NOTES" then SaveCurrentNotes() end
