@@ -255,6 +255,16 @@ local function GetRealCharacterName(key, isSelf)
     return strtrim(tostring(base or ""))
 end
 
+local function IsSentinelOrInvalidIconID(numId)
+    if type(numId) ~= "number" or numId <= 0 then
+        return true
+    end
+    if numId >= 2147483647 then
+        return true
+    end
+    return false
+end
+
 local function ResolveDossierIconValue(iconVal)
     if iconVal == nil or iconVal == false then return nil end
     local clean = strtrim(tostring(iconVal))
@@ -263,25 +273,106 @@ local function ResolveDossierIconValue(iconVal)
         return nil
     end
 
+    local directNum = tonumber(clean)
+    if directNum and IsSentinelOrInvalidIconID(directNum) then
+        return nil
+    end
+
     if ns.ResolveIconTexture then
         local resolved = ns:ResolveIconTexture(clean, nil)
-        if type(resolved) == "number" and resolved > 0 then
+        if type(resolved) == "number" then
+            if IsSentinelOrInvalidIconID(resolved) then
+                return nil
+            end
             return resolved
         elseif type(resolved) == "string" then
             local rClean = strtrim(resolved)
             local rLower = string.lower(rClean)
             if rClean ~= "" and rLower ~= "nil" and rLower ~= "none" and rLower ~= "0" then
-                return rClean
+                local rNum = tonumber(rClean)
+                if not rNum or not IsSentinelOrInvalidIconID(rNum) then
+                    return rClean
+                end
             end
         end
     end
 
-    local numId = tonumber(clean)
-    if numId and numId > 0 then
-        return numId
+    if directNum and not IsSentinelOrInvalidIconID(directNum) then
+        return directNum
     end
 
     return string.find(clean, "\\", 1, true) and clean or ("Interface\\Icons\\" .. clean)
+end
+
+local function ResolveClassFileToken(rawClass, key, isSelf, isLiveTarget)
+    if isSelf and UnitClass then
+        local _, pClass = UnitClass("player")
+        if pClass and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[pClass] then
+            return pClass
+        end
+    end
+    if isLiveTarget and UnitClass then
+        local _, tClass = UnitClass("target")
+        if tClass and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[tClass] then
+            return tClass
+        end
+    end
+
+    local plainClass = strtrim(StripColorCodes(tostring(rawClass or "")))
+    local cleaned = string.upper(plainClass)
+    if cleaned ~= "" and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[cleaned] then
+        return cleaned
+    end
+
+    local nameToToken = {
+        ["WARRIOR"]      = "WARRIOR",
+        ["PALADIN"]      = "PALADIN",
+        ["HUNTER"]       = "HUNTER",
+        ["ROGUE"]        = "ROGUE",
+        ["PRIEST"]       = "PRIEST",
+        ["DEATH KNIGHT"] = "DEATHKNIGHT",
+        ["DEATHKNIGHT"]  = "DEATHKNIGHT",
+        ["SHAMAN"]       = "SHAMAN",
+        ["MAGE"]         = "MAGE",
+        ["WARLOCK"]      = "WARLOCK",
+        ["MONK"]         = "MONK",
+        ["DRUID"]        = "DRUID",
+        ["DEMON HUNTER"] = "DEMONHUNTER",
+        ["DEMONHUNTER"]  = "DEMONHUNTER",
+        ["EVOKER"]       = "EVOKER",
+    }
+
+    if type(LOCALIZED_CLASS_NAMES_MALE) == "table" then
+        for token, locName in pairs(LOCALIZED_CLASS_NAMES_MALE) do
+            if type(locName) == "string" and string.lower(locName) == string.lower(plainClass) then
+                nameToToken[string.upper(locName)] = token
+            end
+        end
+    end
+    if type(LOCALIZED_CLASS_NAMES_FEMALE) == "table" then
+        for token, locName in pairs(LOCALIZED_CLASS_NAMES_FEMALE) do
+            if type(locName) == "string" and string.lower(locName) == string.lower(plainClass) then
+                nameToToken[string.upper(locName)] = token
+            end
+        end
+    end
+
+    local mapped = nameToToken[cleaned]
+    if mapped and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[mapped] then
+        return mapped
+    end
+
+    if key and UnitExists and UnitIsPlayer then
+        local shortName = strsplit("-", tostring(key))
+        if shortName and UnitExists(shortName) and UnitIsPlayer(shortName) and UnitClass then
+            local _, uClass = UnitClass(shortName)
+            if uClass and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[uClass] then
+                return uClass
+            end
+        end
+    end
+
+    return nil
 end
 
 local function ReanchorDossierHeader(hasIcon)
@@ -315,36 +406,63 @@ local function HideDossierPortrait()
     ReanchorDossierHeader(false)
 end
 
-local function SetDossierPortraitIcon(iconVal)
+local function SetDossierPortraitIcon(iconVal, classToken, hasRPProfile)
     if not dossierFrame or not dossierFrame.portraitBox or not dossierFrame.portraitTex then return end
     dossierFrame.portraitTex:SetTexture(nil)
 
     local texVal = ResolveDossierIconValue(iconVal)
-    if not texVal then
-        HideDossierPortrait()
-        return
+    if texVal then
+        dossierFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        local ok = pcall(function()
+            dossierFrame.portraitTex:SetTexture(texVal)
+        end)
+
+        local appliedTex = ok and dossierFrame.portraitTex:GetTexture()
+        if appliedTex and appliedTex ~= "" and appliedTex ~= 0 then
+            dossierFrame.portraitBox:Show()
+            dossierFrame.portraitTex:Show()
+            ReanchorDossierHeader(true)
+            return
+        end
     end
 
-    dossierFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    local ok = pcall(function()
-        dossierFrame.portraitTex:SetTexture(texVal)
-    end)
-
-    local appliedTex = ok and dossierFrame.portraitTex:GetTexture()
-    if not appliedTex or appliedTex == "" or appliedTex == 0 then
-        HideDossierPortrait()
-        return
+    local coords = classToken and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classToken]
+    if coords then
+        dossierFrame.portraitTex:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+        dossierFrame.portraitTex:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+        if dossierFrame.portraitTex:GetTexture() then
+            dossierFrame.portraitBox:Show()
+            dossierFrame.portraitTex:Show()
+            ReanchorDossierHeader(true)
+            return
+        end
     end
 
-    dossierFrame.portraitBox:Show()
-    dossierFrame.portraitTex:Show()
-    ReanchorDossierHeader(true)
+    if hasRPProfile then
+        local fallbackIcon = (ns.IconPool and ns.IconPool.defaultFallback) or 134400
+        dossierFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        local ok = pcall(function()
+            dossierFrame.portraitTex:SetTexture(fallbackIcon)
+        end)
+        local appliedTex = ok and dossierFrame.portraitTex:GetTexture()
+        if appliedTex and appliedTex ~= "" and appliedTex ~= 0 then
+            dossierFrame.portraitBox:Show()
+            dossierFrame.portraitTex:Show()
+            ReanchorDossierHeader(true)
+            return
+        end
+    end
+
+    HideDossierPortrait()
 end
 
 local function CleanOOCDisplayText(raw)
     if not raw then return "" end
     local clean = strtrim(StripColorCodes(raw))
     clean = string.gsub(clean, "%[Walk%-Ups:[^%]]*%]", "")
+    clean = string.gsub(clean, "%[Walk%-Ups Welcome%]", "")
+    clean = string.gsub(clean, "%[Walk%-Ups: Ask First%]", "")
+    clean = string.gsub(clean, "%[No Walk%-Ups%]", "")
     clean = string.gsub(clean, "%[Pronouns:[^%]]*%]", "")
     clean = string.gsub(clean, "^%s*[•|%-]+%s*", "")
     clean = string.gsub(clean, "%s*[•|%-]+%s*$", "")
@@ -563,7 +681,7 @@ function ns:RefreshDossierWindow()
     dossierFrame.tabNotes:SetTone(activeSubView == "NOTES" and "PRIMARY" or nil)
 
     if not key then
-        SetDossierPortraitIcon(nil)
+        SetDossierPortraitIcon(nil, nil, false)
         dossierFrame.modeBadge:SetText("|cff9aa0a6[NO PROFILE SELECTED]|r")
         dossierFrame.headerName:SetText("|cff9aa0a6Select a Player from Known RP or Target Someone|r")
         dossierFrame.vitalsText:SetText("")
@@ -601,11 +719,13 @@ function ns:RefreshDossierWindow()
     local data = ResolveProfileRecordForKey(key)
     local standing, charNote, acctNote, hasNote = ns:GetNoteInfo(key)
     local assignedRel = ns:GetAssignedRelationship(key)
+    local hasRPProfile = (data and data.NA and data.NA ~= "") and true or false
 
     dossierFrame.tabNotes:SetText(hasNote and "Notes |cff81c995*|r" or "Notes")
 
     local activeIcon = (isSelf and ns.profile and ns.profile.icon) or (data and data.IC)
-    SetDossierPortraitIcon(activeIcon)
+    local classToken = ResolveClassFileToken(data and data.RC, key, isSelf, isLiveTarget)
+    SetDossierPortraitIcon(activeIcon, classToken, hasRPProfile)
 
     if not data or not data.NA then
         dossierFrame.headerName:SetText("|c" .. tHex .. (realCharName ~= "" and realCharName or key) .. "|r")
@@ -744,8 +864,6 @@ function ns:OpenTargetDossier(specificKey)
     dossierFrame:Raise()
     ns:RefreshDossierWindow()
 
-    -- Refresh after the dossier content has been rebuilt so focus selection
-    -- cannot land on an old/hidden control from the previous dossier view.
     if ns.UpdateControllerBindings then
         ns:UpdateControllerBindings()
     end
@@ -776,8 +894,6 @@ function ns:InitDossierWindow()
 
         SaveCurrentNotes()
 
-        -- The dossier is no longer the active PadRP scope. Restore bindings
-        -- and focus to whichever PadRP surface remains open (main window/HUD).
         if ns.UpdateControllerBindings then
             ns:UpdateControllerBindings()
         end
@@ -822,7 +938,7 @@ function ns:InitDossierWindow()
     dossierFrame.vitalsText:SetJustifyH("LEFT")
     dossierFrame.vitalsText:SetWordWrap(false)
 
-    SetDossierPortraitIcon(nil)
+    SetDossierPortraitIcon(nil, nil, false)
 
     local function SwitchSubView(viewName)
         if activeSubView == "NOTES" then SaveCurrentNotes() end

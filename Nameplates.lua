@@ -12,6 +12,9 @@ local SOLID_BACKDROP = {
 
 local STANDING_SUFFIX = {
     Ally         = " |cff81c995[Ally]|r",
+    Friendly     = " |cff81c995[Friendly]|r",
+    Neutral      = " |cff8ab4f8[Neutral]|r",
+    Unfriendly   = " |cfff28b82[Unfriendly]|r",
     Acquaintance = " |cff8ab4f8[Known]|r",
     Rival        = " |cfff28b82[Rival]|r",
     Marked       = " |cfffdd663[Marked]|r",

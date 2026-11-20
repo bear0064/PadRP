@@ -63,28 +63,144 @@ local function CleanOOCTooltipText(raw)
     return strtrim(clean)
 end
 
-local function BuildTooltipPortraitTag(iconVal)
-    local clean = iconVal and strtrim(tostring(iconVal)) or ""
-    if clean == "" then return "" end
+local function IconPathExists(path)
+    if type(GetFileIDFromPath) == "function" then
+        local ok, id = pcall(GetFileIDFromPath, path)
+        if ok then
+            return id ~= nil and id ~= 0
+        end
+    end
+    return true
+end
+
+local function IsSentinelOrInvalidID(numId)
+    if type(numId) ~= "number" or numId <= 0 then
+        return true
+    end
+    if numId >= 2147483647 then
+        return true
+    end
+    return false
+end
+
+local function FormatInlineTexture(texVal)
+    if type(texVal) == "number" and not IsSentinelOrInvalidID(texVal) then
+        return string.format("|T%.0f:16:16:0:0:64:64:4:60:4:60|t ", texVal)
+    elseif type(texVal) == "string" then
+        local clean = strtrim(texVal)
+        local numId = tonumber(clean)
+        if numId then
+            if IsSentinelOrInvalidID(numId) then
+                return ""
+            end
+            return string.format("|T%.0f:16:16:0:0:64:64:4:60:4:60|t ", numId)
+        end
+        if clean ~= "" then
+            return string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", clean)
+        end
+    end
+    return ""
+end
+
+local function ResolveCustomPortraitTag(iconVal)
+    if iconVal == nil or iconVal == false then
+        return ""
+    end
+    local clean = strtrim(tostring(iconVal))
+    if clean == "" then
+        return ""
+    end
+    local low = string.lower(clean)
+    if low == "nil" or low == "none" or low == "0" then
+        return ""
+    end
+
+    local directNum = tonumber(clean)
+    if directNum and IsSentinelOrInvalidID(directNum) then
+        return ""
+    end
 
     local resolved = nil
-    if ns.ResolveIconTexture then
-        resolved = ns:ResolveIconTexture(clean, nil)
+    if ns.IconPool and type(ns.IconPool.ResolveTexture) == "function" then
+        local ok, res = pcall(ns.IconPool.ResolveTexture, ns.IconPool, clean, nil)
+        if ok and res and res ~= 134400 then
+            local rNum = tonumber(res)
+            if not rNum or not IsSentinelOrInvalidID(rNum) then
+                resolved = res
+            end
+        end
     end
 
-    if type(resolved) == "number" and resolved > 0 then
-        return string.format("|T%d:16:16:0:0:64:64:4:60:4:60|t ", resolved)
-    elseif type(resolved) == "string" and strtrim(resolved) ~= "" then
-        return string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", strtrim(resolved))
+    if not resolved and ns.ResolveIconTexture then
+        local ok, res = pcall(ns.ResolveIconTexture, ns, clean, nil)
+        if ok and res and res ~= 134400 then
+            local rNum = tonumber(res)
+            if not rNum or not IsSentinelOrInvalidID(rNum) then
+                resolved = res
+            end
+        end
     end
 
-    local numId = tonumber(clean)
-    if numId and numId > 0 then
-        return string.format("|T%d:16:16:0:0:64:64:4:60:4:60|t ", numId)
+    if not resolved then
+        if directNum and not IsSentinelOrInvalidID(directNum) then
+            resolved = directNum
+        elseif string.find(clean, "\\", 1, true) or string.find(clean, "/", 1, true) then
+            if IconPathExists(clean) then
+                resolved = clean
+            end
+        else
+            local guess = "Interface\\Icons\\" .. clean
+            if IconPathExists(guess) then
+                resolved = guess
+            end
+        end
     end
 
-    local iconPath = string.find(clean, "\\", 1, true) and clean or ("Interface\\Icons\\" .. clean)
-    return string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", iconPath)
+    return FormatInlineTexture(resolved)
+end
+
+local function BuildTooltipPortraitTag(iconVal, unit, hasProfile)
+    local customTag = ResolveCustomPortraitTag(iconVal)
+    if customTag ~= "" then
+        if _G.PadRP_DebugIcons then
+            local function esc(v) return (tostring(v):gsub("|", "||")) end
+            print("|cff8ab4f8[PadRP icon]|r", unit and UnitName(unit) or "?",
+                "raw IC:", type(iconVal), esc(iconVal), "tag:", esc(customTag))
+        end
+        return customTag
+    end
+
+    if hasProfile and unit and UnitExists(unit) and UnitIsPlayer(unit) then
+        local _, classFile = UnitClass(unit)
+        local coords = classFile and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classFile]
+        if coords then
+            local l = math.floor((coords[1] or 0) * 64 + 0.5)
+            local r = math.floor((coords[2] or 1) * 64 + 0.5)
+            local t = math.floor((coords[3] or 0) * 64 + 0.5)
+            local b = math.floor((coords[4] or 1) * 64 + 0.5)
+            return string.format("|TInterface\\TargetingFrame\\UI-Classes-Circles:16:16:0:0:64:64:%d:%d:%d:%d|t ", l, r, t, b)
+        end
+        return "|T134400:16:16:0:0:64:64:4:60:4:60|t "
+    end
+
+    return ""
+end
+
+local function BuildProfileSignature(data, standing, hasNote, portraitTag)
+    if not data then
+        return "NONE|" .. tostring(standing or "") .. "|" .. tostring(hasNote and 1 or 0) .. "|" .. tostring(portraitTag or "")
+    end
+    return table.concat({
+        tostring(data.NA or ""),
+        tostring(data.NT or ""),
+        tostring(data.FC or ""),
+        tostring(data.CU or ""),
+        tostring(data.CO or ""),
+        tostring(data.PE or ""),
+        tostring(standing or ""),
+        tostring(hasNote and 1 or 0),
+        tostring(portraitTag or ""),
+    }, "|")
 end
 
 local function GetActiveOtherPlayerUnit()
@@ -264,16 +380,18 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
 
     local data, key = ns:GetCachedMSP(unit)
     local standing, charNote, acctNote, hasNote = ns:GetNoteInfo(key)
+    local hasProfile = (data and data.NA and data.NA ~= "") or isSelf or hasNote or (standing ~= "None")
 
     if (not data or not data.NA or data.NA == "") and not hasNote and standing == "None" and not isSelf then
         return
     end
 
     local customIcon = isSelf and (ns.profile and ns.profile.icon) or (data and data.IC)
-    local portraitTag = BuildTooltipPortraitTag(customIcon)
+    local portraitTag = BuildTooltipPortraitTag(customIcon, unit, hasProfile)
+    local signature = BuildProfileSignature(data, standing, hasNote, portraitTag)
 
     local state = tooltipState[tooltip]
-    if state and state.taggedKey == key and state.portraitTag == portraitTag then
+    if state and state.taggedKey == key and state.portraitTag == portraitTag and state.signature == signature then
         return
     end
 
@@ -375,7 +493,7 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         tooltip:AddLine("|TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t |cff81c995Note:|r " .. preview, 0.85, 0.90, 0.86, true)
     end
 
-    tooltipState[tooltip] = { taggedKey = key, portraitTag = portraitTag }
+    tooltipState[tooltip] = { taggedKey = key, portraitTag = portraitTag, signature = signature }
     tooltip:Show()
 end
 
@@ -405,7 +523,9 @@ local function InitTooltipHook()
                 end
             end)
         end)
-    elseif GameTooltip and GameTooltip.HookScript then
+    end
+
+    if GameTooltip and GameTooltip.HookScript then
         pcall(function()
             GameTooltip:HookScript("OnTooltipSetUnit", function(tooltip)
                 DecorateUnitTooltip(tooltip, nil, false)
