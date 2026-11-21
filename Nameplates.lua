@@ -34,6 +34,22 @@ local function NormalizeKey(k)
     return string.lower(strtrim(tostring(k or "")))
 end
 
+local function IsICOOCEnabled(ui)
+    if not ui then return false end
+    if ui.nameplateStatusTags ~= nil then
+        return ui.nameplateStatusTags ~= false
+    end
+    return true
+end
+
+local function IsStandingCircleEnabled(ui)
+    if not ui then return false end
+    if ui.nameplateStandingCircle ~= nil then
+        return ui.nameplateStandingCircle ~= false
+    end
+    return true
+end
+
 local function GetStandingColor(standingName)
     if not standingName or standingName == "" or standingName == "None" then
         return nil
@@ -161,7 +177,7 @@ local function RestoreNameplateDefault(nameplate, unit)
     end
 end
 
-function ns:StyleFriendlyNameplate(unit)
+local function StyleFriendlyNameplateInternal(unit)
     if not unit or not C_NamePlate or not C_NamePlate.GetNamePlateForUnit then return end
     if not string.find(unit, "^nameplate%d+$") then return end
 
@@ -236,10 +252,12 @@ function ns:StyleFriendlyNameplate(unit)
         state.styled = true
     end
 
+    -- 1. Independent OOC | IC badge toggle
+    local showICOOC = IsICOOCEnabled(ui)
     local badgeShown = false
     local badge = state.sideBadge
 
-    if ui.nameplateStatusTags and hasProfile then
+    if showICOOC and hasProfile then
         badge = GetOrCreateSideBadge(nameplate, state)
         badge:ClearAllPoints()
         if healthBar then
@@ -269,10 +287,12 @@ function ns:StyleFriendlyNameplate(unit)
         state.sideBadge:Hide()
     end
 
-    local standing = ui.nameplateStatusTags and ResolveStanding(key, unit) or nil
+    -- 2. Independent Standing Circle toggle
+    local showStandingCircle = IsStandingCircleEnabled(ui)
+    local standing = showStandingCircle and ResolveStanding(key, unit) or nil
     local dotColor = GetStandingColor(standing)
 
-    if dotColor then
+    if showStandingCircle and dotColor then
         local dot = GetOrCreateStandingDot(nameplate, state)
         dot:ClearAllPoints()
         if badgeShown and badge then
@@ -289,6 +309,10 @@ function ns:StyleFriendlyNameplate(unit)
     elseif state.standingDot then
         state.standingDot:Hide()
     end
+end
+
+function ns:StyleFriendlyNameplate(unit)
+    pcall(StyleFriendlyNameplateInternal, unit)
 end
 
 function ns:RefreshAllNameplates()

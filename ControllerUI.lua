@@ -845,16 +845,23 @@ local function UpdateResponsiveLayouts()
             { -50,  p7.minimapBtn, p7.hudBtn },
             { -84,  p7.hudRPBtn,   p7.npClassBtn },
             { -118, p7.npTagBtn,   p7.npRPNameBtn },
-            { -152, p7.combatBtn,  p7.soundBtn },
-            { -186, p7.partyBtn,   p7.rpNameBtn },
-            { -220, p7.chatRPBtn,  p7.afkOOCBtn },
-            { -260, p7.openExpBtn, p7.devModeBtn },
+            { -152, p7.npCircleBtn, p7.combatBtn },
+            { -186, p7.soundBtn,   p7.partyBtn },
+            { -220, p7.rpNameBtn,  p7.chatRPBtn },
+            { -254, p7.afkOOCBtn,  nil },
+            { -294, p7.openExpBtn, p7.devModeBtn },
         }
         for _, row in ipairs(pairs7) do
-            LayoutRow(p7, row[1], {
-                { w = row[2], weight = 1 },
-                { w = row[3], weight = 1 },
-            }, 16, 16, 12)
+            if row[3] then
+                LayoutRow(p7, row[1], {
+                    { w = row[2], weight = 1 },
+                    { w = row[3], weight = 1 },
+                }, 16, 16, 12)
+            else
+                LayoutRow(p7, row[1], {
+                    { w = row[2], weight = 1 },
+                }, 16, 16, 12)
+            end
         end
     end
 
@@ -1921,6 +1928,826 @@ local function RefreshProfilesTab()
     end
 end
 
+local function UpdateTabBarLayout()
+    if not mainFrame or not tabButtons[1] then return end
+    local showDev = (ns.db and ns.db.ui and ns.db.ui.devMode) and true or false
+    local visibleCount = showDev and 8 or 7
+    local totalWidth = mainFrame:GetWidth() - 24
+    local gap = 3
+    local btnW = math.floor((totalWidth - (gap * (visibleCount - 1))) / visibleCount)
+
+    for i = 1, 8 do
+        local tb = tabButtons[i]
+        if tb then
+            if i == 8 and not showDev then
+                tb:Hide()
+            else
+                tb:SetWidth(btnW)
+                tb:ClearAllPoints()
+                tb:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 12 + (i - 1) * (btnW + gap), -108)
+                tb:Show()
+            end
+        end
+    end
+
+    if not showDev and activeTab == 8 then
+        ns:SelectTab(7)
+    end
+end
+
+function ns:RefreshNetInspector(newLine)
+    if not inspectorFrame then return end
+
+    local _, knownCount = BuildDirectoryRows()
+    local engineLabel = (type(_G.msp) == "table") and "|cff81c995LibMSP|r" or "|cfff28b82Missing LibMSP|r"
+    inspectorFrame.statusBar:SetText(string.format(
+        "Engine: %s  |  Sent: |cfffdd663%d|r  |  Live Replies: |cff81c995%d|r  |  Cached: |cff8ab4f8%d|r  |  Last: |cffe8eaed%s|r",
+        engineLabel,
+        (ns.mspStats and ns.mspStats.sent) or 0,
+        (ns.mspStats and ns.mspStats.liveReplies) or 0,
+        knownCount,
+        (ns.mspStats and ns.mspStats.lastReplyFrom) or "None"
+    ))
+
+    inspectorFrame.chkDebug:SetText(FormatCheckbox("Debug Events", ns.mspDebug, "ff81c995"))
+    inspectorFrame.chkDebug:SetTone(ns.mspDebug and "MINT" or nil)
+
+    inspectorFrame.chkSniff:SetText(FormatCheckbox("Wire Sniffer", ns.mspSniff, "fffdd663"))
+    inspectorFrame.chkSniff:SetTone(ns.mspSniff and "AMBER" or nil)
+
+    inspectorFrame.chkEcho:SetText(FormatCheckbox("Echo to Chat", ns.mspEchoChat, "ff8ab4f8"))
+    inspectorFrame.chkEcho:SetTone(ns.mspEchoChat and "PRIMARY" or nil)
+
+    if newLine and inspectorFrame.msgFrame then
+        inspectorFrame.msgFrame:AddMessage(newLine)
+    end
+    if inspectorFrame.copyEditor and inspectorFrame.copyEditor:IsShown() then
+        inspectorFrame.copyEditor:SetCleanText(table.concat(ns.netLogs or {}, "\n"))
+    end
+end
+
+local function InitNetInspectorWindow()
+    if inspectorFrame then return end
+    local M3 = ns.M3
+
+    inspectorFrame = CreateFrame("Frame", "PadRP_NetInspector", UIParent, "BackdropTemplate")
+    inspectorFrame:SetSize(540, 340)
+    inspectorFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -28, -110)
+    inspectorFrame:SetFrameStrata("HIGH")
+    inspectorFrame:SetMovable(true)
+    inspectorFrame:EnableMouse(true)
+    inspectorFrame:RegisterForDrag("LeftButton")
+    inspectorFrame:SetScript("OnDragStart", inspectorFrame.StartMoving)
+    inspectorFrame:SetScript("OnDragStop", inspectorFrame.StopMovingOrSizing)
+    ns:ApplySurface(inspectorFrame, M3.surfaceDim, M3.primary)
+    ns:EnableClipping(inspectorFrame)
+    inspectorFrame:Hide()
+
+    local title = inspectorFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 12, -10)
+    title:SetText("|cff8ab4f8PADRP NETWORK & WIRE INSPECTOR|r  |cff9aa0a6(Noise-Free Console)|r")
+
+    local closeBtn = ns:CreateMaterialButton(inspectorFrame, "X", 28, 24, 504, -6, "CORAL", function()
+        inspectorFrame:Hide()
+    end)
+    closeBtn:ClearAllPoints()
+    closeBtn:SetPoint("TOPRIGHT", inspectorFrame, "TOPRIGHT", -8, -6)
+
+    inspectorFrame.statusBar = inspectorFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    inspectorFrame.statusBar:SetPoint("TOPLEFT", 12, -30)
+    inspectorFrame.statusBar:SetPoint("TOPRIGHT", -12, -30)
+    inspectorFrame.statusBar:SetJustifyH("LEFT")
+
+    inspectorFrame.chkDebug = ns:CreateMaterialButton(inspectorFrame, "", 132, 24, 12, -48, nil, function()
+        ns.mspDebug = not ns.mspDebug
+        ns:LogNet("CONFIG", "ff81c995", "Debug Events: " .. (ns.mspDebug and "ENABLED" or "DISABLED"))
+        ns:RefreshNetInspector()
+        ns:RefreshControllerUI()
+    end)
+
+    inspectorFrame.chkSniff = ns:CreateMaterialButton(inspectorFrame, "", 132, 24, 150, -48, nil, function()
+        ns.mspSniff = not ns.mspSniff
+        if ns.mspSniff then ns.mspDebug = true end
+        ns:LogNet("CONFIG", "fffdd663", "Raw Wire Sniffer: " .. (ns.mspSniff and "ENABLED" or "DISABLED"))
+        ns:RefreshNetInspector()
+        ns:RefreshControllerUI()
+    end)
+
+    inspectorFrame.chkEcho = ns:CreateMaterialButton(inspectorFrame, "", 132, 24, 288, -48, nil, function()
+        ns.mspEchoChat = not ns.mspEchoChat
+        ns:RefreshNetInspector()
+        ns:RefreshControllerUI()
+    end)
+
+    inspectorFrame.copyBtn = ns:CreateMaterialButton(inspectorFrame, "Copy Log", 102, 24, 426, -48, nil, function(self)
+        if inspectorFrame.copyEditor:IsShown() then
+            inspectorFrame.copyEditor:Hide()
+            inspectorFrame.feedBox:Show()
+            self:SetText("Copy Log")
+        else
+            inspectorFrame.feedBox:Hide()
+            inspectorFrame.copyEditor:SetCleanText(table.concat(ns.netLogs or {}, "\n"))
+            inspectorFrame.copyEditor:Show()
+            inspectorFrame.copyEditor.editBox:HighlightText()
+            inspectorFrame.copyEditor.editBox:SetFocus()
+            self:SetText("Live Feed")
+        end
+    end)
+
+    local feedBox = CreateFrame("Frame", nil, inspectorFrame, "BackdropTemplate")
+    feedBox:SetPoint("TOPLEFT", 12, -78)
+    feedBox:SetPoint("BOTTOMRIGHT", -12, 42)
+    ns:ApplySurface(feedBox, M3.surfaceLow, M3.outline)
+    ns:EnableClipping(feedBox)
+    inspectorFrame.feedBox = feedBox
+
+    local msgFrame = CreateFrame("ScrollingMessageFrame", nil, feedBox)
+    msgFrame:SetPoint("TOPLEFT", 10, -8)
+    msgFrame:SetPoint("BOTTOMRIGHT", -10, 8)
+    msgFrame:SetFontObject("ChatFontSmall")
+    msgFrame:SetJustifyH("LEFT")
+    msgFrame:SetFading(false)
+    msgFrame:SetMaxLines(250)
+    msgFrame:EnableMouseWheel(true)
+    msgFrame:SetScript("OnMouseWheel", function(self, delta)
+        if delta > 0 then self:ScrollUp() else self:ScrollDown() end
+    end)
+    inspectorFrame.msgFrame = msgFrame
+
+    local copyEditor = ns:CreateScrollableTextEditor(inspectorFrame, "No log entries yet.", 12, -78, 516, 220)
+    copyEditor:Hide()
+    inspectorFrame.copyEditor = copyEditor
+
+    ns:CreateMaterialButton(inspectorFrame, "Query Target", 122, 26, 12, -306, "PRIMARY", function()
+        if UnitExists("target") and UnitIsPlayer("target") then
+            ns:RequestUnitMSP("target", true, true)
+        elseif ns.lastInspectedKey then
+            ns:RequestUnitMSP(ns.lastInspectedKey, true, true)
+        else
+            ns:LogNet("WARN", "fff28b82", "No player targeted to query.")
+        end
+    end)
+
+    ns:CreateMaterialButton(inspectorFrame, "Run Self-Test", 122, 26, 142, -306, "AMBER", function()
+        ns:RunMSPSelfTest()
+    end)
+
+    ns:CreateMaterialButton(inspectorFrame, "Clear Log", 126, 26, 272, -306, "CORAL", function()
+        wipe(ns.netLogs)
+        msgFrame:Clear()
+        ns:LogNet("CLEAR", "ff9aa0a6", "Log cleared.")
+    end)
+
+    for _, line in ipairs(ns.netLogs or {}) do
+        msgFrame:AddMessage(line)
+    end
+end
+
+function ns:ToggleNetInspector(forceShow)
+    InitNetInspectorWindow()
+    if forceShow or not inspectorFrame:IsShown() then
+        inspectorFrame:Show()
+        ns:RefreshNetInspector()
+    else
+        inspectorFrame:Hide()
+    end
+end
+
+local function CloseAnyOpenPopup()
+    if not mainFrame then return false end
+    if ns.dossierFrame and ns.dossierFrame.standingDropdown and ns.dossierFrame.standingDropdown:IsShown() then
+        ns.dossierFrame.standingDropdown:Hide()
+        if ns.dossierFrame.standingBtn then ns:SetControllerFocus(ns.dossierFrame.standingBtn) end
+        return true
+    end
+    if mainFrame.expDropdown and mainFrame.expDropdown:IsShown() then
+        mainFrame.expDropdown:Hide()
+        if mainFrame.bannerExpBtn then ns:SetControllerFocus(mainFrame.bannerExpBtn) end
+        return true
+    end
+    if mainFrame.presetDropdown and mainFrame.presetDropdown:IsShown() then
+        mainFrame.presetDropdown:Hide()
+        if tabPanels[1] and tabPanels[1].presetBtn then ns:SetControllerFocus(tabPanels[1].presetBtn) end
+        return true
+    end
+    if mainFrame.modeDropdown and mainFrame.modeDropdown:IsShown() then
+        mainFrame.modeDropdown:Hide()
+        if tabPanels[6] and tabPanels[6].modeBtn then ns:SetControllerFocus(tabPanels[6].modeBtn) end
+        return true
+    end
+    if mainFrame.poolDropdown and mainFrame.poolDropdown:IsShown() then
+        mainFrame.poolDropdown:Hide()
+        if tabPanels[6] and tabPanels[6].poolToggleBtn then ns:SetControllerFocus(tabPanels[6].poolToggleBtn) end
+        return true
+    end
+    if mainFrame.iconPicker and mainFrame.iconPicker:IsShown() then
+        local returnTarget = mainFrame.iconPicker.returnFocusWidget
+        mainFrame.iconPicker:Hide()
+        if returnTarget and returnTarget:IsVisible() then
+            ns:SetControllerFocus(returnTarget)
+        else
+            ns:FocusFirstInScope()
+        end
+        return true
+    end
+    if mainFrame.exportModal and mainFrame.exportModal:IsShown() then
+        mainFrame.exportModal:Hide()
+        ns:FocusFirstInScope()
+        return true
+    end
+    return false
+end
+
+function ns:ControllerConfirmAction()
+    local scope = ns:GetActiveModalScope()
+    if not scope or not ns:CanProcessPadAction() then return end
+
+    if scope == ns.hudFrame and ns.OpenTargetDossier then
+        ns:OpenTargetDossier(ns.hudFrame.inspectedKey)
+        return
+    end
+
+    local now = (GetTime and GetTime()) or 0
+    local activeBox = ns.activeEditBox
+    if activeBox and activeBox.HasFocus and activeBox:HasFocus() then
+        if (now - (lastEditFocusTime or 0)) < 0.25 then
+            return
+        end
+        activeBox:ClearFocus()
+        return
+    end
+
+    local cur = ns.currentFocus
+    if not cur or not cur:IsVisible() then
+        ns:FocusFirstInScope()
+        return
+    end
+
+    if cur == lastConfirmTarget and (now - (lastConfirmTime or 0)) < 0.18 then
+        return
+    end
+    lastConfirmTime = now
+    lastConfirmTarget = cur
+
+    if cur.GetObjectType and cur:GetObjectType() == "EditBox" then
+        lastEditFocusTime = now
+        if cur.SetFocus then cur:SetFocus() end
+        return
+    end
+
+    if cur.ActivateFromPad then
+        cur:ActivateFromPad()
+    elseif cur.Click then
+        cur:Click("LeftButton")
+    end
+
+    if cur and cur:IsVisible() and ns:GetActiveModalScope() == scope then
+        ns:SetControllerFocus(cur)
+    end
+end
+
+function ns:ControllerCancelAction()
+    local scope = ns:GetActiveModalScope()
+    if not scope or not ns:CanProcessPadAction() then return end
+    if ns.activeEditBox and ns.activeEditBox:HasFocus() then
+        ns.activeEditBox:ClearFocus()
+        return
+    end
+    if CloseAnyOpenPopup() then
+        ns:PlayUISound()
+        return
+    end
+    if ns.dossierFrame and ns.dossierFrame:IsShown() then
+        ns.dossierFrame:Hide()
+        return
+    end
+    if scope == ns.hudFrame then
+        if ns.DismissTargetHUDFocus then
+            ns:DismissTargetHUDFocus()
+        elseif ns.SetControllerFocus then
+            ns:SetControllerFocus(nil)
+        end
+        return
+    end
+    if mainFrame and mainFrame:IsShown() then
+        mainFrame:Hide()
+    end
+end
+
+function ns:CycleTab(delta)
+    if not ns:CanProcessPadAction() then return end
+    if ns.dossierFrame and ns.dossierFrame:IsShown() and ns.CycleDossierTab then
+        ns:CycleDossierTab(delta)
+        return
+    end
+    if not mainFrame or not mainFrame:IsShown() then return end
+    if mainFrame.iconPicker and mainFrame.iconPicker:IsShown() then
+        mainFrame.iconPicker:StepPage(delta)
+        return
+    end
+    local maxTabs = (ns.db and ns.db.ui and ns.db.ui.devMode) and 8 or 7
+    local nextTab = ((activeTab - 1 + delta) % maxTabs) + 1
+    ns:SelectTab(nextTab)
+end
+
+local function GetActiveGratitudePool()
+    local g = ns.db.gratitude
+    local item = POOL_LIST[editPoolIdx] or POOL_LIST[1]
+    if item.key == "IC" then return g.icPhrases
+    elseif item.key == "OOC" then return g.oocPhrases
+    elseif item.key == "RES" then return g.resPhrases
+    elseif item.key == "SUMMON" then return g.summonPhrases
+    elseif item.key == "SPECIAL" then return g.specialPhrases end
+    return g.icPhrases
+end
+
+local function LoadAllGlancesIntoUI()
+    local p2 = tabPanels[2]
+    if not p2 or not p2.cards or not ns.profile then return end
+    local p = ns.profile
+    local fallbackIcon = GetDefaultIconFallback()
+    local placeholders = {
+        { title = "e.g., Singed Cuffs",   detail = "e.g., Faint arcane scorch marks line the hems of his sleeves." },
+        { title = "e.g., Worn Satchel",   detail = "e.g., Stuffed with rolled parchment, ink vials, and dried herbs." },
+        { title = "e.g., Silver Signet",  detail = "e.g., A tarnished ring bearing an unfamiliar river-crest." },
+        { title = "e.g., Steady Voice",   detail = "e.g., Speaks with a calm, measured cadence even under pressure." },
+        { title = "e.g., Travel Cloak",   detail = "e.g., Weathered dark wool dusted with road ash from afar." },
+    }
+
+    for slot = 1, 5 do
+        local card = p2.cards[slot]
+        if card then
+            local g = p.glances[slot] or { icon = fallbackIcon, title = "", detail = "" }
+            card.slotIndex = slot
+            card.slotBadge:SetText("|cff8ab4f8GLANCE #" .. slot .. "|r")
+            SetIconTextureSafe(card.iconTex, g.icon, fallbackIcon)
+            card.titleBox.placeholder:SetText(placeholders[slot].title)
+            card.detailBox.placeholder:SetText(placeholders[slot].detail)
+            card.titleBox:SetCleanText(g.title)
+            card.detailBox:SetCleanText(g.detail)
+            card:Show()
+        end
+    end
+end
+
+function ns:LoadProfileIntoUI()
+    if not mainFrame or not ns.profile then return end
+    local p = ns.profile
+    EnsureTopicConsentTable()
+    local p1 = tabPanels[1]
+    if p1 and p1.fnBox then
+        p1.pxBox:SetCleanText(p.titlePrefix)
+        p1.fnBox:SetCleanText(p.firstName)
+        p1.lnBox:SetCleanText(p.lastName)
+        p1.tiBox:SetCleanText(p.title)
+        p1.raBox:SetCleanText(p.race)
+        p1.clBox:SetCleanText(p.class)
+        p1.gnBox:SetCleanText(p.gender)
+        p1.prBox:SetCleanText(p.pronouns)
+        p1.agBox:SetCleanText(p.age)
+        p1.htBox:SetCleanText(p.height)
+        p1.wtBox:SetCleanText(p.weight)
+        p1.eyBox:SetCleanText(p.eyeColor)
+        p1.cuBox:SetCleanText(p.currently)
+        p1.oocNotesBox:SetCleanText(p.oocNotes or p.oocInfo)
+
+        p1.hoBox:SetCleanText(p.houseName)
+        p1.moBox:SetCleanText(p.motto)
+        p1.hbBox:SetCleanText(p.birthplace)
+        p1.hhBox:SetCleanText(p.residence)
+        p1.faceBox:SetCleanText(p.facialFeatures)
+        p1.tatBox:SetCleanText(p.tattoos)
+        p1.voiceBox:SetCleanText(p.voiceReference)
+    end
+    if tabPanels[5] and tabPanels[5].profNameBox then
+        tabPanels[5].profNameBox:SetCleanText(p.profileName)
+    end
+    RefreshEyeSwatchBox()
+    RefreshClassSwatchBox()
+    LoadAllGlancesIntoUI()
+    local p3 = tabPanels[3]
+    if p3 and p3.bioEditor then
+        p3.bioEditor:SetCleanText(activeBioMode == "APPEARANCE" and p.description or p.history)
+    end
+end
+
+local function CommitModifiedBoxesToProfile(forceAll)
+    if not ns.profile or not mainFrame then return false end
+    local p = ns.profile
+    EnsureTopicConsentTable()
+    local changed = false
+    local p1 = tabPanels[1]
+    if p1 and p1.fnBox then
+        local function CheckBox(box, key)
+            if box and (forceAll or box.isDirty) then
+                p[key] = box:GetText()
+                box.isDirty = false
+                changed = true
+            end
+        end
+        CheckBox(p1.pxBox, "titlePrefix")
+        CheckBox(p1.fnBox, "firstName")
+        CheckBox(p1.lnBox, "lastName")
+        CheckBox(p1.tiBox, "title")
+        CheckBox(p1.raBox, "race")
+        CheckBox(p1.clBox, "class")
+        CheckBox(p1.gnBox, "gender")
+        CheckBox(p1.prBox, "pronouns")
+        CheckBox(p1.agBox, "age")
+        CheckBox(p1.htBox, "height")
+        CheckBox(p1.wtBox, "weight")
+        CheckBox(p1.eyBox, "eyeColor")
+        CheckBox(p1.cuBox, "currently")
+        CheckBox(p1.oocNotesBox, "oocNotes")
+
+        CheckBox(p1.hoBox, "houseName")
+        CheckBox(p1.moBox, "motto")
+        CheckBox(p1.hbBox, "birthplace")
+        CheckBox(p1.hhBox, "residence")
+        CheckBox(p1.faceBox, "facialFeatures")
+        CheckBox(p1.tatBox, "tattoos")
+        CheckBox(p1.voiceBox, "voiceReference")
+    end
+
+    local pProf = tabPanels[5]
+    if pProf and pProf.profNameBox and (forceAll or pProf.profNameBox.isDirty) then
+        local pName = strtrim(pProf.profNameBox:GetText() or "")
+        if pName ~= "" then p.profileName = pName end
+        pProf.profNameBox.isDirty = false
+        changed = true
+    end
+
+    local p2 = tabPanels[2]
+    if p2 and p2.cards then
+        for slot = 1, 5 do
+            local card = p2.cards[slot]
+            if card and p.glances[slot] then
+                if forceAll or card.titleBox.isDirty then
+                    p.glances[slot].title = card.titleBox:GetText()
+                    card.titleBox.isDirty = false
+                    changed = true
+                end
+                if forceAll or card.detailBox.isDirty then
+                    p.glances[slot].detail = card.detailBox:GetText()
+                    card.detailBox.isDirty = false
+                    changed = true
+                end
+            end
+        end
+    end
+
+    local p3 = tabPanels[3]
+    if p3 and p3.bioEditor and (forceAll or p3.bioEditor.isDirty) then
+        local text = p3.bioEditor:GetText()
+        if activeBioMode == "APPEARANCE" then p.description = text else p.history = text end
+        p3.bioEditor.isDirty = false
+        changed = true
+    end
+
+    if changed then
+        ns:SnapshotActiveProfile()
+        ns:SyncMSP()
+        SyncSelfProfileToLocalCache()
+    end
+    return changed
+end
+
+function ns:SelectTab(index)
+    if ns.activeEditBox and ns.activeEditBox:HasFocus() then
+        ns.activeEditBox:ClearFocus()
+    end
+    CommitModifiedBoxesToProfile(false)
+    activeTab = index
+    local M3 = ns.M3
+    for i, panel in ipairs(tabPanels) do
+        local tb = tabButtons[i]
+        if i == index then
+            panel:Show()
+            tb:SetBackdropColor(unpack(M3.primaryTonal))
+            tb.activeBar:Show()
+            tb.label:SetTextColor(0.82, 0.90, 1.0)
+        else
+            panel:Hide()
+            tb:SetBackdropColor(unpack(M3.surfaceLow))
+            tb.activeBar:Hide()
+            tb.label:SetTextColor(0.60, 0.64, 0.70)
+        end
+    end
+    CloseAnyOpenPopup()
+    ns:RefreshControllerUI()
+    ns:FocusFirstInScope()
+end
+
+local function RefreshHeaderBanner()
+    if not mainFrame or not ns.profile then return end
+    local p = ns.profile
+    local M3 = ns.M3
+    local activeHex = GetPlayerActiveClassColorHex()
+    local fallbackIcon = GetDefaultIconFallback()
+
+    if mainFrame.portraitTex then
+        SetIconTextureSafe(mainFrame.portraitTex, p.icon, fallbackIcon)
+    end
+
+    local nameParts = {}
+    if p.titlePrefix and strtrim(p.titlePrefix) ~= "" then table.insert(nameParts, strtrim(p.titlePrefix)) end
+    local baseFirst = (p.firstName and p.firstName ~= "") and p.firstName or UnitName("player")
+    table.insert(nameParts, baseFirst)
+    if p.lastName and strtrim(p.lastName) ~= "" then table.insert(nameParts, strtrim(p.lastName)) end
+    local fullName = table.concat(nameParts, " ")
+
+    mainFrame.bannerName:SetText("|c" .. activeHex .. fullName .. "|r")
+
+    local guildVis = GetTopicConsentValue("guild", "Do not show")
+    local wowGuild = (guildVis == "Yes" and GetGuildInfo and GetGuildInfo("player")) or ""
+    local houseClean = (p.houseName and strtrim(p.houseName)) or ""
+    local guildPart = ""
+    if wowGuild ~= "" and string.lower(wowGuild) ~= string.lower(houseClean) then
+        guildPart = "  |cff81c995<" .. wowGuild .. ">|r"
+    end
+
+    local titlePart = (p.title and p.title ~= "") and ("|cfffdd663<" .. p.title .. ">|r") or "|cff9aa0a6No RP Title|r"
+    local housePart = (houseClean ~= "") and ("  |cff8ab4f8-  " .. houseClean .. "|r") or ""
+    mainFrame.bannerTitle:SetText(titlePart .. housePart .. guildPart)
+
+    if mainFrame.bannerCurrently then
+        local curClean = p.currently and strtrim(StripColorCodes(p.currently)) or ""
+        if curClean ~= "" then
+            local shortCur = string.sub(curClean, 1, 56)
+            if #curClean > 56 then shortCur = shortCur .. "..." end
+            mainFrame.bannerCurrently:SetText("|cff9aa0a6Currently:|r |cffe8eaed" .. shortCur .. "|r")
+        else
+            mainFrame.bannerCurrently:SetText("")
+        end
+    end
+
+    mainFrame.profChip:SetText(p.profileName or "Default")
+
+    if mainFrame.bannerExpBtn then
+        mainFrame.bannerExpBtn:SetText("|cff8ab4f8RP:|r " .. GetRPExperienceLabelText(p.rpStyle) .. " [v]")
+    end
+
+    local wuBtn = mainFrame.walkUpBtn
+    if wuBtn then
+        local wu = p.walkUp or "WELCOME"
+        if wu == "WELCOME" then
+            wuBtn:SetTone("MINT")
+            wuBtn:SetText("|cff81c995WALK-UPS: OPEN|r")
+        elseif wu == "ASK" then
+            wuBtn:SetTone("AMBER")
+            wuBtn:SetText("|cfffdd663WALK-UPS: ASK|r")
+        else
+            wuBtn:SetTone("CORAL")
+            wuBtn:SetText("|cfff28b82WALK-UPS: OFF|r")
+        end
+    end
+
+    local sw = mainFrame.icSwitch
+    sw.thumb:ClearAllPoints()
+    if p.isIC then
+        sw:SetBackdropColor(unpack(M3.mintTonal))
+        sw:SetBackdropBorderColor(unpack(M3.mint))
+        sw.thumb:SetPoint("RIGHT", sw, "RIGHT", -3, 0)
+        sw.thumb:SetBackdropColor(unpack(M3.mint))
+        sw.thumb.label:SetText("|cff061c10IN CHARACTER|r")
+        sw.bgLabel:ClearAllPoints()
+        sw.bgLabel:SetPoint("LEFT", sw, "LEFT", 10, 0)
+        sw.bgLabel:SetText("|cff689f78OOC|r")
+    else
+        sw:SetBackdropColor(unpack(M3.coralTonal))
+        sw:SetBackdropBorderColor(unpack(M3.coral))
+        sw.thumb:SetPoint("LEFT", sw, "LEFT", 3, 0)
+        sw.thumb:SetBackdropColor(unpack(M3.coral))
+        sw.thumb.label:SetText("|cff240808OUT OF CHAR|r")
+        sw.bgLabel:ClearAllPoints()
+        sw.bgLabel:SetPoint("RIGHT", sw, "RIGHT", -12, 0)
+        sw.bgLabel:SetText("|cff9e625eIC|r")
+    end
+end
+
+local function FormatDirectoryEntryText(k, d, item)
+    local parts = {}
+    local sep = " |cff5f6368•|r "
+
+    if item.hasNote then
+        table.insert(parts, "|TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t")
+    end
+    if not item.indented and item.standing and item.standing ~= "None" then
+        local bInfo
+        for _, sb in ipairs(GetStandingBuckets()) do
+            if string.lower(sb.key) == string.lower(item.standing) then bInfo = sb break end
+        end
+        if bInfo then
+            table.insert(parts, "|c" .. bInfo.colorHex .. "[" .. string.upper(bInfo.label) .. "]|r")
+        else
+            table.insert(parts, "|cfffdd663[" .. string.upper(tostring(item.standing)) .. "]|r")
+        end
+    end
+
+    local rawName = d.NA or k
+    local activeHex = nil
+    if IsPlayerSelfKey(k) then
+        activeHex = GetPlayerActiveClassColorHex()
+    elseif type(rawName) == "string" then
+        local embeddedHex = string.match(rawName, "^|c(%x%x%x%x%x%x%x%x)")
+        if embeddedHex then
+            activeHex = embeddedHex
+        end
+    end
+
+    local cleanName = StripColorCodes(rawName)
+    local charOnly = strsplit("-", k)
+    local realmPart = (charOnly and charOnly ~= cleanName) and (" |cff8ab4f8(" .. k .. ")|r") or ""
+    local displayColor = activeHex or "ffe8eaed"
+    table.insert(parts, "|c" .. displayColor .. cleanName .. "|r" .. realmPart)
+
+    local assignedRel = ns.GetAssignedRelationship and ns:GetAssignedRelationship(k) or ""
+    if assignedRel ~= "" then
+        table.insert(parts, "|cfffdd663[" .. assignedRel .. "]|r")
+    end
+
+    local statusBadges = {}
+    if d.FC == "2" then
+        table.insert(statusBadges, "|cff81c995[IC]|r")
+    elseif d.FC == "1" then
+        table.insert(statusBadges, "|cfff28b82[OOC]|r")
+    end
+
+    local _, wuCode = ns:GetTargetWalkUpInfo(d)
+    if wuCode == "WELCOME" then
+        table.insert(statusBadges, "|cff81c995[WU]|r")
+    elseif wuCode == "ASK" then
+        table.insert(statusBadges, "|cfffdd663[Ask]|r")
+    elseif wuCode == "CLOSED" then
+        table.insert(statusBadges, "|cfff28b82[Off]|r")
+    end
+
+    if UnitInRaid and UnitInRaid(k) then
+        table.insert(statusBadges, "|cfffdd663[Raid]|r")
+    elseif UnitInParty and UnitInParty(k) then
+        table.insert(statusBadges, "|cff8ab4f8[Party]|r")
+    end
+
+    if #statusBadges > 0 then
+        table.insert(parts, table.concat(statusBadges, " "))
+    end
+
+    local titleClean = d.NT and strtrim(StripColorCodes(d.NT)) or ""
+    local guildClean = d.NH and strtrim(StripColorCodes(d.NH)) or ""
+    local curClean = d.CU and strtrim(StripColorCodes(d.CU)) or ""
+
+    if titleClean ~= "" then
+        table.insert(parts, "|cfffdd663<" .. titleClean .. ">|r")
+    end
+    if guildClean ~= "" then
+        table.insert(parts, "|cff8ab4f8{" .. guildClean .. "}|r")
+    end
+    if curClean ~= "" then
+        local shortCur = string.sub(curClean, 1, 34)
+        if #curClean > 34 then shortCur = shortCur .. "..." end
+        table.insert(parts, "|cff9aa0a6\"" .. shortCur .. "\"|r")
+    end
+
+    local prefix = item.indented and "  - " or ""
+    return prefix .. table.concat(parts, sep)
+end
+
+function ns:RefreshTargetCard()
+    if not mainFrame or not tabPanels[4] then return end
+    local p4 = tabPanels[4]
+
+    local rows, totalEntries = BuildDirectoryRows()
+    local perPage = 8
+    local totalPages = math.max(1, math.ceil(#rows / perPage))
+    if knownListPage > totalPages then knownListPage = totalPages end
+    if knownListPage < 1 then knownListPage = 1 end
+
+    local bucketLabel = knownNotableOnly and "NOTABLE ACCORDION" or "RP DIRECTORY"
+    p4.countLabel:SetText(string.format("|cff8ab4f8%s (%d)|r  -  Select any player to open Dossier & Notes", bucketLabel, totalEntries))
+    p4.pageLabel:SetText(string.format("Page %d / %d", knownListPage, totalPages))
+
+    p4.notableOnlyBtn:SetText(FormatCheckbox("Notable", knownNotableOnly, "fffdd663"))
+    p4.notableOnlyBtn:SetTone(knownNotableOnly and "AMBER" or nil)
+    p4.sortBtn:SetText(knownSortMode == "RECENT" and "Sort: Recent" or "Sort: A-Z")
+    p4.sortBtn:SetTone(knownSortMode == "RECENT" and "PRIMARY" or nil)
+
+    local startIdx = (knownListPage - 1) * perPage
+    for i = 1, perPage do
+        local rowBtn = p4.knownRows[i]
+        local item = rows[startIdx + i]
+        if item then
+            if item.kind == "HEADER" then
+                rowBtn.profileKey = nil
+                rowBtn.bucketKey = item.bucketKey
+                rowBtn:SetTone(item.tone)
+                rowBtn:SetText(item.text)
+                rowBtn.seenLabel:SetText("")
+            else
+                rowBtn.profileKey = item.key
+                rowBtn.bucketKey = nil
+                rowBtn:SetTone(nil)
+                rowBtn:SetText(FormatDirectoryEntryText(item.key, item.data, item))
+                local seenStr = (item.lastSeen and item.lastSeen > 0) and date("%m/%d %H:%M", item.lastSeen) or "--/--"
+                rowBtn.seenLabel:SetText("|cff9aa0a6" .. seenStr .. "|r")
+            end
+            rowBtn:Show()
+        else
+            rowBtn.profileKey = nil
+            rowBtn.bucketKey = nil
+            rowBtn.seenLabel:SetText("")
+            rowBtn:Hide()
+        end
+    end
+end
+
+function ns:TrySeamlessDirectoryStep(rowIndex, dir)
+    if activeTab ~= 4 then return false end
+    local p4 = tabPanels[4]
+    if not p4 or not p4:IsShown() or not p4.knownRows then return false end
+
+    local rows = BuildDirectoryRows()
+    local perPage = 8
+    local totalPages = math.max(1, math.ceil(#rows / perPage))
+
+    local lastShownIdx = 0
+    for i = 1, perPage do
+        if p4.knownRows[i] and p4.knownRows[i]:IsShown() then
+            lastShownIdx = i
+        end
+    end
+    if lastShownIdx == 0 then return false end
+
+    if dir == "DOWN" and rowIndex >= lastShownIdx and knownListPage < totalPages then
+        knownListPage = knownListPage + 1
+        ns:RefreshTargetCard()
+        ns:PlayUISound()
+        if p4.knownRows[1] and p4.knownRows[1]:IsShown() then
+            ns:SetControllerFocus(p4.knownRows[1])
+        end
+        return true
+    elseif dir == "UP" and rowIndex <= 1 and knownListPage > 1 then
+        knownListPage = knownListPage - 1
+        ns:RefreshTargetCard()
+        ns:PlayUISound()
+        local targetRow = p4.knownRows[perPage]
+        if targetRow and targetRow:IsShown() then
+            ns:SetControllerFocus(targetRow)
+        end
+        return true
+    end
+    return false
+end
+
+local function RefreshGratitudeStudio()
+    local p6 = tabPanels[6]
+    if not p6 then return end
+    local g = ns.db.gratitude
+
+    p6.modeBtn:SetText("|cff9aa0a6GRATITUDE MODE:|r   |cff8ab4f8" .. ns:GetGratitudeModeLabel() .. "|r   |cfffdd663[Open Dropdown v]|r")
+    p6.buffBtn:SetText("Buffs: " .. (g.thankBuffs and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
+    p6.healBtn:SetText("Heals: " .. (g.thankHeals and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
+    p6.resBtn:SetText("Res: " .. (g.thankRes and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
+    p6.specialBtn:SetText("Portals/CDs: " .. (g.thankSpecial and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
+    p6.sessionBtn:SetText("1x/Session: " .. (g.oncePerSession and "|cff81c995ON|r" or "|cff9aa0a6OFF|r"))
+    p6.cdLabel:SetText(string.format("Cooldown: |cfffdd663%ds|r", g.cooldown or 60))
+    p6.healPctLabel:SetText(string.format("Min Heal: |cfffdd663%d%% HP|r", g.minHealPercent or 15))
+
+    local pool = GetActiveGratitudePool()
+    if #pool == 0 then table.insert(pool, "thanks %name for the %spell.") end
+    if editPhraseIdx > #pool then editPhraseIdx = #pool end
+    if editPhraseIdx < 1 then editPhraseIdx = 1 end
+
+    local totalPages = math.max(1, math.ceil(#pool / 3))
+    phrasePage = math.min(totalPages, math.ceil(editPhraseIdx / 3))
+
+    local poolItem = POOL_LIST[editPoolIdx] or POOL_LIST[1]
+    p6.poolToggleBtn:SetText("|cff9aa0a6PHRASE POOL:|r  |cfffdd663" .. poolItem.label .. "|r  |cff8ab4f8[v]|r")
+    p6.phrasePageLabel:SetText(string.format("Page %d/%d (%d)", phrasePage, totalPages, #pool))
+
+    local startIdx = (phrasePage - 1) * 3
+    for i = 1, 3 do
+        local actualIdx = startIdx + i
+        local row = p6.phraseRows[i]
+        local phraseStr = pool[actualIdx]
+        if phraseStr then
+            row.phraseIndex = actualIdx
+            local isSelected = (actualIdx == editPhraseIdx)
+            local prefix = isSelected and "|cff8ab4f8> " or "|cff9aa0a6  "
+            row.selectBtn:SetText(string.format("%s#%d: |r%s", prefix, actualIdx, phraseStr))
+            row.selectBtn:SetTone(isSelected and "PRIMARY" or nil)
+            row.selectBtn:Show()
+            row.delBtn:Show()
+        else
+            row.selectBtn:Hide()
+            row.delBtn:Hide()
+        end
+    end
+
+    if not p6.phraseBox:HasFocus() then
+        p6.phraseBox:SetCleanText(pool[editPhraseIdx] or "")
+    end
+end
+
 function ns:RefreshControllerUI()
     if not mainFrame or not ns.profile then return end
     mainFrame:SetScale(ns.db.ui.scale or 1.0)
@@ -2039,11 +2866,14 @@ function ns:RefreshControllerUI()
     local curW, curH = math.floor(mainFrame:GetWidth() + 0.5), math.floor(mainFrame:GetHeight() + 0.5)
     p7.scaleLabel:SetText(string.format("Scale: |cfffdd663%.0f%%|r  (|cff8ab4f8%dx%d|r)", (ns.db.ui.scale or 1.0) * 100, curW, curH))
     p7.minimapBtn:SetText(FormatCheckbox("Minimap Icon", ns.db.ui.showMinimap, "ff81c995"))
-    p7.hudBtn:SetText(FormatCheckbox("Floating Target HUD", ns.db.ui.showTargetHUD, "ff81c995"))
+    p7.hudBtn:SetText(FormatCheckbox("Toast Notification (Target HUD)", ns.db.ui.showTargetHUD ~= false, "ff81c995"))
     p7.hudRPBtn:SetText(FormatCheckbox("TRP3-Style Player Tooltip", ns.db.ui.rpTooltip, "ff8ab4f8"))
     p7.npClassBtn:SetText(FormatCheckbox("Class-Color Nameplates", ns.db.ui.nameplateClassColors, "ff8ab4f8"))
-    p7.npTagBtn:SetText(FormatCheckbox("Nameplate [IC/OOC] Tags", ns.db.ui.nameplateStatusTags, "ff81c995"))
+    p7.npTagBtn:SetText(FormatCheckbox("Nameplate OOC | IC", ns.db.ui.nameplateStatusTags ~= false, "ff81c995"))
     p7.npRPNameBtn:SetText(FormatCheckbox("RP Names on Nameplates", ns.db.ui.nameplateRPNames, "ff8ab4f8"))
+    if p7.npCircleBtn then
+        p7.npCircleBtn:SetText(FormatCheckbox("Nameplate Standing Circle", ns.db.ui.nameplateStandingCircle ~= false, "fffdd663"))
+    end
     p7.combatBtn:SetText(FormatCheckbox("Auto-Hide in Combat", ns.db.ui.hideInCombat, "ff81c995"))
     p7.soundBtn:SetText(FormatCheckbox("UI Sound Effects", ns.db.ui.soundEffects, "ff81c995"))
     p7.partyBtn:SetText(FormatCheckbox("Ignore Party/Raid Buffs", ns.db.gratitude.ignoreParty, "ff81c995"))
@@ -3621,31 +4451,33 @@ function ns:InitControllerUI()
     p7.largeSizeBtn = ns:CreateMaterialButton(p7, "Large", 80, 28, 552, -14, "AMBER", function() ns:SetWindowDimensions(940, 700) end)
 
     p7.minimapBtn   = ns:CreateMaterialButton(p7, "", 304, 28, 16, -50, nil, function() ns.db.ui.showMinimap = not ns.db.ui.showMinimap; ns:RefreshMinimapButton(); ns:RefreshControllerUI() end)
-    p7.hudBtn       = ns:CreateMaterialButton(p7, "", 304, 28, 336, -50, nil, function() ns.db.ui.showTargetHUD = not ns.db.ui.showTargetHUD; ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
+    p7.hudBtn       = ns:CreateMaterialButton(p7, "", 304, 28, 336, -50, nil, function() ns.db.ui.showTargetHUD = not (ns.db.ui.showTargetHUD ~= false); ns:RefreshControllerUI(); ns:RefreshTargetHUD() end)
 
     p7.hudRPBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 16, -84, nil, function() ns.db.ui.rpTooltip = not ns.db.ui.rpTooltip; ns:RefreshControllerUI() end)
     p7.npClassBtn   = ns:CreateMaterialButton(p7, "", 304, 28, 336, -84, nil, function() ns.db.ui.nameplateClassColors = not ns.db.ui.nameplateClassColors; if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
 
-    p7.npTagBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 16, -118, nil, function() ns.db.ui.nameplateStatusTags = not ns.db.ui.nameplateStatusTags; if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
+    p7.npTagBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 16, -118, nil, function() ns.db.ui.nameplateStatusTags = not (ns.db.ui.nameplateStatusTags ~= false); if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
     p7.npRPNameBtn  = ns:CreateMaterialButton(p7, "", 304, 28, 336, -118, nil, function() ns.db.ui.nameplateRPNames = not ns.db.ui.nameplateRPNames; if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
 
-    p7.combatBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 16, -152, nil, function() ns.db.ui.hideInCombat = not ns.db.ui.hideInCombat; ns:RefreshControllerUI() end)
-    p7.soundBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 336, -152, nil, function() ns.db.ui.soundEffects = not ns.db.ui.soundEffects; ns:RefreshControllerUI() end)
+    p7.npCircleBtn  = ns:CreateMaterialButton(p7, "", 304, 28, 16, -152, nil, function() ns.db.ui.nameplateStandingCircle = not (ns.db.ui.nameplateStandingCircle ~= false); if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end; ns:RefreshControllerUI() end)
+    p7.combatBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 336, -152, nil, function() ns.db.ui.hideInCombat = not ns.db.ui.hideInCombat; ns:RefreshControllerUI() end)
 
-    p7.partyBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 16, -186, nil, function() ns.db.gratitude.ignoreParty = not ns.db.gratitude.ignoreParty; ns:RefreshControllerUI() end)
-    p7.rpNameBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 336, -186, nil, function() ns.db.gratitude.useRPNames = not ns.db.gratitude.useRPNames; ns:RefreshControllerUI() end)
+    p7.soundBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 16, -186, nil, function() ns.db.ui.soundEffects = not ns.db.ui.soundEffects; ns:RefreshControllerUI() end)
+    p7.partyBtn     = ns:CreateMaterialButton(p7, "", 304, 28, 336, -186, nil, function() ns.db.gratitude.ignoreParty = not ns.db.gratitude.ignoreParty; ns:RefreshControllerUI() end)
 
-    p7.chatRPBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 16, -220, nil, function() ns.db.ui.chatRPNames = not ns.db.ui.chatRPNames; ns:RefreshControllerUI() end)
-    p7.afkOOCBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 336, -220, nil, function() ns.db.ui.autoAFKOOC = not ns.db.ui.autoAFKOOC; ns:RefreshControllerUI() end)
+    p7.rpNameBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 16, -220, nil, function() ns.db.gratitude.useRPNames = not ns.db.gratitude.useRPNames; ns:RefreshControllerUI() end)
+    p7.chatRPBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 336, -220, nil, function() ns.db.ui.chatRPNames = not ns.db.ui.chatRPNames; ns:RefreshControllerUI() end)
 
-    p7.openExpBtn = ns:CreateMaterialButton(p7, "Export / Import Profile String", 304, 30, 16, -260, "PRIMARY", function()
+    p7.afkOOCBtn    = ns:CreateMaterialButton(p7, "", 304, 28, 16, -254, nil, function() ns.db.ui.autoAFKOOC = not ns.db.ui.autoAFKOOC; ns:RefreshControllerUI() end)
+
+    p7.openExpBtn = ns:CreateMaterialButton(p7, "Export / Import Profile String", 304, 30, 16, -294, "PRIMARY", function()
         CommitModifiedBoxesToProfile(false)
         mainFrame.exportModal.box:SetCleanText(ns:ExportCurrentProfileString())
         mainFrame.exportModal:Show()
         ns:FocusFirstInScope()
     end)
 
-    p7.devModeBtn = ns:CreateMaterialButton(p7, "", 304, 30, 336, -260, nil, function()
+    p7.devModeBtn = ns:CreateMaterialButton(p7, "", 304, 30, 336, -294, nil, function()
         ns.db.ui.devMode = not ns.db.ui.devMode
         ns:RefreshControllerUI()
         ns:ShowStatusToast(ns.db.ui.devMode and "Developer Mode enabled (Dev tab unlocked)" or "Developer Mode hidden")

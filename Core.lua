@@ -19,6 +19,7 @@ local defaultSettings = {
         rpTooltip = true,
         nameplateClassColors = true,
         nameplateStatusTags = true,
+        nameplateStandingCircle = true,
         nameplateRPNames = true,
         devMode = false,
         hudOnlyRP = false,
@@ -546,9 +547,6 @@ function ns:CreateBindButton(name, onClick)
     end
 
     local btn = _G[name] or CreateFrame("Button", name, UIParent)
-
-    -- Bind-click buttons should fire once on release. Registering AnyDown and
-    -- AnyUp together can execute the same action twice for one controller press.
     btn:RegisterForClicks("AnyUp")
 
     local lastFire = 0

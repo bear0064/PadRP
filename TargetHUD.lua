@@ -22,6 +22,23 @@ local STANDING_COLORS = {
     Marked       = "|cfffdd663[MARKED]|r ",
 }
 
+function ns:EnsureUIDefaults()
+    if not ns.db then return end
+    ns.db.ui = ns.db.ui or {}
+    local ui = ns.db.ui
+    if ui.showTargetHUD == nil then ui.showTargetHUD = true end
+    if ui.nameplateStatusTags == nil then ui.nameplateStatusTags = true end
+    if ui.nameplateStandingCircle == nil then ui.nameplateStandingCircle = true end
+end
+
+local function IsToastEnabled(ui)
+    if not ui then return false end
+    if ui.showTargetHUD ~= nil then
+        return ui.showTargetHUD ~= false
+    end
+    return true
+end
+
 local function GetStandingBadgePrefix(standing)
     if not standing or standing == "None" then return "" end
     if STANDING_COLORS[standing] then
@@ -162,11 +179,6 @@ end
 local function BuildTooltipPortraitTag(iconVal, unit, hasProfile)
     local customTag = ResolveCustomPortraitTag(iconVal)
     if customTag ~= "" then
-        if _G.PadRP_DebugIcons then
-            local function esc(v) return (tostring(v):gsub("|", "||")) end
-            print("|cff8ab4f8[PadRP icon]|r", unit and UnitName(unit) or "?",
-                "raw IC:", type(iconVal), esc(iconVal), "tag:", esc(customTag))
-        end
         return customTag
     end
 
@@ -707,7 +719,8 @@ end
 
 function ns:RefreshTargetHUD()
     if not hudFrame then return end
-    if not ns.db or not ns.db.ui.showTargetHUD then
+    ns:EnsureUIDefaults()
+    if not ns.db or not IsToastEnabled(ns.db.ui) then
         lastActiveHUDKey = nil
         StartHUDFadeOut(TOOLTIP_FADE_DURATION)
         SyncHUDFocusState(false)
@@ -785,6 +798,7 @@ function ns:RefreshTargetHUD()
 end
 
 function ns:InitTargetHUD()
+    ns:EnsureUIDefaults()
     InitMinimapButton()
     InitTooltipHook()
 
