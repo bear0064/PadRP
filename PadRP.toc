@@ -21,4 +21,15 @@ TargetHUD.lua
 UIWidgets.lua
 DossierWindow.lua
 IconPool.lua
-ControllerUI.lua
+UIState.lua
+UIIconPicker.lua
+UIController.lua
+Tabs\TabIdentity.lua
+Tabs\TabGlances.lua
+Tabs\TabBio.lua
+Tabs\TabDirectory.lua
+Tabs\TabProfiles.lua
+Tabs\TabGratitude.lua
+Tabs\TabSettings.lua
+Tabs\TabDev.lua
+Tabs\TabEmotes.lua
