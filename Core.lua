@@ -13,8 +13,8 @@ BINDING_NAME_CLICK_PadRP_DoSitButton_LeftButton = "RP Sit / Rest (/sit)"
 local defaultSettings = {
     ui = {
         scale = 1.0,
-        width = 680,
-        height = 560,
+        width = 760,
+        height = 580,
         showTargetHUD = true,
         rpTooltip = true,
         nameplateClassColors = true,
@@ -102,13 +102,23 @@ local RELATIONSHIP_LABELS = {
     ["5"] = "Widowed",
 }
 
-local RPSTYLE_ORDER = { "1", "2", "3", "4" }
+local RPSTYLE_ORDER = { "1", "2", "3", "4", "5" }
 local RPSTYLE_LABELS = {
     ["0"] = "Not Specified",
     ["1"] = "Normal",
     ["2"] = "Casual",
-    ["3"] = "Full-Time",
-    ["4"] = "Newcomer / Beginner",
+    ["3"] = "Experienced",
+    ["4"] = "Roleplay-Focused / Veteran",
+    ["5"] = "New",
+}
+
+local DEFAULT_RP_STYLE_TOPICS = {
+    injury        = "With player permission",
+    death         = "No",
+    romance       = "Do not show",
+    criminal      = "Yes",
+    lossOfControl = "No",
+    guild         = "Do not show",
 }
 
 local function SanitizeFontText(str)
@@ -153,69 +163,114 @@ end
 
 function ns:CreateBlankProfile(profileName)
     return {
-        profileName = profileName or "Main Character",
-        icon = "INV_Helmet_46",
-        titlePrefix = "",
-        firstName = UnitName("player") or "Adventurer",
-        lastName = "",
-        title = "",
-        nickname = "",
-        houseName = "",
-        motto = "",
-        pronouns = "",
-        race = "",
-        class = "",
-        age = "",
-        height = "",
-        weight = "",
-        eyeColor = "",
-        birthplace = "",
-        residence = "",
-        relationship = "0",
-        rpStyle = "1",
-        currently = "Available for walk-up RP.",
-        oocInfo = "Playing on controller via PadRP.",
-        description = "",
-        history = "",
-        glances = {
+        profileName    = profileName or "Main Character",
+        icon           = "INV_Helmet_46",
+        titlePrefix    = "",
+        firstName      = UnitName("player") or "Adventurer",
+        lastName       = "",
+        title          = "",
+        nickname       = "",
+        houseName      = "",
+        motto          = "",
+        pronouns       = "",
+        race           = "",
+        class          = "",
+        gender         = "",
+        age            = "",
+        height         = "",
+        weight         = "",
+        eyeColor       = "",
+        eyeColorHex    = nil,
+        classColorHex  = nil,
+        nameColorHex   = nil,
+        facialFeatures = "",
+        tattoos        = "",
+        voiceReference = "",
+        birthplace     = "",
+        residence      = "",
+        relationship   = "0",
+        rpStyle        = "1",
+        currently      = "Available for walk-up RP.",
+        oocInfo        = "Playing on controller via PadRP.",
+        oocNotes       = "Playing on controller via PadRP.",
+        description    = "",
+        history        = "",
+        rpStyleTopics  = CopyTableShallow(DEFAULT_RP_STYLE_TOPICS),
+        lgbtqFriendly  = true,
+        erpFriendly    = false,
+        mdni           = false,
+        glances        = {
             { icon = DEFAULT_GLANCE_ICONS[1], title = "", detail = "" },
             { icon = DEFAULT_GLANCE_ICONS[2], title = "", detail = "" },
             { icon = DEFAULT_GLANCE_ICONS[3], title = "", detail = "" },
             { icon = DEFAULT_GLANCE_ICONS[4], title = "", detail = "" },
             { icon = DEFAULT_GLANCE_ICONS[5], title = "", detail = "" },
         },
-        isIC = true,
-        walkUp = "WELCOME",
-        presetIndex = 1,
+        isIC           = true,
+        walkUp         = "WELCOME",
+        presetIndex    = 1,
     }
 end
 
 local function EnsureProfileStructure(p)
     if type(p) ~= "table" then return end
-    p.profileName  = p.profileName or "Main Character"
-    p.icon         = (p.icon and p.icon ~= "") and p.icon or "INV_Helmet_46"
-    p.titlePrefix  = p.titlePrefix or ""
-    p.firstName    = p.firstName or (UnitName("player") or "")
-    p.lastName     = p.lastName or ""
-    p.title        = p.title or ""
-    p.nickname     = p.nickname or ""
-    p.houseName    = p.houseName or ""
-    p.motto        = p.motto or ""
-    p.pronouns     = p.pronouns or ""
-    p.race         = p.race or ""
-    p.class        = p.class or ""
-    p.age          = p.age or ""
-    p.height       = p.height or ""
-    p.weight       = p.weight or ""
-    p.eyeColor     = p.eyeColor or ""
-    p.birthplace   = p.birthplace or ""
-    p.residence    = p.residence or ""
-    p.relationship = RELATIONSHIP_LABELS[tostring(p.relationship or "0")] and tostring(p.relationship) or "0"
-    p.rpStyle      = RPSTYLE_LABELS[tostring(p.rpStyle or "1")] and tostring(p.rpStyle) or "1"
-    p.currently    = SanitizeFontText(p.currently or "")
-    p.oocInfo      = p.oocInfo or ""
-    p.description  = p.description or ""
-    p.history      = p.history or ""
+    p.profileName    = p.profileName or "Main Character"
+    p.icon           = (p.icon and p.icon ~= "") and p.icon or "INV_Helmet_46"
+    p.titlePrefix    = p.titlePrefix or ""
+    p.firstName      = p.firstName or (UnitName("player") or "")
+    p.lastName       = p.lastName or ""
+    p.title          = p.title or ""
+    p.nickname       = p.nickname or ""
+    p.houseName      = p.houseName or ""
+    p.motto          = p.motto or ""
+    p.pronouns       = p.pronouns or ""
+    p.race           = p.race or ""
+    p.class          = p.class or ""
+    p.gender         = p.gender or ""
+    p.age            = p.age or ""
+    p.height         = p.height or ""
+    p.weight         = p.weight or ""
+    p.eyeColor       = p.eyeColor or ""
+    p.facialFeatures = p.facialFeatures or ""
+    p.tattoos        = p.tattoos or ""
+    p.voiceReference = p.voiceReference or ""
+    p.birthplace     = p.birthplace or ""
+    p.residence      = p.residence or ""
+    p.relationship   = RELATIONSHIP_LABELS[tostring(p.relationship or "0")] and tostring(p.relationship) or "0"
+    p.rpStyle        = RPSTYLE_LABELS[tostring(p.rpStyle or "1")] and tostring(p.rpStyle) or "1"
+    p.currently      = SanitizeFontText(p.currently or "")
+
+    -- Keep oocNotes and oocInfo normalized so edits in either path stay intact
+    if p.oocNotes == nil and p.oocInfo ~= nil then
+        p.oocNotes = p.oocInfo
+    elseif p.oocInfo == nil and p.oocNotes ~= nil then
+        p.oocInfo = p.oocNotes
+    else
+        p.oocNotes = p.oocNotes or ""
+        p.oocInfo  = p.oocInfo or p.oocNotes
+    end
+
+    if p.classColorHex == nil and p.nameColorHex ~= nil then
+        p.classColorHex = p.nameColorHex
+    elseif p.nameColorHex == nil and p.classColorHex ~= nil then
+        p.nameColorHex = p.classColorHex
+    end
+
+    p.description    = p.description or ""
+    p.history        = p.history or ""
+
+    if type(p.rpStyleTopics) ~= "table" then
+        p.rpStyleTopics = {}
+    end
+    for key, defVal in pairs(DEFAULT_RP_STYLE_TOPICS) do
+        if not p.rpStyleTopics[key] then
+            p.rpStyleTopics[key] = defVal
+        end
+    end
+    if p.lgbtqFriendly == nil then p.lgbtqFriendly = true end
+    if p.erpFriendly == nil then p.erpFriendly = false end
+    if p.mdni == nil then p.mdni = false end
+
     if p.isIC == nil then p.isIC = true end
     if p.walkUp ~= "WELCOME" and p.walkUp ~= "ASK" and p.walkUp ~= "CLOSED" then
         p.walkUp = "WELCOME"
@@ -239,6 +294,9 @@ local function ProfileHasContent(p)
         or (p.motto and p.motto ~= "")
         or (p.birthplace and p.birthplace ~= "")
         or (p.residence and p.residence ~= "")
+        or (p.facialFeatures and p.facialFeatures ~= "")
+        or (p.tattoos and p.tattoos ~= "")
+        or (p.voiceReference and p.voiceReference ~= "")
         or (p.description and p.description ~= "")
         or (p.history and p.history ~= "")
         or (p.age and p.age ~= "") then
@@ -256,6 +314,9 @@ end
 
 function ns:SnapshotActiveProfile()
     if not ns.db or not ns.profile or not ns.activeProfileId then return end
+    if ns.profile.oocNotes ~= nil then
+        ns.profile.oocInfo = ns.profile.oocNotes
+    end
     ns.db.profileBackups = ns.db.profileBackups or {}
     if ProfileHasContent(ns.profile) then
         ns.db.profileBackups[ns.activeProfileId] = CopyTableShallow(ns.profile)
@@ -399,6 +460,7 @@ function ns:ExportCurrentProfileString()
     local g3 = p.glances[3] or {}
     local g4 = p.glances[4] or {}
     local g5 = p.glances[5] or {}
+    local oocText = p.oocNotes or p.oocInfo or ""
     local parts = {
         "PADRP5",
         EscapeField(p.profileName),
@@ -413,7 +475,7 @@ function ns:ExportCurrentProfileString()
         EscapeField(p.weight),
         EscapeField(p.eyeColor),
         EscapeField(p.currently),
-        EscapeField(p.oocInfo),
+        EscapeField(oocText),
         EscapeField(g1.icon), EscapeField(g1.title), EscapeField(g1.detail),
         EscapeField(g2.icon), EscapeField(g2.title), EscapeField(g2.detail),
         EscapeField(g3.icon), EscapeField(g3.title), EscapeField(g3.detail),
@@ -460,6 +522,7 @@ function ns:ImportProfileString(raw)
     np.eyeColor    = UnescapeField(fields[12])
     np.currently   = UnescapeField(fields[13])
     np.oocInfo     = UnescapeField(fields[14])
+    np.oocNotes    = np.oocInfo
     np.glances[1]  = { icon = UnescapeField(fields[15] or DEFAULT_GLANCE_ICONS[1]), title = UnescapeField(fields[16]), detail = UnescapeField(fields[17]) }
     np.glances[2]  = { icon = UnescapeField(fields[18] or DEFAULT_GLANCE_ICONS[2]), title = UnescapeField(fields[19]), detail = UnescapeField(fields[20]) }
     np.glances[3]  = { icon = UnescapeField(fields[21] or DEFAULT_GLANCE_ICONS[3]), title = UnescapeField(fields[22]), detail = UnescapeField(fields[23]) }
