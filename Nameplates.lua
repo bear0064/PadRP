@@ -35,17 +35,17 @@ local function NormalizeKey(k)
 end
 
 local function IsICOOCEnabled(ui)
-    if not ui then return false end
-    if ui.nameplateStatusTags ~= nil then
-        return ui.nameplateStatusTags ~= false
+    if not ui then return true end
+    if ui.nameplateStatusTags == false or ui.nameplateICOOC == false then
+        return false
     end
     return true
 end
 
 local function IsStandingCircleEnabled(ui)
-    if not ui then return false end
-    if ui.nameplateStandingCircle ~= nil then
-        return ui.nameplateStandingCircle ~= false
+    if not ui then return true end
+    if ui.nameplateStandingCircle == false then
+        return false
     end
     return true
 end
@@ -194,7 +194,7 @@ local function StyleFriendlyNameplateInternal(unit)
     end
 
     local ui = ns.db and ns.db.ui
-    if not ui or (InCombatLockdown() and ui.hideInCombat) then
+    if ui and ui.hideInCombat and InCombatLockdown and InCombatLockdown() then
         RestoreNameplateDefault(nameplate, unit)
         return
     end
@@ -223,16 +223,25 @@ local function StyleFriendlyNameplateInternal(unit)
         or { r = 0.54, g = 0.71, b = 0.97, colorStr = "ff8ab4f8" }
     local classHex = classColor.colorStr or string.format("ff%02x%02x%02x", classColor.r * 255, classColor.g * 255, classColor.b * 255)
 
-    local data, key = ns:GetCachedMSP(unit)
+    local data, key = nil, nil
+    if ns.GetCachedMSP then
+        local okM, dM, kM = pcall(ns.GetCachedMSP, ns, unit)
+        if okM then
+            data, key = dM, kM
+        end
+    end
+
     local cleanRPName = (data and data.NA) and StripColorCodes(strtrim(data.NA)) or ""
     local hasProfile = (cleanRPName ~= "")
     local isIC = hasProfile and (data.FC == "2")
 
     if nameFS then
-        local displayName = (ui.nameplateRPNames and hasProfile) and cleanRPName or (UnitName(unit) or state.origText)
+        local useRPName = (not ui or ui.nameplateRPNames ~= false)
+        local useClassColor = (not ui or ui.nameplateClassColors ~= false)
+        local displayName = (useRPName and hasProfile) and cleanRPName or (UnitName(unit) or state.origText)
         local nameHex = "ffffffff"
 
-        if ui.nameplateClassColors then
+        if useClassColor then
             nameHex = classHex
             nameFS:SetTextColor(classColor.r, classColor.g, classColor.b)
         elseif hasProfile then
@@ -252,7 +261,6 @@ local function StyleFriendlyNameplateInternal(unit)
         state.styled = true
     end
 
-    -- 1. Independent OOC | IC badge toggle
     local showICOOC = IsICOOCEnabled(ui)
     local badgeShown = false
     local badge = state.sideBadge
@@ -268,7 +276,11 @@ local function StyleFriendlyNameplateInternal(unit)
             badge:SetPoint("LEFT", nameplate, "LEFT", 0, 0)
         end
 
-        local _, wuCode = ns:GetTargetWalkUpInfo(data)
+        local wuCode = nil
+        if ns.GetTargetWalkUpInfo then
+            local okW, _, codeW = pcall(ns.GetTargetWalkUpInfo, ns, data)
+            if okW then wuCode = codeW end
+        end
         local wuPip = (wuCode and WALKUP_PIP[wuCode]) or ""
 
         if isIC then
@@ -287,7 +299,6 @@ local function StyleFriendlyNameplateInternal(unit)
         state.sideBadge:Hide()
     end
 
-    -- 2. Independent Standing Circle toggle
     local showStandingCircle = IsStandingCircleEnabled(ui)
     local standing = showStandingCircle and ResolveStanding(key, unit) or nil
     local dotColor = GetStandingColor(standing)
@@ -326,6 +337,12 @@ function ns:RefreshAllNameplates()
 end
 
 function ns:InitNameplates()
+    if ns._nameplatesInitialized then
+        ns:RefreshAllNameplates()
+        return
+    end
+    ns._nameplatesInitialized = true
+
     local npFrame = CreateFrame("Frame")
     npFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     npFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")

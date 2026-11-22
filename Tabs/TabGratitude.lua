@@ -4,21 +4,34 @@ local UI = ns.UI
 local mod = {}
 UI.tabs[6] = mod
 
+local function GetPools()
+    return (ns.GratitudeConfig and ns.GratitudeConfig.pools) or {}
+end
+
+local function GetModes()
+    return (ns.GratitudeConfig and ns.GratitudeConfig.modes) or {}
+end
+
+local function GetModeLabel(key)
+    local labels = (ns.GratitudeConfig and ns.GratitudeConfig.modeLabels) or {}
+    return labels[key] or tostring(key or "")
+end
+
 local function GetActiveGratitudePool()
     local g = ns.db and ns.db.gratitude
     if not g then return {} end
-    local item = UI.POOL_LIST[UI.editPoolIdx or 1] or UI.POOL_LIST[1]
-    if item.key == "IC" then return g.icPhrases
-    elseif item.key == "OOC" then return g.oocPhrases
-    elseif item.key == "RES" then return g.resPhrases
-    elseif item.key == "SUMMON" then return g.summonPhrases
-    elseif item.key == "SPECIAL" then return g.specialPhrases end
+    local pools = GetPools()
+    local item = pools[UI.editPoolIdx or 1] or pools[1]
+    if item and item.field and type(g[item.field]) == "table" then
+        return g[item.field]
+    end
     return g.icPhrases
 end
 
 local function RefreshGratitudeStudio(p6)
     if not p6 or not ns.db or not ns.db.gratitude then return end
     local g = ns.db.gratitude
+    g.mode = ns.NormalizeGratitudeMode and ns:NormalizeGratitudeMode(g.mode) or g.mode
 
     p6.modeBtn:SetText("|cff9aa0a6GRATITUDE MODE:|r   |cff8ab4f8" .. ns:GetGratitudeModeLabel() .. "|r   |cfffdd663[Open Dropdown v]|r")
     p6.buffBtn:SetText("Buffs: " .. (g.thankBuffs and "|cff81c995ON|r" or "|cfff28b82OFF|r"))
@@ -46,8 +59,10 @@ local function RefreshGratitudeStudio(p6)
     local totalPages = math.max(1, math.ceil(math.max(1, count) / 3))
     UI.phrasePage = math.min(totalPages, math.ceil(curIdx / 3))
 
-    local poolItem = UI.POOL_LIST[UI.editPoolIdx or 1] or UI.POOL_LIST[1]
-    p6.poolToggleBtn:SetText("|cff9aa0a6PHRASE POOL:|r  |cfffdd663" .. poolItem.label .. "|r  |cff8ab4f8[v]|r")
+    local pools = GetPools()
+    local poolItem = pools[UI.editPoolIdx or 1] or pools[1]
+    local poolLabel = (poolItem and poolItem.label) or "Phrase Pool"
+    p6.poolToggleBtn:SetText("|cff9aa0a6PHRASE POOL:|r  |cfffdd663" .. poolLabel .. "|r  |cff8ab4f8[v]|r")
     p6.phrasePageLabel:SetText(string.format("Page %d/%d (%d)", UI.phrasePage, totalPages, count))
 
     local startIdx = (UI.phrasePage - 1) * 3
@@ -77,6 +92,8 @@ end
 function mod.Build(p6)
     local mf = UI.mainFrame
     local M3 = ns.M3
+    local modes = GetModes()
+    local pools = GetPools()
 
     p6.modeBtn = ns:CreateMaterialButton(p6, "Gratitude Mode [v]", 572, 30, 16, -12, "PRIMARY", function()
         if mf and mf.expDropdown then mf.expDropdown:Hide() end
@@ -101,9 +118,9 @@ function mod.Build(p6)
     modeDropdown:EnableMouse(true)
     modeDropdown:Hide()
     modeDropdown.rows = {}
-    for i, m in ipairs(UI.MODE_LIST) do
+    for i, mKey in ipairs(modes) do
         local rowBtn = ns:CreateMaterialButton(modeDropdown, "", 556, 25, 8, -28 - (i - 1) * 27, nil, function()
-            ns.db.gratitude.mode = m.key
+            ns.db.gratitude.mode = mKey
             modeDropdown:Hide()
             RefreshGratitudeStudio(p6)
             ns:SetControllerFocus(p6.modeBtn)
@@ -112,11 +129,12 @@ function mod.Build(p6)
         modeDropdown.rows[i] = rowBtn
     end
     modeDropdown.Rebuild = function(self)
-        local cur = ns.db and ns.db.gratitude and ns.db.gratitude.mode
-        for i, m in ipairs(UI.MODE_LIST) do
+        local cur = ns.NormalizeGratitudeMode and ns:NormalizeGratitudeMode(ns.db and ns.db.gratitude and ns.db.gratitude.mode)
+            or (ns.db and ns.db.gratitude and ns.db.gratitude.mode)
+        for i, mKey in ipairs(modes) do
             local r = self.rows[i]
-            local isCur = (m.key == cur)
-            r:SetText((isCur and "|cff81c995[ACTIVE]  |r" or "          ") .. m.label)
+            local isCur = (mKey == cur)
+            r:SetText((isCur and "|cff81c995[ACTIVE]  |r" or "          ") .. GetModeLabel(mKey))
             r:SetTone(isCur and "MINT" or nil)
         end
     end
@@ -161,7 +179,7 @@ function mod.Build(p6)
     poolDropdown:EnableMouse(true)
     poolDropdown:Hide()
     poolDropdown.rows = {}
-    for i, item in ipairs(UI.POOL_LIST) do
+    for i, item in ipairs(pools) do
         local rowBtn = ns:CreateMaterialButton(poolDropdown, "", 424, 25, 8, -28 - (i - 1) * 27, nil, function()
             UI.editPoolIdx, UI.editPhraseIdx = i, 1
             poolDropdown:Hide()
@@ -172,7 +190,7 @@ function mod.Build(p6)
         poolDropdown.rows[i] = rowBtn
     end
     poolDropdown.Rebuild = function(self)
-        for i, item in ipairs(UI.POOL_LIST) do
+        for i, item in ipairs(pools) do
             local r = self.rows[i]
             local isCur = (i == (UI.editPoolIdx or 1))
             r:SetText((isCur and "|cfffdd663[EDITING] |r" or "          ") .. item.label)

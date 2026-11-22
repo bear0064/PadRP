@@ -6,14 +6,27 @@ local sessionThanked = {}
 local lastPhraseUsed = ""
 ns.lastHelper = nil
 
-local MODES = { "DEFAULT_NO_WHISPER", "DO_EMOTE", "MANUAL", "WHISPER", "OFF" }
-local MODE_LABELS = {
-    DEFAULT_NO_WHISPER = "Default (No Whisper: Pool Emote / /thank)",
-    DO_EMOTE           = "Blizzard Voice Emote (/thank)",
-    MANUAL             = "Manual Only (Quick-Thank Controller Bind)",
-    WHISPER            = "Opt-In Whisper (/w)",
-    OFF                = "Disabled (Off)",
+ns.GratitudeConfig = {
+    defaultMode = "DEFAULT_NO_WHISPER",
+    modes = { "DEFAULT_NO_WHISPER", "DO_EMOTE", "MANUAL", "WHISPER", "OFF" },
+    modeLabels = {
+        DEFAULT_NO_WHISPER = "Default (No Whisper: Pool Emote / /thank)",
+        DO_EMOTE           = "Blizzard Voice Emote (/thank)",
+        MANUAL             = "Manual Only (Quick-Thank Controller Bind)",
+        WHISPER            = "Opt-In Whisper (/w)",
+        OFF                = "Disabled (Off)",
+    },
+    pools = {
+        { key = "IC",      label = "1. In-Character: Buffs & Heals (IC)",      field = "icPhrases" },
+        { key = "OOC",     label = "2. Out-of-Character: Buffs & Heals (OOC)", field = "oocPhrases" },
+        { key = "RES",     label = "3. Resurrections (Combat & Spirit Res)",    field = "resPhrases" },
+        { key = "SUMMON",  label = "4. Warlock Summons & Soulstones",           field = "summonPhrases" },
+        { key = "SPECIAL", label = "5. Portals, Healthstones & Major Cooldowns", field = "specialPhrases" },
+    },
 }
+
+local MODES = ns.GratitudeConfig.modes
+local MODE_LABELS = ns.GratitudeConfig.modeLabels
 
 local function IsSafeValue(v)
     if v == nil then return false end
@@ -38,14 +51,19 @@ local function SafeBool(v)
     return v == true
 end
 
-local function NormalizeGratitudeMode(rawMode)
-    local m = tostring(rawMode or "DEFAULT_NO_WHISPER")
+function ns:NormalizeGratitudeMode(rawMode)
+    local fallback = ns.GratitudeConfig.defaultMode or "DEFAULT_NO_WHISPER"
+    local m = tostring(rawMode or fallback)
     if m == "SMART" or m == "AUTO_EMOTE" then
         return "DEFAULT_NO_WHISPER"
     elseif m == "AUTO_WHISPER" then
         return "WHISPER"
     end
-    return MODE_LABELS[m] and m or "DEFAULT_NO_WHISPER"
+    return MODE_LABELS[m] and m or fallback
+end
+
+local function NormalizeGratitudeMode(rawMode)
+    return ns:NormalizeGratitudeMode(rawMode)
 end
 
 local function NormalizeUnitName(rawName)
