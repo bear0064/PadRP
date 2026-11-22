@@ -15,6 +15,14 @@ local SPLITTABLE_TYPES = {
     INSTANCE_CHAT = true,
 }
 
+local function IsSafeString(v)
+    if type(v) ~= "string" then return false end
+    if type(issecretvalue) == "function" and issecretvalue(v) then
+        return false
+    end
+    return true
+end
+
 local function EnsureChatDefaults()
     if not ns.db then return end
     ns.db.ui = ns.db.ui or {}
@@ -46,8 +54,6 @@ function ns:RefreshChatEditBoxLimits()
     end
 end
 
--- Step backward from `limit` if `limit` lands on a UTF-8 continuation byte (10xxxxxx)
--- so multi-byte characters (e.g., accented letters, em-dashes, CJK) are never corrupted.
 local function ClampToUTF8Boundary(str, limit)
     local len = #str
     if limit >= len then return len end
@@ -70,12 +76,11 @@ local function SplitChatText(msg, maxChunkBytes)
 
     while #remaining > limit do
         local safeLimit = ClampToUTF8Boundary(remaining, limit)
-        -- Find last space inside the byte limit so words aren't sliced in half
         local cutPos = nil
         local searchSlice = string.sub(remaining, 1, safeLimit)
         for idx = #searchSlice, math.max(1, math.floor(safeLimit * 0.5)), -1 do
             local byte = string.byte(searchSlice, idx)
-            if byte == 32 then -- space
+            if byte == 32 then
                 cutPos = idx
                 break
             end
@@ -96,7 +101,6 @@ local function SplitChatText(msg, maxChunkBytes)
         table.insert(chunks, remaining)
     end
 
-    -- Add clean continuation markers between chunks
     local total = #chunks
     if total > 1 then
         for i = 1, total do
@@ -113,26 +117,22 @@ local function SplitChatText(msg, maxChunkBytes)
     return chunks
 end
 
-local origSendChatMessage = _G.SendChatMessage
-if type(origSendChatMessage) == "function" then
-    _G.SendChatMessage = function(msg, chatType, language, channel, ...)
-        local cType = string.upper(tostring(chatType or "SAY"))
-        local enabled = ns.db and ns.db.ui and ns.db.ui.emoteSplitter
-
-        if enabled and not isSplitting and type(msg) == "string" and #msg > 255 and SPLITTABLE_TYPES[cType] then
-            local chunks = SplitChatText(msg, 240)
-            if #chunks > 1 then
-                isSplitting = true
-                for _, chunk in ipairs(chunks) do
-                    origSendChatMessage(chunk, chatType, language, channel, ...)
-                end
-                isSplitting = false
-                return
+-- Safe helper for PadRP's own long RP messages without tainting Blizzard's global SendChatMessage
+function ns:SendSplitChatMessage(msg, chatType, language, channel)
+    local cType = string.upper(tostring(chatType or "SAY"))
+    local enabled = ns.db and ns.db.ui and ns.db.ui.emoteSplitter
+    if enabled and not isSplitting and IsSafeString(msg) and #msg > 255 and SPLITTABLE_TYPES[cType] then
+        local chunks = SplitChatText(msg, 240)
+        if #chunks > 1 then
+            isSplitting = true
+            for _, chunk in ipairs(chunks) do
+                pcall(SendChatMessage, chunk, chatType, language, channel)
             end
+            isSplitting = false
+            return
         end
-
-        return origSendChatMessage(msg, chatType, language, channel, ...)
     end
+    pcall(SendChatMessage, msg, chatType, language, channel)
 end
 
 -- =========================================================
@@ -147,7 +147,7 @@ local function CollectMyMentionTerms()
     local seen = {}
 
     local function AddTerm(raw)
-        if type(raw) ~= "string" then return end
+        if not IsSafeString(raw) then return end
         local clean = strtrim(string.gsub(raw, "|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
         if #clean < 3 then return end
         local low = string.lower(clean)
@@ -177,55 +177,62 @@ local function HighlightMatchedTerm(msg, termLow)
 end
 
 local function RPChatMessageFilter(_, _, msg, author, ...)
-    if not ns.db or not ns.db.ui or type(msg) ~= "string" or msg == "" then
+    if not ns.db or not ns.db.ui or not IsSafeString(msg) or msg == "" then
+        return false
+    end
+    if author ~= nil and not IsSafeString(author) then
         return false
     end
 
-    local myKey = ns.GetUnitKey and ns:GetUnitKey("player") or UnitName("player")
-    local authorKey = (author and author ~= "" and ns.GetUnitKey and ns:GetUnitKey(author)) or (author and strsplit("-", author))
-    if authorKey and myKey and authorKey == myKey then
-        return false
-    end
+    local ok, modified = pcall(function()
+        local myKey = ns.GetUnitKey and ns:GetUnitKey("player") or UnitName("player")
+        local authorKey = (author and author ~= "" and ns.GetUnitKey and ns:GetUnitKey(author)) or (author and strsplit("-", author))
+        if authorKey and myKey and authorKey == myKey then
+            return nil
+        end
 
-    local modified = msg
-    local mentioned = false
+        local out = msg
+        local mentioned = false
 
-    if ns.db.ui.mentionPing then
-        local terms = CollectMyMentionTerms()
-        for _, t in ipairs(terms) do
-            if string.find(string.lower(modified), t.pat) then
-                local newMsg, didHit = HighlightMatchedTerm(modified, t.low)
-                if didHit then
-                    modified = newMsg
-                    mentioned = true
-                    break
+        if ns.db.ui.mentionPing then
+            local terms = CollectMyMentionTerms()
+            for _, t in ipairs(terms) do
+                if string.find(string.lower(out), t.pat) then
+                    local newMsg, didHit = HighlightMatchedTerm(out, t.low)
+                    if didHit then
+                        out = newMsg
+                        mentioned = true
+                        break
+                    end
                 end
             end
         end
-    end
 
-    local isTargetSpeaker = false
-    if ns.db.ui.targetChatHighlight and authorKey and UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
-        local targetKey = ns.GetUnitKey and ns:GetUnitKey("target") or UnitName("target")
-        if targetKey and targetKey == authorKey then
-            isTargetSpeaker = true
-        end
-    end
-
-    if mentioned then
-        modified = "|cff81c995>>|r " .. modified
-        local now = GetTime()
-        if (now - lastMentionPingTime) > 3.0 then
-            lastMentionPingTime = now
-            if ns.db.ui.soundEffects and PlaySound then
-                PlaySound((SOUNDKIT and SOUNDKIT.TELL_MESSAGE) or 3081, "Master")
+        local isTargetSpeaker = false
+        if ns.db.ui.targetChatHighlight and authorKey and UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
+            local targetKey = ns.GetUnitKey and ns:GetUnitKey("target") or UnitName("target")
+            if targetKey and targetKey == authorKey then
+                isTargetSpeaker = true
             end
         end
-    elseif isTargetSpeaker then
-        modified = "|cff8ab4f8[Target]|r " .. modified
-    end
 
-    if modified ~= msg then
+        if mentioned then
+            out = "|cff81c995>>|r " .. out
+            local now = GetTime()
+            if (now - lastMentionPingTime) > 3.0 then
+                lastMentionPingTime = now
+                if ns.db.ui.soundEffects and PlaySound then
+                    PlaySound((SOUNDKIT and SOUNDKIT.TELL_MESSAGE) or 3081, "Master")
+                end
+            end
+        elseif isTargetSpeaker then
+            out = "|cff8ab4f8[Target]|r " .. out
+        end
+
+        return out
+    end)
+
+    if ok and modified and modified ~= msg then
         return false, modified, author, ...
     end
     return false
