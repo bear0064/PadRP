@@ -564,7 +564,10 @@ function ns:CreateBindButton(name, onClick)
 end
 
 local function InitRPChatFilter()
-    local function RPChatFilter(_, event, msg, author, ...)
+    if ns._rpNameChatFilterInstalled then return end
+    ns._rpNameChatFilterInstalled = true
+
+    local function RPChatFilter(_, _, msg, author, ...)
         if not ns.db or not ns.db.ui or not ns.db.ui.chatRPNames then
             return false
         end
@@ -656,6 +659,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         if ns.InitTargetHUD then ns:InitTargetHUD() end
         if ns.InitControllerUI then ns:InitControllerUI() end
         if ns.InitDossierWindow then ns:InitDossierWindow() end
+        if ns.InitFlyoutWheel then ns:InitFlyoutWheel() end
         InitRPChatFilter()
 
         ns:CreateBindButton("PadRP_ToggleICButton", function()
@@ -685,7 +689,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             ns:PlayUISound()
         end)
 
-        print("|cff8ab4f8[PadRP]|r Material Dark RP Suite v5.8 loaded. Profile: |cfffdd663" .. (ns.profile.firstName or UnitName("player")) .. "|r.")
+        print("|cff8ab4f8[PadRP]|r RP Suite v1.1 loaded. Profile: |cfffdd663" .. (ns.profile.firstName or UnitName("player")) .. "|r.")
     elseif event == "PLAYER_LOGOUT" then
         ns:SnapshotActiveProfile()
     elseif event == "PLAYER_FLAGS_CHANGED" and arg1 == "player" then
@@ -709,19 +713,63 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
     end
 end)
 
-SLASH_PADRP1 = "/padrp"
-SLASH_PADRP2 = "/padtoggle"
-SlashCmdList["PADRP"] = function(msg)
+-- Unified /padrp and /padtoggle slash command router across all PadRP modules
+function ns:HandleSlashCommand(msg)
     local cmd = strtrim(string.lower(msg or ""))
 
     if cmd == "minimap" then
         if ns.ResetMinimapButton then
             ns:ResetMinimapButton()
         end
-        return
+    elseif cmd == "wheel" or cmd == "flyout" then
+        if ns.ToggleFlyoutWheel then
+            ns:ToggleFlyoutWheel()
+        end
+    elseif cmd == "resetcam" then
+        if SlashCmdList["PADRPWHEEL"] then
+            SlashCmdList["PADRPWHEEL"]("resetcam")
+        end
+    elseif cmd == "scan" then
+        if ns.ScanNearbyPlayers then
+            ns:ScanNearbyPlayers()
+        end
+    elseif cmd == "clearcache" and ns.ClearMSPCache then
+        local removed = ns:ClearMSPCache()
+        print(string.format("|cff8ab4f8[PadRP]|r Cleared |cfffdd663%d|r cached RP profiles.", removed))
+    elseif cmd == "dev" or cmd == "console" or cmd == "debug" or cmd == "sniff" then
+        if ns.db and ns.db.ui then
+            ns.db.ui.devMode = true
+        end
+        if cmd == "debug" or cmd == "dev" then ns.mspDebug = true end
+        if cmd == "sniff" then ns.mspSniff = true; ns.mspDebug = true end
+        if ns.mainFrame and ns.mainFrame:IsShown() and ns.RefreshControllerUI then
+            ns:RefreshControllerUI()
+        end
+        if ns.ToggleNetInspector then
+            ns:ToggleNetInspector(true)
+        end
+    elseif cmd == "test" then
+        if ns.db and ns.db.ui then
+            ns.db.ui.devMode = true
+        end
+        if ns.mainFrame and ns.mainFrame:IsShown() and ns.RefreshControllerUI then
+            ns:RefreshControllerUI()
+        end
+        if ns.ToggleNetInspector then
+            ns:ToggleNetInspector(true)
+        end
+        if ns.RunMSPSelfTest then
+            ns:RunMSPSelfTest()
+        end
+    else
+        if ns.ToggleMainFrame then
+            ns:ToggleMainFrame()
+        end
     end
+end
 
-    if ns.ToggleMainFrame then
-        ns:ToggleMainFrame()
-    end
+SLASH_PADRP1 = "/padrp"
+SLASH_PADRP2 = "/padtoggle"
+SlashCmdList["PADRP"] = function(msg)
+    ns:HandleSlashCommand(msg)
 end

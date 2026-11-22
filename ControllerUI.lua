@@ -1065,25 +1065,33 @@ local function RefreshProfilesTab()
     end
 end
 
+-- Display / LB-RB order: tabs 1-7, then Emotes (9), then Dev (8) when Developer Mode is on.
+function ns:GetTabDisplayOrder()
+    local showDev = (ns.db and ns.db.ui and ns.db.ui.devMode) and true or false
+    local order = { 1, 2, 3, 4, 5, 6, 7, 9 }
+    if showDev then order[#order + 1] = 8 end
+    return order
+end
+
 local function UpdateTabBarLayout()
     if not mainFrame or not tabButtons[1] then return end
     local showDev = (ns.db and ns.db.ui and ns.db.ui.devMode) and true or false
-    local visibleCount = showDev and 8 or 7
+    local order = ns:GetTabDisplayOrder()
+    local visibleCount = #order
     local totalWidth = mainFrame:GetWidth() - 24
     local gap = 3
     local btnW = math.floor((totalWidth - (gap * (visibleCount - 1))) / visibleCount)
 
-    for i = 1, 8 do
+    for i = 1, 9 do
+        if tabButtons[i] then tabButtons[i]:Hide() end
+    end
+    for slot, i in ipairs(order) do
         local tb = tabButtons[i]
         if tb then
-            if i == 8 and not showDev then
-                tb:Hide()
-            else
-                tb:SetWidth(btnW)
-                tb:ClearAllPoints()
-                tb:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 12 + (i - 1) * (btnW + gap), -108)
-                tb:Show()
-            end
+            tb:SetWidth(btnW)
+            tb:ClearAllPoints()
+            tb:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 12 + (slot - 1) * (btnW + gap), -108)
+            tb:Show()
         end
     end
 
@@ -1382,9 +1390,12 @@ function ns:CycleTab(delta)
         mainFrame.iconPicker:StepPage(delta)
         return
     end
-    local maxTabs = (ns.db and ns.db.ui and ns.db.ui.devMode) and 8 or 7
-    local nextTab = ((activeTab - 1 + delta) % maxTabs) + 1
-    ns:SelectTab(nextTab)
+    local order = ns:GetTabDisplayOrder()
+    local pos = 1
+    for i, tabIdx in ipairs(order) do
+        if tabIdx == activeTab then pos = i break end
+    end
+    ns:SelectTab(order[((pos - 1 + delta) % #order) + 1])
 end
 
 local function GetActiveGratitudePool()
@@ -1928,25 +1939,33 @@ local function RefreshProfilesTab()
     end
 end
 
+-- Display / LB-RB order: tabs 1-7, then Emotes (9), then Dev (8) when Developer Mode is on.
+function ns:GetTabDisplayOrder()
+    local showDev = (ns.db and ns.db.ui and ns.db.ui.devMode) and true or false
+    local order = { 1, 2, 3, 4, 5, 6, 7, 9 }
+    if showDev then order[#order + 1] = 8 end
+    return order
+end
+
 local function UpdateTabBarLayout()
     if not mainFrame or not tabButtons[1] then return end
     local showDev = (ns.db and ns.db.ui and ns.db.ui.devMode) and true or false
-    local visibleCount = showDev and 8 or 7
+    local order = ns:GetTabDisplayOrder()
+    local visibleCount = #order
     local totalWidth = mainFrame:GetWidth() - 24
     local gap = 3
     local btnW = math.floor((totalWidth - (gap * (visibleCount - 1))) / visibleCount)
 
-    for i = 1, 8 do
+    for i = 1, 9 do
+        if tabButtons[i] then tabButtons[i]:Hide() end
+    end
+    for slot, i in ipairs(order) do
         local tb = tabButtons[i]
         if tb then
-            if i == 8 and not showDev then
-                tb:Hide()
-            else
-                tb:SetWidth(btnW)
-                tb:ClearAllPoints()
-                tb:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 12 + (i - 1) * (btnW + gap), -108)
-                tb:Show()
-            end
+            tb:SetWidth(btnW)
+            tb:ClearAllPoints()
+            tb:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 12 + (slot - 1) * (btnW + gap), -108)
+            tb:Show()
         end
     end
 
@@ -2245,9 +2264,12 @@ function ns:CycleTab(delta)
         mainFrame.iconPicker:StepPage(delta)
         return
     end
-    local maxTabs = (ns.db and ns.db.ui and ns.db.ui.devMode) and 8 or 7
-    local nextTab = ((activeTab - 1 + delta) % maxTabs) + 1
-    ns:SelectTab(nextTab)
+    local order = ns:GetTabDisplayOrder()
+    local pos = 1
+    for i, tabIdx in ipairs(order) do
+        if tabIdx == activeTab then pos = i break end
+    end
+    ns:SelectTab(order[((pos - 1 + delta) % #order) + 1])
 end
 
 local function GetActiveGratitudePool()
@@ -3124,6 +3146,565 @@ function PadRP_ActionBarToggle()
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Emotes tab (tab 9): manage the emotes shown on the RP Flyout Wheel.
+-- Data lives in ns.db.flyout and is edited through the ns:*FlyoutEmote API in
+-- FlyoutWheel.lua. Left: search/filter + list. Right: editor + icon.
+-- ---------------------------------------------------------------------------
+local EMOTE_ROWS = 7
+
+local function TruncText(str, maxLen)
+    str = strtrim(tostring(str or ""))
+    if #str <= maxLen then return str end
+    return string.sub(str, 1, maxLen - 2) .. ".."
+end
+
+local function BuildEmotesTab(p, picker)
+    if not p then return end
+    if not ns.GetFlyoutEmoteList then
+        local msg = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        msg:SetPoint("TOPLEFT", 16, -16)
+        msg:SetText("|cfff28b82Flyout wheel module not loaded - make sure FlyoutWheel.lua is in the .toc|r")
+        return
+    end
+
+    local view, selIdx, page = "custom", 1, 1
+    local searchQuery = ""
+    local wheelOnly = false
+    local filteredIndices = {}
+    local removeArmed, removeToken, resetArmed, resetToken = false, 0, false, 0
+    local RefreshList, LoadEditor, ApplyView, UpdateRemoveButton, UpdateResetButton, UpdateFilterButton
+
+    local function CurList() return ns:GetFlyoutEmoteList(view) end
+
+    local function RebuildFilteredIndices()
+        wipe(filteredIndices)
+        local list = CurList()
+        local q = strtrim(string.lower(searchQuery or ""))
+        q = string.gsub(q, "^/+", "")
+        for idx, item in ipairs(list) do
+            local matchesWheel = true
+            if view == "base" and wheelOnly then
+                matchesWheel = (item.enabled == true)
+            end
+            local matchesQuery = true
+            if q ~= "" then
+                local lbl = string.lower(tostring(item.label or ""))
+                local tok = string.lower(tostring(item.token or ""))
+                local txt = string.lower(tostring(item.text or ""))
+                matchesQuery = (string.find(lbl, q, 1, true) ~= nil)
+                    or (string.find(tok, q, 1, true) ~= nil)
+                    or (string.find(txt, q, 1, true) ~= nil)
+            end
+            if matchesWheel and matchesQuery then
+                table.insert(filteredIndices, idx)
+            end
+        end
+    end
+
+    local function CurItem()
+        local list = CurList()
+        if selIdx and selIdx > 0 and list[selIdx] then
+            return list[selIdx]
+        end
+        return nil
+    end
+
+    local function ClampSelection()
+        RebuildFilteredIndices()
+        local count = #filteredIndices
+        if count == 0 then
+            selIdx = 0
+            page = 1
+            return
+        end
+
+        local totalPages = math.max(1, math.ceil(count / EMOTE_ROWS))
+        page = math.max(1, math.min(totalPages, page))
+
+        local foundPos = nil
+        for pos, actualIdx in ipairs(filteredIndices) do
+            if actualIdx == selIdx then
+                foundPos = pos
+                break
+            end
+        end
+        if not foundPos then
+            local startPos = (page - 1) * EMOTE_ROWS + 1
+            selIdx = filteredIndices[startPos] or filteredIndices[1]
+        end
+    end
+
+    local function GoToIndex(idx)
+        selIdx = idx or 0
+        RebuildFilteredIndices()
+        local foundPos = 1
+        for pos, actualIdx in ipairs(filteredIndices) do
+            if actualIdx == selIdx then
+                foundPos = pos
+                break
+            end
+        end
+        page = math.max(1, math.ceil(math.max(1, foundPos) / EMOTE_ROWS))
+    end
+
+    local function DisarmAll()
+        removeArmed, resetArmed = false, false
+        removeToken, resetToken = removeToken + 1, resetToken + 1
+        if UpdateRemoveButton then UpdateRemoveButton() end
+        if UpdateResetButton then UpdateResetButton() end
+    end
+
+    local function CommitEditor()
+        local item = CurItem()
+        if not item or not p.labelBox then return end
+        local lbl = strtrim(p.labelBox:GetText() or "")
+        if lbl ~= "" then item.label = string.sub(lbl, 1, 40) end
+        if view == "custom" then
+            local txt = strtrim(p.textBox:GetText() or "")
+            if txt ~= "" then item.text = string.sub(txt, 1, 240) end
+        end
+    end
+
+    local function StepPage(delta, focusRowIdx)
+        CommitEditor()
+        DisarmAll()
+        RebuildFilteredIndices()
+        local pages = math.max(1, math.ceil(#filteredIndices / EMOTE_ROWS))
+        local nextPage = math.max(1, math.min(pages, page + delta))
+        if nextPage == page then return false end
+        page = nextPage
+        local startPos = (page - 1) * EMOTE_ROWS + 1
+        local pickPos = startPos
+        if focusRowIdx and focusRowIdx > 1 then
+            pickPos = math.min(#filteredIndices, startPos + focusRowIdx - 1)
+        end
+        if filteredIndices[pickPos] then
+            selIdx = filteredIndices[pickPos]
+        end
+        RefreshList()
+        LoadEditor()
+        if ns.PlayUISound then ns:PlayUISound() end
+        if focusRowIdx and p.rows[focusRowIdx] and p.rows[focusRowIdx]:IsShown() and ns.SetControllerFocus then
+            ns:SetControllerFocus(p.rows[focusRowIdx])
+        end
+        return true
+    end
+
+    function ns:TrySeamlessEmoteStep(rowIndex, dir)
+        if activeTab ~= 9 or not p:IsShown() then return false end
+        local lastShownIdx = 0
+        for i = 1, EMOTE_ROWS do
+            if p.rows[i] and p.rows[i]:IsShown() then
+                lastShownIdx = i
+            end
+        end
+        if lastShownIdx == 0 then return false end
+        if dir == "DOWN" and rowIndex >= lastShownIdx then
+            return StepPage(1, 1)
+        elseif dir == "UP" and rowIndex <= 1 then
+            return StepPage(-1, EMOTE_ROWS)
+        end
+        return false
+    end
+
+    -- ----- list + search/filter (left column) ----------------------------------
+    p.viewCustomBtn = ns:CreateMaterialButton(p, "Custom /e", 150, 24, 16, -8, "PRIMARY", function()
+        CommitEditor(); DisarmAll()
+        view, selIdx, page = "custom", 1, 1
+        ApplyView()
+    end)
+    p.viewBaseBtn = ns:CreateMaterialButton(p, "Base Emotes", 150, 24, 170, -8, nil, function()
+        CommitEditor(); DisarmAll()
+        view, selIdx, page = "base", 1, 1
+        ApplyView()
+    end)
+    p.countFS = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.countFS:SetPoint("TOPRIGHT", p, "TOPRIGHT", -16, -14)
+    p.countFS:SetJustifyH("RIGHT")
+
+    p.searchBox = ns:CreateMaterialEditBox(p, nil, "Search label or /token...", 16, -34, 164, 22, function(txt)
+        searchQuery = txt or ""
+        page = 1
+        selIdx = 0
+        RefreshList(); LoadEditor()
+    end)
+    p.searchBox:SetScript("OnTextChanged", function(self)
+        searchQuery = self:GetText() or ""
+        page = 1
+        selIdx = 0
+        RefreshList(); LoadEditor()
+    end)
+
+    UpdateFilterButton = function()
+        if not p.wheelFilterBtn then return end
+        if view ~= "base" then
+            p.wheelFilterBtn:Hide()
+            return
+        end
+        p.wheelFilterBtn:Show()
+        if wheelOnly then
+            p.wheelFilterBtn:SetText("Wheel Only")
+            p.wheelFilterBtn:SetTone("MINT")
+        else
+            p.wheelFilterBtn:SetText("Show All")
+            p.wheelFilterBtn:SetTone("PRIMARY")
+        end
+    end
+
+    p.wheelFilterBtn = ns:CreateMaterialButton(p, "Show All", 88, 22, 184, -34, "PRIMARY", function()
+        wheelOnly = not wheelOnly
+        page = 1
+        selIdx = 0
+        UpdateFilterButton()
+        RefreshList(); LoadEditor()
+    end)
+
+    p.clearSearchBtn = ns:CreateMaterialButton(p, "Clr", 44, 22, 276, -34, nil, function()
+        searchQuery = ""
+        p.searchBox:SetCleanText("")
+        page = 1
+        selIdx = 0
+        RefreshList(); LoadEditor()
+    end)
+
+    p.rows = {}
+    for i = 1, EMOTE_ROWS do
+        local row = ns:CreateMaterialButton(p, "", 304, 26, 16, -60 - (i - 1) * 28, nil, function(self)
+            if not self.idx then return end
+            CommitEditor(); DisarmAll()
+            selIdx = self.idx
+            RefreshList(); LoadEditor()
+        end)
+        row.emoteRowIndex = i
+        row.iconTex = row:CreateTexture(nil, "ARTWORK")
+        row.iconTex:SetSize(18, 18)
+        row.iconTex:SetPoint("LEFT", 6, 0)
+        row.iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        row.label:ClearAllPoints()
+        row.label:SetPoint("LEFT", 30, 0)
+        row.label:SetPoint("RIGHT", -6, 0)
+        row.label:SetJustifyH("LEFT")
+        AttachWheelScroller(row, function(delta) StepPage(delta, nil) end)
+        p.rows[i] = row
+    end
+
+    p.prevBtn = ns:CreateMaterialButton(p, "< Prev", 80, 24, 16, -260, nil, function() StepPage(-1, nil) end)
+    p.pageFS = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.pageFS:SetPoint("TOPLEFT", 100, -265)
+    p.pageFS:SetWidth(124)
+    p.pageFS:SetJustifyH("CENTER")
+    p.nextBtn = ns:CreateMaterialButton(p, "Next >", 80, 24, 240, -260, nil, function() StepPage(1, nil) end)
+    AttachWheelScroller(p.prevBtn, function(delta) StepPage(delta, nil) end)
+    AttachWheelScroller(p.nextBtn, function(delta) StepPage(delta, nil) end)
+    AttachWheelScroller(p, function(delta) StepPage(delta, nil) end)
+
+    -- add row (Custom /e only)
+    p.addBoxCustom = ns:CreateMaterialEditBox(p, nil, "New emote name...", 16, -290, 214, 26)
+    local function DoAdd()
+        if view ~= "custom" then return end
+        CommitEditor()
+        local idx, err = ns:AddFlyoutEmote("custom", { label = p.addBoxCustom:GetText() })
+        if idx then p.addBoxCustom:SetCleanText("") end
+        if not idx then
+            ns:ShowStatusToast((err == "limit" and "Emote limit reached - remove one first")
+                or "Enter a name for the custom emote")
+            return
+        end
+        DisarmAll()
+        GoToIndex(idx)
+        RefreshList(); LoadEditor()
+        ns:ShowStatusToast("Custom emote added - write its text on the right")
+    end
+    p.addBtn = ns:CreateMaterialButton(p, "+ Add", 84, 26, 236, -290, "MINT", DoAdd)
+
+    UpdateResetButton = function()
+        if not p.resetBtn then return end
+        p.resetBtn:SetText(resetArmed and "Press again to confirm reset" or "Reset Base Emotes to Default")
+        p.resetBtn:SetTone(resetArmed and "CORAL" or nil)
+    end
+    p.resetBtn = ns:CreateMaterialButton(p, "Reset Base Emotes to Default", 304, 26, 16, -292, nil, function()
+        if not resetArmed then
+            resetArmed = true
+            resetToken = resetToken + 1
+            local token = resetToken
+            UpdateResetButton()
+            if C_Timer and C_Timer.After then
+                C_Timer.After(3, function()
+                    if resetToken == token then resetArmed = false; UpdateResetButton() end
+                end)
+            end
+            return
+        end
+        resetArmed = false
+        ns:ResetFlyoutBaseEmotes()
+        selIdx, page = 1, 1
+        UpdateResetButton()
+        RefreshList(); LoadEditor()
+        ns:ShowStatusToast("Base emotes reset to starter set")
+    end)
+    p.tipFS = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.tipFS:SetPoint("TOPLEFT", 16, -326)
+    p.tipFS:SetWidth(304)
+    p.tipFS:SetJustifyH("LEFT")
+    p.tipFS:SetText("|cff9aa0a6On the wheel: LB/RB to reach Custom and Base pages.|r")
+
+    -- ----- editor (right column) ----------------------------------------------
+    p.editorHeader = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.editorHeader:SetPoint("TOPLEFT", 336, -52)
+    p.editorHeader:SetWidth(304)
+    p.editorHeader:SetJustifyH("LEFT")
+
+    local function Caption(text, y)
+        local fs = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("TOPLEFT", 336, y)
+        fs:SetText(text)
+        return fs
+    end
+    local capLabel = Caption("Label (shown on the wheel)", -72)
+    p.labelBox = ns:CreateMaterialEditBox(p, nil, "e.g. Look Around", 336, -86, 304, 26, function() CommitEditor(); RefreshList() end)
+    if p.labelBox.SetMaxLetters then p.labelBox:SetMaxLetters(40) end
+
+    -- custom-only widgets
+    local capText = Caption("Emote text (appears after your name)", -118)
+    p.textBox = ns:CreateMaterialEditBox(p, nil, "e.g. looks around attentively.", 336, -132, 304, 26, function() CommitEditor(); RefreshList() end)
+    if p.textBox.SetMaxLetters then p.textBox:SetMaxLetters(240) end
+    p.previewFS = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.previewFS:SetPoint("TOPLEFT", 336, -164)
+    p.previewFS:SetWidth(304)
+    p.previewFS:SetJustifyH("LEFT")
+    p.previewFS:SetJustifyV("TOP")
+    p.previewFS:SetHeight(42)
+    p.hintFS = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.hintFS:SetPoint("TOPLEFT", 336, -336)
+    p.hintFS:SetWidth(304)
+    p.hintFS:SetJustifyH("LEFT")
+    p.hintFS:SetText("|cff9aa0a6%name = your RP name   %target = your target's name|r")
+    p.textBox:HookScript("OnTextChanged", function(self)
+        if view == "custom" and CurItem() then
+            p.previewFS:SetText("|cff9aa0a6Preview:|r " .. ns:PreviewFlyoutEmoteText(self:GetText()))
+        end
+    end)
+
+    -- base-only widgets
+    p.tokenFS = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.tokenFS:SetPoint("TOPLEFT", 336, -124)
+    p.tokenFS:SetWidth(304)
+    p.tokenFS:SetJustifyH("LEFT")
+    p.enableBtn = ns:CreateMaterialButton(p, "", 304, 26, 336, -146, nil, function()
+        local item = CurItem()
+        if not item then return end
+        item.enabled = not (item.enabled == true)
+        if ns.RefreshFlyoutWheel and ns.flyoutWheelFrame and ns.flyoutWheelFrame:IsShown() then
+            ns:RefreshFlyoutWheel()
+        end
+        RefreshList(); LoadEditor()
+    end)
+
+    -- icon row (custom icon override + restore original icon)
+    p.iconFrame = CreateFrame("Frame", nil, p, "BackdropTemplate")
+    p.iconFrame:SetSize(36, 36)
+    p.iconFrame:SetPoint("TOPLEFT", 336, -210)
+    ns:ApplySurface(p.iconFrame, ns.M3.surface, ns.M3.outline)
+    p.iconTex = p.iconFrame:CreateTexture(nil, "ARTWORK")
+    p.iconTex:SetSize(30, 30)
+    p.iconTex:SetPoint("CENTER")
+    p.iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    p.iconBtn = ns:CreateMaterialButton(p, "Custom Icon", 150, 26, 380, -215, "PRIMARY", function(self)
+        local item = CurItem()
+        if not item then return end
+        CommitEditor()
+        local currentActive = ns:GetFlyoutEmoteDisplayIcon(view, item)
+        picker:OpenForCallback("SELECT CUSTOM EMOTE ICON", currentActive, function(iconVal)
+            local current = CurItem()
+            if current then
+                ns:SetFlyoutEmoteCustomIcon(view, selIdx, iconVal)
+            end
+            RefreshList(); LoadEditor()
+            ns:ShowStatusToast("Custom icon applied")
+        end, self)
+    end)
+    p.defaultIconBtn = ns:CreateMaterialButton(p, "Original Icon", 104, 26, 536, -215, nil, function()
+        local item = CurItem()
+        if not item then return end
+        ns:ClearFlyoutEmoteCustomIcon(view, selIdx)
+        RefreshList(); LoadEditor()
+        ns:ShowStatusToast("Restored original icon")
+    end)
+
+    -- order / remove / save
+    p.moveUpBtn = ns:CreateMaterialButton(p, "Move Up", 96, 26, 336, -256, nil, function()
+        if selIdx < 1 then return end
+        CommitEditor()
+        GoToIndex(ns:MoveFlyoutEmote(view, selIdx, -1))
+        RefreshList(); LoadEditor()
+    end)
+    p.moveDownBtn = ns:CreateMaterialButton(p, "Move Down", 96, 26, 436, -256, nil, function()
+        if selIdx < 1 then return end
+        CommitEditor()
+        GoToIndex(ns:MoveFlyoutEmote(view, selIdx, 1))
+        RefreshList(); LoadEditor()
+    end)
+    UpdateRemoveButton = function()
+        if not p.removeBtn then return end
+        local item = CurItem()
+        if item and view == "base" and ns:IsDefaultBaseEmoteToken(item.token) then
+            p.removeBtn:SetText("Built-in")
+            p.removeBtn:SetTone(nil)
+        elseif removeArmed then
+            p.removeBtn:SetText("Confirm?")
+            p.removeBtn:SetTone("CORAL")
+        else
+            p.removeBtn:SetText("Remove")
+            p.removeBtn:SetTone("CORAL")
+        end
+    end
+    p.removeBtn = ns:CreateMaterialButton(p, "Remove", 104, 26, 536, -256, "CORAL", function()
+        local item = CurItem()
+        if not item then return end
+        if view == "base" and ns:IsDefaultBaseEmoteToken(item.token) then
+            ns:ShowStatusToast("Built-in emote - switch 'Show on the wheel' off instead")
+            return
+        end
+        if not removeArmed then
+            removeArmed = true
+            removeToken = removeToken + 1
+            local token = removeToken
+            UpdateRemoveButton()
+            if C_Timer and C_Timer.After then
+                C_Timer.After(3, function()
+                    if removeToken == token then removeArmed = false; UpdateRemoveButton() end
+                end)
+            end
+            return
+        end
+        removeArmed = false
+        local name = item.label or "Emote"
+        if ns:RemoveFlyoutEmote(view, selIdx) then
+            ns:ShowStatusToast("Removed: " .. name)
+        end
+        RefreshList(); LoadEditor()
+    end)
+    p.saveBtn = ns:CreateMaterialButton(p, "Save Changes", 304, 28, 336, -292, "PRIMARY", function()
+        CommitEditor()
+        if ns.RefreshFlyoutWheel and ns.flyoutWheelFrame and ns.flyoutWheelFrame:IsShown() then
+            ns:RefreshFlyoutWheel()
+        end
+        RefreshList()
+        ns:ShowStatusToast("Emote saved")
+    end)
+
+    p.commonWidgets = { p.labelBox, p.iconFrame, p.iconBtn, p.defaultIconBtn, p.moveUpBtn, p.moveDownBtn, p.removeBtn, p.saveBtn, capLabel }
+    p.customWidgets = { p.textBox, p.previewFS, p.hintFS, capText }
+    p.baseWidgets = { p.tokenFS, p.enableBtn }
+
+    p.labelBox:HookScript("OnEditFocusLost", function()
+        if p:IsShown() then CommitEditor(); RefreshList() end
+    end)
+    p.textBox:HookScript("OnEditFocusLost", function()
+        if p:IsShown() then CommitEditor(); RefreshList() end
+    end)
+
+    -- ----- refresh / load ------------------------------------------------------
+    RefreshList = function()
+        ClampSelection()
+        local list = CurList()
+        local pages = math.max(1, math.ceil(#filteredIndices / EMOTE_ROWS))
+        for i = 1, EMOTE_ROWS do
+            local row = p.rows[i]
+            local actualIdx = filteredIndices[(page - 1) * EMOTE_ROWS + i]
+            local item = actualIdx and list[actualIdx] or nil
+            if item then
+                row.idx = actualIdx
+                local displayIcon = ns:GetFlyoutEmoteDisplayIcon(view, item)
+                SetIconTextureSafe(row.iconTex, ns:ResolveWheelIconTexture(displayIcon, view, item), GetDefaultIconFallback())
+                if view == "base" then
+                    local on = item.enabled == true
+                    local customMark = (ns:GetFlyoutEmoteCustomIcon(item) ~= nil) and " *" or ""
+                    row:SetText((on and "|cff81c995ON |r" or "|cfff28b82OFF|r") .. " " .. TruncText(item.label or item.token, 14)
+                        .. customMark .. " |cff9aa0a6/" .. string.lower(tostring(item.token or "")) .. "|r")
+                else
+                    local customMark = (ns:GetFlyoutEmoteCustomIcon(item) ~= nil) and " *" or ""
+                    row:SetText(TruncText((item.label or ("Emote " .. actualIdx)) .. customMark, 16)
+                        .. "  |cff9aa0a6" .. TruncText(item.text, 18) .. "|r")
+                end
+                row:SetTone(actualIdx == selIdx and "PRIMARY" or nil)
+                row:Show()
+            else
+                row.idx = nil
+                row:Hide()
+            end
+        end
+        p.pageFS:SetText(string.format("Page %d / %d (%d)", page, pages, #filteredIndices))
+
+        local baseList = ns:GetFlyoutEmoteList("base")
+        local enabledCount = 0
+        for _, e in ipairs(baseList) do
+            if e.enabled == true then enabledCount = enabledCount + 1 end
+        end
+        p.countFS:SetText(string.format("|cff8ab4f8Custom:|r %d   |cff8ab4f8Base:|r %d (%d on)",
+            #ns:GetFlyoutEmoteList("custom"), #baseList, enabledCount))
+    end
+
+    LoadEditor = function()
+        local item = CurItem()
+        local has = item ~= nil
+        p.editorHeader:SetText(has
+            and string.format("|cff8ab4f8EDITING|r  %s #%d", (view == "base") and "Base Emote" or "Custom Emote", selIdx)
+            or "|cff9aa0a6No matching emote - adjust search/filter or add one|r")
+        for _, w in ipairs(p.commonWidgets) do w:SetShown(has) end
+        for _, w in ipairs(p.customWidgets) do w:SetShown(has and view == "custom") end
+        for _, w in ipairs(p.baseWidgets) do w:SetShown(has and view == "base") end
+        if not has then return end
+
+        p.labelBox:SetCleanText(item.label or "")
+        local displayIcon = ns:GetFlyoutEmoteDisplayIcon(view, item)
+        SetIconTextureSafe(p.iconTex, ns:ResolveWheelIconTexture(displayIcon, view, item), GetDefaultIconFallback())
+        p.defaultIconBtn:SetText(ns:GetFlyoutEmoteCustomIcon(item) and "Reset Icon" or "Original Icon")
+
+        if view == "custom" then
+            p.textBox:SetCleanText(item.text or "")
+            p.previewFS:SetText("|cff9aa0a6Preview:|r " .. ns:PreviewFlyoutEmoteText(item.text))
+        else
+            p.tokenFS:SetText("|cff9aa0a6Command:|r /" .. string.lower(tostring(item.token or "")))
+            local on = item.enabled == true
+            p.enableBtn:SetText(FormatCheckbox("Show on the wheel", on, "ff81c995"))
+            p.enableBtn:SetTone(on and "MINT" or nil)
+        end
+        UpdateRemoveButton()
+    end
+
+    ApplyView = function()
+        local isCustom = (view == "custom")
+        p.viewCustomBtn:SetTone(isCustom and "PRIMARY" or nil)
+        p.viewBaseBtn:SetTone(isCustom and nil or "PRIMARY")
+        p.searchBox:SetShown(not isCustom)
+        p.clearSearchBtn:SetShown(not isCustom)
+        p.addBoxCustom:SetShown(isCustom)
+        p.addBtn:SetShown(isCustom)
+        p.tipFS:SetShown(isCustom)
+        p.resetBtn:SetShown(not isCustom)
+        UpdateFilterButton()
+        ClampSelection()
+        UpdateResetButton()
+        RefreshList()
+        LoadEditor()
+    end
+
+    p:HookScript("OnShow", function()
+        ns:EnsureFlyoutDB()
+        DisarmAll()
+        ApplyView()
+    end)
+end
+
+-- Open the main window straight onto the Emotes tab (used by the wheel's "Add in PadRP" slice).
+function ns:OpenEmotesTab()
+    if not mainFrame then return end
+    if not mainFrame:IsShown() then ns:ToggleMainFrame() end
+    ns:SelectTab(9)
+end
+
 function ns:InitControllerUI()
     local M3 = ns.M3
     ns:CreateBindButton("PadRP_ToggleUIButton", function() ns:ToggleMainFrame() end)
@@ -3271,6 +3852,17 @@ function ns:InitControllerUI()
     local function ApplyPickedIcon(iconValue)
         local clean = strtrim(tostring(iconValue or ""))
         if clean == "" then return end
+        if picker.mode == "CALLBACK" then
+            local cb = picker.pickCallback
+            picker:Hide()
+            if cb then cb(clean) end
+            if picker.returnFocusWidget and picker.returnFocusWidget:IsVisible() then
+                ns:SetControllerFocus(picker.returnFocusWidget)
+            else
+                ns:FocusFirstInScope()
+            end
+            return
+        end
         if picker.mode == "PORTRAIT" then
             ns.profile.icon = clean
             RefreshHeaderBanner()
@@ -3386,6 +3978,9 @@ function ns:InitControllerUI()
         if self.mode == "PORTRAIT" then
             currentIcon = tostring((ns.profile and ns.profile.icon) or fallbackIcon)
             self.title:SetText("|cff8ab4f8SELECT CHARACTER PORTRAIT ICON|r")
+        elseif self.mode == "CALLBACK" then
+            currentIcon = tostring(self.callbackIcon or fallbackIcon)
+            self.title:SetText("|cff8ab4f8" .. (self.callbackTitle or "SELECT ICON") .. "|r")
         else
             local slot = self.targetSlot or 1
             currentIcon = tostring((ns.profile.glances[slot] and ns.profile.glances[slot].icon) or fallbackIcon)
@@ -3440,6 +4035,16 @@ function ns:InitControllerUI()
 
     picker.OpenForPortrait = function(self, returnWidget)
         self.mode, self.page, self.returnFocusWidget = "PORTRAIT", 1, returnWidget
+        self.searchQuery = ""
+        self.searchBox:SetCleanText("")
+        self:RebuildFilter()
+        self:Show()
+        ns:SetControllerFocus(self.cells[1]:IsShown() and self.cells[1] or self.searchBox)
+    end
+    -- Generic picker: onPick(iconString) is called with the chosen icon name / FileDataID.
+    picker.OpenForCallback = function(self, title, currentIcon, onPick, returnWidget)
+        self.mode, self.page, self.returnFocusWidget = "CALLBACK", 1, returnWidget
+        self.callbackTitle, self.callbackIcon, self.pickCallback = title, currentIcon, onPick
         self.searchQuery = ""
         self.searchBox:SetCleanText("")
         self:RebuildFilter()
@@ -3581,7 +4186,7 @@ function ns:InitControllerUI()
     end)
     mainFrame.bannerExpBtn = bannerExpBtn
 
-    local tabTitles = { "[LB] Identity", "First Glances", "Bio & Lore", "Directory", "Profiles", "Gratitude", "Settings [RB]", "Dev" }
+    local tabTitles = { "[LB] Identity", "First Glances", "Bio & Lore", "Directory", "Profiles", "Gratitude", "Settings", "Dev", "Emotes [RB]" }
     for i, title in ipairs(tabTitles) do
         local tb = CreateFrame("Button", nil, mainFrame, "BackdropTemplate")
         tb:SetSize(92, 30)
@@ -3609,6 +4214,8 @@ function ns:InitControllerUI()
         panel:Hide()
         tabPanels[i] = panel
     end
+
+    BuildEmotesTab(tabPanels[9], picker)
 
     local p1 = tabPanels[1]
     local function AutoCommitTab1()

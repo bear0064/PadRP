@@ -46,16 +46,34 @@ function ns:RefreshChatEditBoxLimits()
     end
 end
 
+-- Step backward from `limit` if `limit` lands on a UTF-8 continuation byte (10xxxxxx)
+-- so multi-byte characters (e.g., accented letters, em-dashes, CJK) are never corrupted.
+local function ClampToUTF8Boundary(str, limit)
+    local len = #str
+    if limit >= len then return len end
+    if limit < 1 then return 1 end
+    local pos = limit
+    while pos > 1 do
+        local nextByte = string.byte(str, pos + 1)
+        if not nextByte or nextByte < 128 or nextByte >= 192 then
+            break
+        end
+        pos = pos - 1
+    end
+    return pos
+end
+
 local function SplitChatText(msg, maxChunkBytes)
     local chunks = {}
     local remaining = strtrim(msg or "")
     local limit = maxChunkBytes or 240
 
     while #remaining > limit do
+        local safeLimit = ClampToUTF8Boundary(remaining, limit)
         -- Find last space inside the byte limit so words aren't sliced in half
         local cutPos = nil
-        local searchSlice = string.sub(remaining, 1, limit)
-        for idx = #searchSlice, math.max(1, math.floor(limit * 0.5)), -1 do
+        local searchSlice = string.sub(remaining, 1, safeLimit)
+        for idx = #searchSlice, math.max(1, math.floor(safeLimit * 0.5)), -1 do
             local byte = string.byte(searchSlice, idx)
             if byte == 32 then -- space
                 cutPos = idx
@@ -64,7 +82,7 @@ local function SplitChatText(msg, maxChunkBytes)
         end
 
         if not cutPos then
-            cutPos = limit
+            cutPos = safeLimit
         end
 
         local part = strtrim(string.sub(remaining, 1, cutPos))
@@ -158,7 +176,7 @@ local function HighlightMatchedTerm(msg, termLow)
     return updated, true
 end
 
-local function RPChatMessageFilter(self, event, msg, author, ...)
+local function RPChatMessageFilter(_, _, msg, author, ...)
     if not ns.db or not ns.db.ui or type(msg) ~= "string" or msg == "" then
         return false
     end
@@ -297,7 +315,8 @@ chatToolsInit:SetScript("OnEvent", function(self)
         end)
     end
 
-    if type(ChatFrame_AddMessageEventFilter) == "function" then
+    if type(ChatFrame_AddMessageEventFilter) == "function" and not ns._rpChatToolsFilterInstalled then
+        ns._rpChatToolsFilterInstalled = true
         local events = {
             "CHAT_MSG_SAY",
             "CHAT_MSG_EMOTE",

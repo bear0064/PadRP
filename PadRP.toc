@@ -15,6 +15,7 @@ MSPBridge.lua
 MSPWire.lua
 RPChatTools.lua
 Nameplates.lua
+FlyoutWheel.lua
 Gratitude.lua
 TargetHUD.lua
 UIWidgets.lua

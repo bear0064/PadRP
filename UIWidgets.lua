@@ -44,6 +44,13 @@ local SOLID_BACKDROP = {
     insets   = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
+local function CountDisplayChars(str)
+    if type(strlenutf8) == "function" then
+        return strlenutf8(str or "")
+    end
+    return #(str or "")
+end
+
 local function ScrollFrameByDelta(scrollFrame, deltaPixels)
     if not scrollFrame or not scrollFrame.GetVerticalScroll or not scrollFrame.SetVerticalScroll then
         return false
@@ -492,6 +499,12 @@ function ns:MoveControllerFocus(dir)
         end
     end
 
+    if cur.emoteRowIndex and (dir == "UP" or dir == "DOWN") and ns.TrySeamlessEmoteStep then
+        if ns:TrySeamlessEmoteStep(cur.emoteRowIndex, dir) then
+            return
+        end
+    end
+
     local cx, cy = cur:GetCenter()
     local cl, cr, ct, cb = cur:GetLeft(), cur:GetRight(), cur:GetTop(), cur:GetBottom()
     if not cx or not cy or not cl or not cr or not ct or not cb then
@@ -632,8 +645,12 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
     local function UpdatePlaceholder(self)
         if self:GetText() == "" and not self:HasFocus() then
             self.placeholder:Show()
+            padBtn:Show()
         else
             self.placeholder:Hide()
+            if not self:HasFocus() then
+                padBtn:Show()
+            end
         end
     end
 
@@ -722,6 +739,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     editBox:SetMultiLine(true)
     editBox:SetFontObject("ChatFontNormal")
     editBox:SetWidth(math.max(200, width - 48))
+    editBox:SetHeight(math.max(60, height - 34))
     editBox:SetAutoFocus(false)
     editBox:SetMaxLetters(2500)
     if editBox.SetWordWrap then editBox:SetWordWrap(true) end
@@ -749,6 +767,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
         padBtn:Hide()
         editBox:SetFocus()
     end)
+    container.padBtn = padBtn
 
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
         if not delta or delta == 0 then return end
@@ -765,7 +784,21 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
         else
             placeholder:Hide()
         end
-        counter:SetText(string.format("%d / 2500 chars", #txt))
+        if not editBox:HasFocus() then
+            padBtn:Show()
+        end
+        counter:SetText(string.format("%d / 2500 chars", CountDisplayChars(txt)))
+        local minH = math.max(60, (scrollFrame:GetHeight() or (height - 34)))
+        local lineCount = 1
+        for _ in string.gmatch(txt, "\n") do
+            lineCount = lineCount + 1
+        end
+        local estWrapped = math.ceil(CountDisplayChars(txt) / 56)
+        local estH = math.max(minH, math.max(lineCount, estWrapped) * 16 + 24)
+        editBox:SetHeight(estH)
+        if scrollFrame.UpdateScrollChildRect then
+            scrollFrame:UpdateScrollChildRect()
+        end
     end
 
     editBox:SetScript("OnTextChanged", function(self, userInput)
@@ -802,6 +835,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     container.SetCleanText = function(self, txt)
         self.isDirty = false
         editBox:SetText(txt or "")
+        scrollFrame:SetVerticalScroll(0)
         UpdateState()
     end
     container.SetText = function(_, txt)

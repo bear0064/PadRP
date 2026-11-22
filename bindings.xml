@@ -1,20 +1,26 @@
 <Bindings>
-    <Binding name="CLICK PadRP_ToggleUIButton:LeftButton" category="PadRP (Controller)">
-        Open / Close PadRP Menu
+    <Binding name="PADRP_TOGGLE_FLYOUT" header="PADRP" category="ADDONS">
+        if PadRP_ToggleFlyoutWheel then PadRP_ToggleFlyoutWheel() end
     </Binding>
-    <Binding name="CLICK PadRP_QuickThankButton:LeftButton" category="PadRP (Controller)">
-        Quick Thank Target or Last Helper
+    <Binding name="PADRP_TOGGLE_UI" category="ADDONS">
+        if PadRP_ToggleMainMenu then PadRP_ToggleMainMenu() end
     </Binding>
-    <Binding name="CLICK PadRP_InspectTargetButton:LeftButton" category="PadRP (Controller)">
-        Inspect Target RP & Action Deck
+    <Binding name="PADRP_TOGGLE_IC" category="ADDONS">
+        if PadRP_ToggleIC then PadRP_ToggleIC() end
     </Binding>
-    <Binding name="CLICK PadRP_ToggleICButton:LeftButton" category="PadRP (Controller)">
-        Toggle In-Character / Out-of-Character
+    <Binding name="PADRP_CYCLE_WALKUP" category="ADDONS">
+        if PadRP_CycleWalkUp then PadRP_CycleWalkUp() end
     </Binding>
-    <Binding name="CLICK PadRP_CycleWalkUpButton:LeftButton" category="PadRP (Controller)">
-        Cycle Walk-Up RP Flag (Open / Ask / Closed)
+    <Binding name="PADRP_TOGGLE_WALK" category="ADDONS">
+        if PadRP_ToggleWalk then PadRP_ToggleWalk() end
     </Binding>
-    <Binding name="CLICK PadRP_ToggleWalkButton:LeftButton" category="PadRP (Controller)">
-        Toggle RP Walk / Run Speed
+    <Binding name="PADRP_DO_SIT" category="ADDONS">
+        if PadRP_DoSit then PadRP_DoSit() end
+    </Binding>
+    <Binding name="PADRP_QUICK_THANK" category="ADDONS">
+        if PadRP_QuickThank then PadRP_QuickThank() end
+    </Binding>
+    <Binding name="PADRP_INSPECT_TARGET" category="ADDONS">
+        if PadRP_InspectTarget then PadRP_InspectTarget() end
     </Binding>
 </Bindings>
