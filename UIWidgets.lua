@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- PadRP UI widgets and controller focus management.
+-- PadRP UI widgets, theme engine, and controller focus management.
 -- Native gamepad focus integration is intentionally cooperative: PadRP never
 -- registers its windows with Blizzard's private FrameControlsManager and never
 -- binds PADBACK (Xbox View / Change Focus Frame).
@@ -19,6 +19,58 @@ local focusCallbackRegistered = false
 local focusRefreshQueued = false
 local focusVisualsSuspended = false
 
+local themedSurfaces = setmetatable({}, { __mode = "k" })
+local themedButtons  = setmetatable({}, { __mode = "k" })
+local themedInputs   = setmetatable({}, { __mode = "k" })
+
+local THEME_PALETTES = {
+    MODERN = {
+        surfaceDim     = { 0.05, 0.06, 0.08, 0.98 },
+        surfaceLow     = { 0.08, 0.10, 0.13, 1.00 },
+        surface        = { 0.11, 0.13, 0.18, 1.00 },
+        surfaceHigh    = { 0.15, 0.18, 0.24, 1.00 },
+        surfaceBright  = { 0.19, 0.23, 0.31, 1.00 },
+        outline        = { 0.22, 0.26, 0.34, 0.65 },
+        outlineFocus   = { 0.54, 0.71, 0.97, 0.85 },
+        primary        = { 0.54, 0.71, 0.97, 1.00 },
+        primaryTonal   = { 0.11, 0.22, 0.36, 1.00 },
+        amber          = { 0.99, 0.84, 0.39, 1.00 },
+        amberTonal     = { 0.25, 0.20, 0.09, 1.00 },
+        mint           = { 0.51, 0.79, 0.58, 1.00 },
+        mintTonal      = { 0.08, 0.23, 0.15, 1.00 },
+        coral          = { 0.95, 0.55, 0.51, 1.00 },
+        coralTonal     = { 0.28, 0.11, 0.11, 1.00 },
+        inputBarIdle   = { 0.37, 0.40, 0.46, 0.85 },
+        focusBg        = { 0.54, 0.71, 0.97, 0.06 },
+        focusBorder    = { 0.54, 0.71, 0.97, 0.92 },
+        typingBg       = { 0.51, 0.79, 0.58, 0.08 },
+        typingBorder   = { 0.51, 0.79, 0.58, 0.98 },
+    },
+    NATIVE = {
+        surfaceDim     = { 0.07, 0.06, 0.04, 0.97 },
+        surfaceLow     = { 0.11, 0.09, 0.06, 0.98 },
+        surface        = { 0.15, 0.12, 0.08, 0.98 },
+        surfaceHigh    = { 0.20, 0.16, 0.11, 1.00 },
+        surfaceBright  = { 0.27, 0.21, 0.13, 1.00 },
+        outline        = { 0.58, 0.46, 0.22, 0.85 },
+        outlineFocus   = { 1.00, 0.82, 0.18, 0.95 },
+        primary        = { 0.96, 0.78, 0.24, 1.00 },
+        primaryTonal   = { 0.26, 0.19, 0.07, 1.00 },
+        amber          = { 1.00, 0.84, 0.32, 1.00 },
+        amberTonal     = { 0.30, 0.21, 0.07, 1.00 },
+        mint           = { 0.44, 0.82, 0.48, 1.00 },
+        mintTonal      = { 0.10, 0.23, 0.11, 1.00 },
+        coral          = { 0.90, 0.38, 0.34, 1.00 },
+        coralTonal     = { 0.30, 0.10, 0.09, 1.00 },
+        inputBarIdle   = { 0.58, 0.46, 0.22, 0.90 },
+        focusBg        = { 1.00, 0.82, 0.18, 0.08 },
+        focusBorder    = { 1.00, 0.82, 0.18, 0.96 },
+        typingBg       = { 0.44, 0.82, 0.48, 0.10 },
+        typingBorder   = { 0.44, 0.82, 0.48, 0.98 },
+    },
+}
+
+-- Shared live palette table (mutated in-place by ApplyTheme so cached `local M3 = ns.M3` references update automatically)
 ns.M3 = {
     surfaceDim     = { 0.05, 0.06, 0.08, 0.98 },
     surfaceLow     = { 0.08, 0.10, 0.13, 1.00 },
@@ -35,6 +87,11 @@ ns.M3 = {
     mintTonal      = { 0.08, 0.23, 0.15, 1.00 },
     coral          = { 0.95, 0.55, 0.51, 1.00 },
     coralTonal     = { 0.28, 0.11, 0.11, 1.00 },
+    inputBarIdle   = { 0.37, 0.40, 0.46, 0.85 },
+    focusBg        = { 0.54, 0.71, 0.97, 0.06 },
+    focusBorder    = { 0.54, 0.71, 0.97, 0.92 },
+    typingBg       = { 0.51, 0.79, 0.58, 0.08 },
+    typingBorder   = { 0.51, 0.79, 0.58, 0.98 },
 }
 
 local SOLID_BACKDROP = {
@@ -43,6 +100,143 @@ local SOLID_BACKDROP = {
     edgeSize = 1,
     insets   = { left = 1, right = 1, top = 1, bottom = 1 },
 }
+
+local NATIVE_WINDOW_BACKDROP = {
+    bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile     = true,
+    tileSize = 32,
+    edgeSize = 14,
+    insets   = { left = 3, right = 3, top = 3, bottom = 3 },
+}
+
+local NATIVE_CONTROL_BACKDROP = {
+    bgFile   = "Interface\\Buttons\\WHITE8x8",
+    edgeFile = "Interface\\Buttons\\WHITE8x8",
+    edgeSize = 1,
+    insets   = { left = 1, right = 1, top = 1, bottom = 1 },
+}
+
+function ns:GetUITheme()
+    local ui = ns.db and ns.db.ui
+    if ui and ui.theme == "NATIVE" then
+        return "NATIVE"
+    end
+    return "MODERN"
+end
+
+function ns:IsHighContrastFocus()
+    local ui = ns.db and ns.db.ui
+    return (ui and ui.highContrastFocus == true) or false
+end
+
+local function FindM3Key(colorTable)
+    if type(colorTable) ~= "table" then return nil end
+    for k, tbl in pairs(ns.M3) do
+        if tbl == colorTable then
+            return k
+        end
+    end
+    return nil
+end
+
+local function IsLargeWindowSurface(frame, bgKey)
+    if not frame then return false end
+    if bgKey == "surfaceDim" then
+        local w = (frame.GetWidth and frame:GetWidth()) or 0
+        local h = (frame.GetHeight and frame:GetHeight()) or 0
+        if w == 0 or h == 0 or (w >= 220 and h >= 110) then
+            return true
+        end
+    end
+    return false
+end
+
+local function ApplyBackdropForTheme(frame, bgColor, borderColor, bgKey)
+    if not frame or not frame.SetBackdrop then return end
+    local theme = ns:GetUITheme()
+    local useNativeWindow = (theme == "NATIVE") and IsLargeWindowSurface(frame, bgKey)
+
+    if useNativeWindow then
+        frame:SetBackdrop(NATIVE_WINDOW_BACKDROP)
+        local bg = bgColor or ns.M3.surfaceDim
+        local brd = borderColor or ns.M3.outline
+        frame:SetBackdropColor(bg[1], bg[2], bg[3], math.min(0.98, bg[4] or 0.96))
+        frame:SetBackdropBorderColor(brd[1], brd[2], brd[3], brd[4] or 0.95)
+    else
+        frame:SetBackdrop(theme == "NATIVE" and NATIVE_CONTROL_BACKDROP or SOLID_BACKDROP)
+        frame:SetBackdropColor(unpack(bgColor or ns.M3.surface))
+        frame:SetBackdropBorderColor(unpack(borderColor or ns.M3.outline))
+    end
+end
+
+local function SyncFocusRingAppearance()
+    if not focusRing then return end
+    local hiContrast = ns:IsHighContrastFocus()
+    local edgePx = hiContrast and 3 or 2
+    focusRing:SetBackdrop({
+        bgFile   = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = edgePx,
+        insets   = { left = edgePx, right = edgePx, top = edgePx, bottom = edgePx },
+    })
+
+    local isTyping = (ns.activeEditBox and ns.currentFocus and ns.activeEditBox == ns.currentFocus)
+    if isTyping then
+        local bg = ns.M3.typingBg
+        local brd = ns.M3.typingBorder
+        focusRing:SetBackdropColor(bg[1], bg[2], bg[3], hiContrast and (bg[4] + 0.06) or bg[4])
+        focusRing:SetBackdropBorderColor(brd[1], brd[2], brd[3], 1.0)
+    else
+        local bg = ns.M3.focusBg
+        local brd = ns.M3.focusBorder
+        focusRing:SetBackdropColor(bg[1], bg[2], bg[3], hiContrast and (bg[4] + 0.08) or bg[4])
+        focusRing:SetBackdropBorderColor(brd[1], brd[2], brd[3], hiContrast and 1.0 or brd[4])
+    end
+end
+
+function ns:ApplyTheme(themeKey)
+    if themeKey == "MODERN" or themeKey == "NATIVE" then
+        if ns.db and ns.db.ui then
+            ns.db.ui.theme = themeKey
+        end
+    end
+
+    local activeTheme = ns:GetUITheme()
+    local src = THEME_PALETTES[activeTheme] or THEME_PALETTES.MODERN
+    for k, vals in pairs(src) do
+        local dst = ns.M3[k]
+        if type(dst) ~= "table" then
+            ns.M3[k] = { vals[1], vals[2], vals[3], vals[4] }
+        else
+            dst[1], dst[2], dst[3], dst[4] = vals[1], vals[2], vals[3], vals[4]
+        end
+    end
+
+    for frame, meta in pairs(themedSurfaces) do
+        local bg  = (meta.bgKey and ns.M3[meta.bgKey]) or meta.bgFallback or ns.M3.surface
+        local brd = (meta.borderKey and ns.M3[meta.borderKey]) or meta.borderFallback or ns.M3.outline
+        ApplyBackdropForTheme(frame, bg, brd, meta.bgKey)
+    end
+
+    for btn in pairs(themedButtons) do
+        if btn.SetTone then
+            btn:SetTone(btn._padRPTone)
+        end
+    end
+
+    for inp in pairs(themedInputs) do
+        if inp._padRPApplyTheme then
+            inp:_padRPApplyTheme()
+        end
+    end
+
+    SyncFocusRingAppearance()
+
+    if ns.currentFocus and ns.currentFocus.IsVisible and ns.currentFocus:IsVisible() then
+        ns:SetControllerFocus(ns.currentFocus)
+    end
+end
 
 local function CountDisplayChars(str)
     if type(strlenutf8) == "function" then
@@ -130,9 +324,17 @@ end
 
 function ns:ApplySurface(frame, bgColor, borderColor)
     if not frame then return end
-    frame:SetBackdrop(SOLID_BACKDROP)
-    frame:SetBackdropColor(unpack(bgColor or ns.M3.surface))
-    frame:SetBackdropBorderColor(unpack(borderColor or ns.M3.outline))
+    local bgKey = FindM3Key(bgColor)
+    local borderKey = FindM3Key(borderColor)
+
+    themedSurfaces[frame] = {
+        bgKey          = bgKey,
+        borderKey      = borderKey,
+        bgFallback     = bgColor,
+        borderFallback = borderColor,
+    }
+
+    ApplyBackdropForTheme(frame, bgColor, borderColor, bgKey)
 end
 
 function ns:EnableClipping(frame)
@@ -209,14 +411,7 @@ local function GetOrCreateFocusRing()
     if focusRing then return focusRing end
 
     focusRing = CreateFrame("Frame", "PadRP_FocusRing", UIParent, "BackdropTemplate")
-    focusRing:SetBackdrop({
-        bgFile   = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 2,
-        insets   = { left = 2, right = 2, top = 2, bottom = 2 },
-    })
-    focusRing:SetBackdropColor(0.54, 0.71, 0.97, 0.05)
-    focusRing:SetBackdropBorderColor(0.54, 0.71, 0.97, 0.90)
+    SyncFocusRingAppearance()
     focusRing:EnableMouse(false)
     focusRing:SetScript("OnUpdate", function()
         if not ns.currentFocus then
@@ -437,20 +632,14 @@ function ns:SetControllerFocus(widget)
     local ring = GetOrCreateFocusRing()
     local strata = (widget.GetFrameStrata and widget:GetFrameStrata()) or "DIALOG"
     local level = (widget.GetFrameLevel and widget:GetFrameLevel()) or 40
+    local pad = ns:IsHighContrastFocus() and 3 or 2
     ring:SetFrameStrata(strata)
     ring:SetFrameLevel(level + 25)
     ring:ClearAllPoints()
-    ring:SetPoint("TOPLEFT", widget, "TOPLEFT", -2, 2)
-    ring:SetPoint("BOTTOMRIGHT", widget, "BOTTOMRIGHT", 2, -2)
+    ring:SetPoint("TOPLEFT", widget, "TOPLEFT", -pad, pad)
+    ring:SetPoint("BOTTOMRIGHT", widget, "BOTTOMRIGHT", pad, -pad)
 
-    if ns.activeEditBox and ns.activeEditBox == widget then
-        ring:SetBackdropColor(0.51, 0.79, 0.58, 0.06)
-        ring:SetBackdropBorderColor(0.51, 0.79, 0.58, 0.95)
-    else
-        ring:SetBackdropColor(0.54, 0.71, 0.97, 0.05)
-        ring:SetBackdropBorderColor(0.54, 0.71, 0.97, 0.90)
-    end
-
+    SyncFocusRingAppearance()
     ring:Show()
 end
 
@@ -666,7 +855,7 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
     box.bottomBar:SetHeight(2)
     box.bottomBar:SetPoint("BOTTOMLEFT", 0, 0)
     box.bottomBar:SetPoint("BOTTOMRIGHT", 0, 0)
-    box.bottomBar:SetColorTexture(0.37, 0.40, 0.46, 0.85)
+    box.bottomBar:SetColorTexture(unpack(M3.inputBarIdle))
 
     box.placeholder = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     box.placeholder:SetPoint("LEFT", 10, 0)
@@ -692,6 +881,21 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
         box:SetCursorPosition(#(box:GetText() or ""))
     end)
     box.padBtn = padBtn
+
+    local function RefreshBoxColors(self)
+        if self:HasFocus() then
+            self:SetBackdropColor(unpack(M3.surfaceHigh))
+            self.bottomBar:SetColorTexture(unpack(M3.mint))
+        elseif ns.currentFocus == self then
+            self:SetBackdropColor(unpack(M3.surfaceHigh))
+            self.bottomBar:SetColorTexture(unpack(M3.primary))
+        else
+            self:SetBackdropColor(unpack(M3.surface))
+            self.bottomBar:SetColorTexture(unpack(M3.inputBarIdle))
+        end
+    end
+    box._padRPApplyTheme = RefreshBoxColors
+    themedInputs[box] = true
 
     local function UpdatePlaceholder(self)
         if self:GetText() == "" and not self:HasFocus() then
@@ -720,8 +924,7 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
         ns.activeEditBox = self
         padBtn:Hide()
         ns:SetControllerFocus(self)
-        self:SetBackdropColor(unpack(M3.surfaceHigh))
-        self.bottomBar:SetColorTexture(0.51, 0.79, 0.58, 1.0)
+        RefreshBoxColors(self)
         UpdatePlaceholder(self)
         if ns.ShowStatusToast then
             ns:ShowStatusToast("Typing Mode: Press [A], [B], or [Enter] when finished")
@@ -731,8 +934,7 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
     box:SetScript("OnEditFocusLost", function(self)
         if ns.activeEditBox == self then ns.activeEditBox = nil end
         padBtn:Show()
-        self:SetBackdropColor(unpack(ns.currentFocus == self and M3.surfaceHigh or M3.surface))
-        self.bottomBar:SetColorTexture(unpack(ns.currentFocus == self and M3.primary or { 0.37, 0.40, 0.46, 0.85 }))
+        RefreshBoxColors(self)
         if ns.currentFocus == self then ns:SetControllerFocus(self) end
         UpdatePlaceholder(self)
         if self.isDirty and onCommit then onCommit(self:GetText()) end
@@ -753,14 +955,8 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
         padBtn:Hide()
         box:SetFocus()
         box:SetCursorPosition(#(box:GetText() or ""))
-    end, function(self, isFocused)
-        if isFocused then
-            self:SetBackdropColor(unpack(M3.surfaceHigh))
-            self.bottomBar:SetColorTexture(0.54, 0.71, 0.97, 1.0)
-        elseif not self:HasFocus() then
-            self:SetBackdropColor(unpack(M3.surface))
-            self.bottomBar:SetColorTexture(0.37, 0.40, 0.46, 0.85)
-        end
+    end, function(self)
+        RefreshBoxColors(self)
     end)
 
     return box
@@ -779,7 +975,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     container.bottomBar:SetHeight(2)
     container.bottomBar:SetPoint("BOTTOMLEFT", 0, 0)
     container.bottomBar:SetPoint("BOTTOMRIGHT", 0, 0)
-    container.bottomBar:SetColorTexture(0.37, 0.40, 0.46, 0.85)
+    container.bottomBar:SetColorTexture(unpack(M3.inputBarIdle))
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", 12, -10)
@@ -828,6 +1024,21 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     end)
     container.padBtn = padBtn
 
+    local function RefreshContainerColors(self)
+        if editBox:HasFocus() then
+            self:SetBackdropColor(unpack(M3.surfaceHigh))
+            self.bottomBar:SetColorTexture(unpack(M3.mint))
+        elseif ns.currentFocus == self then
+            self:SetBackdropColor(unpack(M3.surfaceHigh))
+            self.bottomBar:SetColorTexture(unpack(M3.primary))
+        else
+            self:SetBackdropColor(unpack(M3.surface))
+            self.bottomBar:SetColorTexture(unpack(M3.inputBarIdle))
+        end
+    end
+    container._padRPApplyTheme = RefreshContainerColors
+    themedInputs[container] = true
+
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
         if not delta or delta == 0 then return end
         ScrollFrameByDelta(self, delta > 0 and -36 or 36)
@@ -872,8 +1083,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
         ns.activeEditBox = container
         padBtn:Hide()
         ns:SetControllerFocus(container)
-        container:SetBackdropColor(unpack(M3.surfaceHigh))
-        container.bottomBar:SetColorTexture(0.51, 0.79, 0.58, 1.0)
+        RefreshContainerColors(container)
         UpdateState()
         if ns.ShowStatusToast then
             ns:ShowStatusToast("Editing Text: Press [B] or [Escape] when finished")
@@ -882,8 +1092,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     editBox:SetScript("OnEditFocusLost", function()
         if ns.activeEditBox == container then ns.activeEditBox = nil end
         padBtn:Show()
-        container:SetBackdropColor(unpack(ns.currentFocus == container and M3.surfaceHigh or M3.surface))
-        container.bottomBar:SetColorTexture(unpack(ns.currentFocus == container and M3.primary or { 0.37, 0.40, 0.46, 0.85 }))
+        RefreshContainerColors(container)
         if ns.currentFocus == container then ns:SetControllerFocus(container) end
         UpdateState()
         if container.isDirty and onCommit then onCommit(editBox:GetText()) end
@@ -918,14 +1127,8 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
         padBtn:Hide()
         editBox:SetFocus()
         editBox:SetCursorPosition(#(editBox:GetText() or ""))
-    end, function(self, isFocused)
-        if isFocused then
-            self:SetBackdropColor(unpack(M3.surfaceHigh))
-            self.bottomBar:SetColorTexture(0.54, 0.71, 0.97, 1.0)
-        elseif not editBox:HasFocus() then
-            self:SetBackdropColor(unpack(M3.surface))
-            self.bottomBar:SetColorTexture(0.37, 0.40, 0.46, 0.85)
-        end
+    end, function(self)
+        RefreshContainerColors(self)
     end)
 
     return container
@@ -947,6 +1150,7 @@ function ns:CreateMaterialButton(parent, text, width, height, x, y, tone, onClic
     end
 
     btn.SetTone = function(self, newTone)
+        self._padRPTone = newTone
         local bg, brd = ResolveTone(newTone)
         self.defaultBg, self.defaultBorder = bg, brd
         if ns.currentFocus == self then
@@ -956,6 +1160,7 @@ function ns:CreateMaterialButton(parent, text, width, height, x, y, tone, onClic
         end
     end
     btn:SetTone(tone)
+    themedButtons[btn] = true
 
     btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     btn.label:SetPoint("LEFT", 8, 0)

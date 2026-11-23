@@ -15,6 +15,8 @@ local defaultSettings = {
         scale = 1.0,
         width = 680,
         height = 560,
+        theme = "MODERN",
+        highContrastFocus = false,
         showTargetHUD = true,
         rpTooltip = true,
         nameplateClassColors = true,
@@ -758,6 +760,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         SanitizeList(ns.db.gratitude.resPhrases)
         SanitizeList(ns.db.gratitude.summonPhrases)
         SanitizeList(ns.db.gratitude.specialPhrases)
+
+        if ns.ApplyTheme then ns:ApplyTheme() end
     elseif event == "PLAYER_LOGIN" then
         local charKey = ns:GetPlayerCharKey()
         local profId = ns.db.activeProfileByChar[charKey]
@@ -790,6 +794,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         EnsureProfileStructure(ns.profile)
         ns:SnapshotActiveProfile()
 
+        if ns.ApplyTheme then ns:ApplyTheme() end
         if ns.InitMSPProtocol then ns:InitMSPProtocol() end
         if ns.InitNameplates then ns:InitNameplates() end
         if ns.InitGratitude then ns:InitGratitude() end
@@ -797,6 +802,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         if ns.InitControllerUI then ns:InitControllerUI() end
         if ns.InitDossierWindow then ns:InitDossierWindow() end
         if ns.InitFlyoutWheel then ns:InitFlyoutWheel() end
+        if ns.ApplyTheme then ns:ApplyTheme() end
         InitRPChatFilter()
         pcall(InitRPContextMenu)
 
@@ -828,7 +834,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         end)
 
         local loadedLabel = (ns.profile.firstName and ns.profile.firstName ~= "") and ns.profile.firstName or (ns.profile.profileName or UnitName("player"))
-        print("|cff8ab4f8[PadRP]|r PadRP Suite v1.1.0 loaded. Profile: |cfffdd663" .. loadedLabel .. "|r.")
+        print("|cff8ab4f8[PadRP]|r PadRP Suite v1.2.0 loaded. Profile: |cfffdd663" .. loadedLabel .. "|r.")
     elseif event == "PLAYER_LOGOUT" then
         ns:SnapshotActiveProfile()
     elseif event == "PLAYER_FLAGS_CHANGED" and arg1 == "player" then

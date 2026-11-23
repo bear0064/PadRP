@@ -56,45 +56,61 @@ function mod.Build(p7)
     p7.wideSizeBtn = ns:CreateMaterialButton(p7, "Wide", 72, 28, 410, -14, "PRIMARY", function() ns:SetWindowDimensions(880, 620) end)
     p7.largeSizeBtn = ns:CreateMaterialButton(p7, "Large", 72, 28, 490, -14, "AMBER", function() ns:SetWindowDimensions(980, 700) end)
 
-    p7.minimapBtn   = ns:CreateMaterialButton(p7, "", 280, 28, 16, -50, nil, function()
+    p7.themeBtn = ns:CreateMaterialButton(p7, "", 280, 28, 16, -50, "PRIMARY", function()
+        local cur = (ns.GetUITheme and ns:GetUITheme()) or "MODERN"
+        local nextTheme = (cur == "MODERN") and "NATIVE" or "MODERN"
+        ns.db.ui.theme = nextTheme
+        if ns.ApplyTheme then ns:ApplyTheme(nextTheme) end
+        ns:RefreshControllerUI()
+        if ns.RefreshTargetHUD then ns:RefreshTargetHUD() end
+        ns:ShowStatusToast(nextTheme == "NATIVE" and "UI Theme: WoW Native" or "UI Theme: Modern Dark")
+    end)
+    p7.focusContrastBtn = ns:CreateMaterialButton(p7, "", 280, 28, 308, -50, nil, function()
+        ns.db.ui.highContrastFocus = not (ns.db.ui.highContrastFocus == true)
+        if ns.ApplyTheme then ns:ApplyTheme() end
+        ns:RefreshControllerUI()
+        ns:ShowStatusToast(ns.db.ui.highContrastFocus and "Focus Ring: High Contrast (Couch)" or "Focus Ring: Standard")
+    end)
+
+    p7.minimapBtn   = ns:CreateMaterialButton(p7, "", 280, 28, 16, -84, nil, function()
         ns.db.ui.showMinimap = not ns.db.ui.showMinimap
         if ns.RefreshMinimapButton then ns:RefreshMinimapButton() end
         ns:RefreshControllerUI()
     end)
-    p7.hudBtn       = ns:CreateMaterialButton(p7, "", 280, 28, 308, -50, nil, function()
+    p7.hudBtn       = ns:CreateMaterialButton(p7, "", 280, 28, 308, -84, nil, function()
         ns.db.ui.showTargetHUD = not (ns.db.ui.showTargetHUD ~= false)
         ns:RefreshControllerUI()
         if ns.RefreshTargetHUD then ns:RefreshTargetHUD() end
     end)
 
-    p7.hudRPBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 16, -84, nil, function()
+    p7.hudRPBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 16, -118, nil, function()
         ns.db.ui.rpTooltip = not ns.db.ui.rpTooltip
         ns:RefreshControllerUI()
     end)
-    p7.npClassBtn   = ns:CreateMaterialButton(p7, "", 280, 28, 308, -84, nil, function()
+    p7.npClassBtn   = ns:CreateMaterialButton(p7, "", 280, 28, 308, -118, nil, function()
         ns.db.ui.nameplateClassColors = not ns.db.ui.nameplateClassColors
         if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
         ns:RefreshControllerUI()
     end)
 
-    p7.npTagBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 16, -118, nil, function()
+    p7.npTagBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 16, -152, nil, function()
         ns.db.ui.nameplateStatusTags = not (ns.db.ui.nameplateStatusTags ~= false)
         if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
         ns:RefreshControllerUI()
     end)
-    p7.npRPNameBtn  = ns:CreateMaterialButton(p7, "", 280, 28, 308, -118, nil, function()
+    p7.npRPNameBtn  = ns:CreateMaterialButton(p7, "", 280, 28, 308, -152, nil, function()
         ns.db.ui.nameplateRPNames = not ns.db.ui.nameplateRPNames
         if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
         ns:RefreshControllerUI()
     end)
 
-    p7.npStyleBtn   = ns:CreateMaterialButton(p7, "", 280, 28, 16, -152, "AMBER", function()
+    p7.npStyleBtn   = ns:CreateMaterialButton(p7, "", 280, 28, 16, -186, "AMBER", function()
         local chosen = CycleStandingStyle()
         if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
         ns:RefreshControllerUI()
         ns:ShowStatusToast("Nameplate Standing Style: " .. chosen.label)
     end)
-    p7.npColorsBtn  = ns:CreateMaterialButton(p7, "", 280, 28, 308, -152, "PRIMARY", function()
+    p7.npColorsBtn  = ns:CreateMaterialButton(p7, "", 280, 28, 308, -186, "PRIMARY", function()
         local cur = (ns.GetNameplateStandingColorMode and ns:GetNameplateStandingColorMode()) or "7COLOR"
         ns.db.ui.nameplateStandingColorMode = (cur == "7COLOR") and "4BUCKET" or "7COLOR"
         if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
@@ -104,34 +120,34 @@ function mod.Build(p7)
             or "Standing Colors: All 7 Colors")
     end)
 
-    p7.combatBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 16, -186, nil, function()
+    p7.combatBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 16, -220, nil, function()
         ns.db.ui.hideInCombat = not ns.db.ui.hideInCombat
         ns:RefreshControllerUI()
     end)
-    p7.soundBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 308, -186, nil, function()
+    p7.soundBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 308, -220, nil, function()
         ns.db.ui.soundEffects = not ns.db.ui.soundEffects
         ns:RefreshControllerUI()
     end)
 
-    p7.partyBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 16, -220, nil, function()
+    p7.partyBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 16, -254, nil, function()
         ns.db.gratitude.ignoreParty = not ns.db.gratitude.ignoreParty
         ns:RefreshControllerUI()
     end)
-    p7.rpNameBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 308, -220, nil, function()
+    p7.rpNameBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 308, -254, nil, function()
         ns.db.gratitude.useRPNames = not ns.db.gratitude.useRPNames
         ns:RefreshControllerUI()
     end)
 
-    p7.chatRPBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 16, -254, nil, function()
+    p7.chatRPBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 16, -288, nil, function()
         ns.db.ui.chatRPNames = not ns.db.ui.chatRPNames
         ns:RefreshControllerUI()
     end)
-    p7.afkOOCBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 308, -254, nil, function()
+    p7.afkOOCBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 308, -288, nil, function()
         ns.db.ui.autoAFKOOC = not ns.db.ui.autoAFKOOC
         ns:RefreshControllerUI()
     end)
 
-    p7.openExpBtn = ns:CreateMaterialButton(p7, "Export / Import Profile String", 280, 30, 16, -294, "PRIMARY", function()
+    p7.openExpBtn = ns:CreateMaterialButton(p7, "Export / Import Profile String", 280, 30, 16, -326, "PRIMARY", function()
         UI:CommitModifiedBoxesToProfile(false)
         if mf and mf.exportModal then
             mf.exportModal.box:SetCleanText(ns:ExportCurrentProfileString())
@@ -140,7 +156,7 @@ function mod.Build(p7)
         end
     end)
 
-    p7.devModeBtn = ns:CreateMaterialButton(p7, "", 280, 30, 308, -294, nil, function()
+    p7.devModeBtn = ns:CreateMaterialButton(p7, "", 280, 30, 308, -326, nil, function()
         ns.db.ui.devMode = not ns.db.ui.devMode
         ns:RefreshControllerUI()
         ns:ShowStatusToast(ns.db.ui.devMode and "Developer Mode enabled (Dev Console unlocked)" or "Developer Mode hidden")
@@ -186,14 +202,15 @@ function mod.Layout(p7)
     }, 16, 16, 6)
 
     local pairs7 = {
-        { -50,  p7.minimapBtn, p7.hudBtn },
-        { -84,  p7.hudRPBtn,   p7.npClassBtn },
-        { -118, p7.npTagBtn,   p7.npRPNameBtn },
-        { -152, p7.npStyleBtn, p7.npColorsBtn },
-        { -186, p7.combatBtn,  p7.soundBtn },
-        { -220, p7.partyBtn,   p7.rpNameBtn },
-        { -254, p7.chatRPBtn,  p7.afkOOCBtn },
-        { -294, p7.openExpBtn, p7.devModeBtn },
+        { -50,  p7.themeBtn,   p7.focusContrastBtn },
+        { -84,  p7.minimapBtn, p7.hudBtn },
+        { -118, p7.hudRPBtn,   p7.npClassBtn },
+        { -152, p7.npTagBtn,   p7.npRPNameBtn },
+        { -186, p7.npStyleBtn, p7.npColorsBtn },
+        { -220, p7.combatBtn,  p7.soundBtn },
+        { -254, p7.partyBtn,   p7.rpNameBtn },
+        { -288, p7.chatRPBtn,  p7.afkOOCBtn },
+        { -326, p7.openExpBtn, p7.devModeBtn },
     }
     for _, row in ipairs(pairs7) do
         if row[3] then
@@ -217,6 +234,20 @@ function mod.Refresh(p7)
 
     local curW, curH = math.floor(mf:GetWidth() + 0.5), math.floor(mf:GetHeight() + 0.5)
     p7.scaleLabel:SetText(string.format("Scale: |cfffdd663%.0f%%|r  (|cff8ab4f8%dx%d|r)", (ui.scale or 1.0) * 100, curW, curH))
+
+    local activeTheme = (ns.GetUITheme and ns:GetUITheme()) or "MODERN"
+    if p7.themeBtn then
+        local tLabel = (activeTheme == "NATIVE") and "|cfffdd663WoW Native|r" or "|cff8ab4f8Modern Dark|r"
+        p7.themeBtn:SetText("UI Theme: " .. tLabel)
+        p7.themeBtn:SetTone(activeTheme == "NATIVE" and "AMBER" or "PRIMARY")
+    end
+
+    if p7.focusContrastBtn then
+        local hi = (ui.highContrastFocus == true)
+        p7.focusContrastBtn:SetText(UI:FormatCheckbox("High-Contrast Focus Ring", hi, "fffdd663"))
+        p7.focusContrastBtn:SetTone(hi and "AMBER" or nil)
+    end
+
     p7.minimapBtn:SetText(UI:FormatCheckbox("Minimap Icon", ui.showMinimap, "ff81c995"))
     p7.hudBtn:SetText(UI:FormatCheckbox("Toast Notification (Target HUD)", ui.showTargetHUD ~= false, "ff81c995"))
     p7.hudRPBtn:SetText(UI:FormatCheckbox("TRP3-Style Player Tooltip", ui.rpTooltip, "ff8ab4f8"))
