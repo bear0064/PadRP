@@ -184,10 +184,23 @@ local function GetHealthBarFrame(nameplate)
     return nil
 end
 
-local function GetOrCreateSideBadge(nameplate, state)
+local function GetOrCreateSubRow(nameplate, state)
+    if state.subRow then return state.subRow end
+
+    local row = CreateFrame("Frame", nil, nameplate)
+    row:SetHeight(14)
+    row:SetWidth(40)
+    row:SetFrameStrata("LOW")
+    row:Hide()
+
+    state.subRow = row
+    return row
+end
+
+local function GetOrCreateSideBadge(subRow, state)
     if state.sideBadge then return state.sideBadge end
 
-    local badge = CreateFrame("Frame", nil, nameplate, "BackdropTemplate")
+    local badge = CreateFrame("Frame", nil, subRow, "BackdropTemplate")
     badge:SetHeight(14)
     badge:SetWidth(34)
     badge:SetBackdrop(SOLID_BACKDROP)
@@ -204,11 +217,11 @@ local function GetOrCreateSideBadge(nameplate, state)
     return badge
 end
 
-local function GetOrCreateStandingPill(nameplate, state)
+local function GetOrCreateStandingPill(subRow, state)
     if state.standingPill then return state.standingPill end
 
-    local pill = CreateFrame("Frame", nil, nameplate, "BackdropTemplate")
-    pill:SetHeight(13)
+    local pill = CreateFrame("Frame", nil, subRow, "BackdropTemplate")
+    pill:SetHeight(14)
     pill:SetWidth(42)
     pill:SetBackdrop(SOLID_BACKDROP)
     pill:SetBackdropColor(0.05, 0.06, 0.08, 0.92)
@@ -225,10 +238,10 @@ local function GetOrCreateStandingPill(nameplate, state)
     return pill
 end
 
-local function GetOrCreateStandingDot(nameplate, state)
+local function GetOrCreateStandingDot(subRow, state)
     if state.standingDot then return state.standingDot end
 
-    local dot = nameplate:CreateTexture(nil, "OVERLAY")
+    local dot = subRow:CreateTexture(nil, "OVERLAY")
     dot:SetSize(10, 10)
     dot:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
     dot:Hide()
@@ -237,10 +250,10 @@ local function GetOrCreateStandingDot(nameplate, state)
     return dot
 end
 
-local function GetOrCreateAccentStripe(nameplate, state)
+local function GetOrCreateAccentStripe(subRow, state)
     if state.accentStripe then return state.accentStripe end
 
-    local stripe = nameplate:CreateTexture(nil, "OVERLAY")
+    local stripe = subRow:CreateTexture(nil, "OVERLAY")
     stripe:SetSize(3, 14)
     stripe:SetTexture("Interface\\Buttons\\WHITE8x8")
     stripe:Hide()
@@ -263,6 +276,7 @@ local function RestoreNameplateDefault(nameplate, unit)
 
     if state.sideBadge then state.sideBadge:Hide() end
     HideAllStandingVisuals(state)
+    if state.subRow then state.subRow:Hide() end
 
     local nameFS = GetNameFontString(nameplate)
     if nameFS and state.styled then
@@ -374,21 +388,15 @@ local function StyleFriendlyNameplateInternal(unit)
         state.styled = true
     end
 
-    local showICOOC = IsICOOCEnabled(ui)
-    local badgeShown = false
-    local badge = state.sideBadge
+    local subRow = GetOrCreateSubRow(nameplate, state)
+    subRow:SetFrameLevel((nameplate:GetFrameLevel() or 1) + 10)
 
-    if showICOOC and hasProfile then
-        badge = GetOrCreateSideBadge(nameplate, state)
-        badge:ClearAllPoints()
-        if healthBar then
-            badge:SetPoint("RIGHT", healthBar, "LEFT", -5, 0)
-        elseif nameFS and nameFS:IsShown() then
-            badge:SetPoint("RIGHT", nameFS, "LEFT", -5, 0)
-        else
-            badge:SetPoint("LEFT", nameplate, "LEFT", 0, 0)
-        end
+    local showICOOC = IsICOOCEnabled(ui) and hasProfile
+    local badge = nil
+    local badgeW = 0
 
+    if showICOOC then
+        badge = GetOrCreateSideBadge(subRow, state)
         local wuCode = nil
         if ns.GetTargetWalkUpInfo then
             local okW, _, codeW = pcall(ns.GetTargetWalkUpInfo, ns, data)
@@ -405,71 +413,80 @@ local function StyleFriendlyNameplateInternal(unit)
         end
 
         local textW = badge.text:GetStringWidth() or 22
-        badge:SetWidth(math.max(28, textW + 10))
-        badge:Show()
-        badgeShown = true
+        badgeW = math.max(28, textW + 10)
+        badge:SetWidth(badgeW)
     elseif state.sideBadge then
         state.sideBadge:Hide()
     end
 
     HideAllStandingVisuals(state)
 
-    if standingColor and standingStyle ~= "OFF" then
+    local standingWidget = nil
+    local standingW = 0
+
+    if standingColor and standingStyle ~= "OFF" and standingStyle ~= "CHEVRON" then
         local sr, sg, sb, sa = standingColor[1], standingColor[2], standingColor[3], standingColor[4] or 1.0
         local sHex = RGBToHex(sr, sg, sb)
 
         if standingStyle == "CIRCLE" then
-            local dot = GetOrCreateStandingDot(nameplate, state)
-            dot:ClearAllPoints()
-            if badgeShown and badge then
-                dot:SetPoint("BOTTOM", badge, "TOP", 0, 2)
-            elseif healthBar then
-                dot:SetPoint("BOTTOMLEFT", healthBar, "TOPLEFT", 0, 3)
-            elseif nameFS and nameFS:IsShown() then
-                dot:SetPoint("BOTTOM", nameFS, "TOP", 0, 2)
-            else
-                dot:SetPoint("TOP", nameplate, "TOP", 0, 0)
-            end
+            local dot = GetOrCreateStandingDot(subRow, state)
             dot:SetVertexColor(sr, sg, sb, sa)
-            dot:Show()
-
+            standingWidget = dot
+            standingW = 10
         elseif standingStyle == "STRIPE" then
-            local stripe = GetOrCreateAccentStripe(nameplate, state)
-            stripe:ClearAllPoints()
-            if badgeShown and badge then
-                stripe:SetHeight(math.max(14, badge:GetHeight() or 14))
-                stripe:SetPoint("RIGHT", badge, "LEFT", -3, 0)
-            elseif healthBar then
-                stripe:SetHeight(math.max(12, healthBar:GetHeight() or 14))
-                stripe:SetPoint("RIGHT", healthBar, "LEFT", -4, 0)
-            elseif nameFS and nameFS:IsShown() then
-                stripe:SetHeight(14)
-                stripe:SetPoint("RIGHT", nameFS, "LEFT", -5, 0)
-            else
-                stripe:SetPoint("LEFT", nameplate, "LEFT", 0, 0)
-            end
+            local stripe = GetOrCreateAccentStripe(subRow, state)
+            stripe:SetHeight(14)
             stripe:SetVertexColor(sr, sg, sb, sa)
-            stripe:Show()
-
+            standingWidget = stripe
+            standingW = 3
         elseif standingStyle == "PILL" then
-            local pill = GetOrCreateStandingPill(nameplate, state)
-            pill:ClearAllPoints()
-            if badgeShown and badge then
-                pill:SetPoint("BOTTOM", badge, "TOP", 0, 2)
-            elseif healthBar then
-                pill:SetPoint("BOTTOMLEFT", healthBar, "TOPLEFT", 0, 2)
-            elseif nameFS and nameFS:IsShown() then
-                pill:SetPoint("CENTER", nameFS, "CENTER", 0, 12)
-            else
-                pill:SetPoint("TOP", nameplate, "TOP", 0, 0)
-            end
+            local pill = GetOrCreateStandingPill(subRow, state)
             pill:SetBackdropBorderColor(sr, sg, sb, 0.95)
             pill.text:SetText("|c" .. sHex .. string.upper(tostring(standing)) .. "|r")
             local pw = pill.text:GetStringWidth() or 28
-            pill:SetWidth(math.max(34, pw + 8))
-            pill:Show()
+            standingW = math.max(34, pw + 8)
+            pill:SetWidth(standingW)
+            standingWidget = pill
         end
     end
+
+    if not badge and not standingWidget then
+        subRow:Hide()
+        return
+    end
+
+    local gap = (badge and standingWidget) and 4 or 0
+    local totalW = standingW + gap + badgeW
+    subRow:SetSize(totalW, 14)
+    subRow:ClearAllPoints()
+
+    if healthBar then
+        subRow:SetPoint("TOP", healthBar, "BOTTOM", 0, -3)
+    elseif nameFS and nameFS:IsShown() then
+        subRow:SetPoint("TOP", nameFS, "BOTTOM", 0, -3)
+    else
+        subRow:SetPoint("BOTTOM", nameplate, "BOTTOM", 0, -14)
+    end
+
+    if standingWidget and badge then
+        standingWidget:ClearAllPoints()
+        standingWidget:SetPoint("LEFT", subRow, "LEFT", 0, 0)
+        standingWidget:Show()
+
+        badge:ClearAllPoints()
+        badge:SetPoint("RIGHT", subRow, "RIGHT", 0, 0)
+        badge:Show()
+    elseif standingWidget then
+        standingWidget:ClearAllPoints()
+        standingWidget:SetPoint("CENTER", subRow, "CENTER", 0, 0)
+        standingWidget:Show()
+    elseif badge then
+        badge:ClearAllPoints()
+        badge:SetPoint("CENTER", subRow, "CENTER", 0, 0)
+        badge:Show()
+    end
+
+    subRow:Show()
 end
 
 function ns:StyleFriendlyNameplate(unit)

@@ -221,7 +221,7 @@ function UI:CreateIconPicker(parentFrame)
     picker.catalogBadge:SetPoint("TOPLEFT", 16, -39)
     picker.catalogBadge:SetText(string.format("|cff8ab4f8Catalog (%d)|r", poolCount))
 
-    picker.searchBox = ns:CreateMaterialEditBox(picker, nil, "Search by name or ID...", 150, -34, 300, 24, function(txt)
+    picker.searchBox = ns:CreateMaterialEditBox(picker, nil, "Search keyword (owl, vial, cloak) or ID...", 150, -34, 300, 24, function(txt)
         picker.searchQuery = txt or ""
         picker.page = 1
         picker:RebuildFilter()
@@ -290,20 +290,23 @@ function UI:CreateIconPicker(parentFrame)
         cell:SetScript("OnEnter", function(self)
             ns:SetControllerFocus(self)
             if self.iconName then
-                picker.hoverLabel:SetText(UI:FormatPickerIconReadout("Selected:", self.iconName, self.iconID, self.tex))
+                local readout = (ns.IconPool and ns.IconPool.GetDisplayLabel and ns.IconPool:GetDisplayLabel(self.iconID or self.iconName)) or self.iconName
+                picker.hoverLabel:SetText(UI:FormatPickerIconReadout("Selected:", readout, self.iconID, self.tex))
             end
         end)
         cell:SetScript("OnClick", function(self)
-            if not self.iconName then return end
+            local saveVal = (self.iconID and tostring(self.iconID)) or self.iconName
+            if not saveVal or saveVal == "" then return end
             ns:PlayUISound()
-            ApplyPickedIcon(self.iconName)
+            ApplyPickedIcon(saveVal)
         end)
         ns:RegisterFocusable(cell, function() cell:Click("LeftButton") end, function(self, isFocused)
             if isFocused then
                 self:SetBackdropColor(unpack(M3.surfaceBright))
                 self:SetBackdropBorderColor(unpack(M3.primary))
                 if self.iconName then
-                    picker.hoverLabel:SetText(UI:FormatPickerIconReadout("Selected:", self.iconName, self.iconID, self.tex))
+                    local readout = (ns.IconPool and ns.IconPool.GetDisplayLabel and ns.IconPool:GetDisplayLabel(self.iconID or self.iconName)) or self.iconName
+                    picker.hoverLabel:SetText(UI:FormatPickerIconReadout("Selected:", readout, self.iconID, self.tex))
                 end
             else
                 self:SetBackdropColor(unpack(M3.surface))
@@ -395,7 +398,8 @@ function UI:CreateIconPicker(parentFrame)
         if not self.customBox:HasFocus() then
             self.customBox:SetCleanText(currentIcon)
         end
-        self.hoverLabel:SetText(UI:FormatPickerIconReadout("Current:", currentIcon, nil, nil))
+        local currentReadout = (ns.IconPool and ns.IconPool.GetDisplayLabel and ns.IconPool:GetDisplayLabel(currentIcon)) or currentIcon
+        self.hoverLabel:SetText(UI:FormatPickerIconReadout("Current:", currentReadout, nil, nil))
 
         for i = 1, ICONS_PER_PAGE do
             local cell = self.cells[i]
@@ -415,6 +419,7 @@ function UI:CreateIconPicker(parentFrame)
     end
 
     picker.OpenForSlot = function(self, slotIndex, returnWidget)
+        if ns.IconPool and ns.IconPool.EnsureLiveNames then ns.IconPool:EnsureLiveNames() end
         self.mode, self.targetSlot, self.page, self.returnFocusWidget = "GLANCE", slotIndex, 1, returnWidget
         self.searchQuery = ""
         self.searchBox:SetCleanText("")
@@ -424,6 +429,7 @@ function UI:CreateIconPicker(parentFrame)
     end
 
     picker.OpenForPortrait = function(self, returnWidget)
+        if ns.IconPool and ns.IconPool.EnsureLiveNames then ns.IconPool:EnsureLiveNames() end
         self.mode, self.page, self.returnFocusWidget = "PORTRAIT", 1, returnWidget
         self.searchQuery = ""
         self.searchBox:SetCleanText("")
@@ -433,6 +439,7 @@ function UI:CreateIconPicker(parentFrame)
     end
 
     picker.OpenForCallback = function(self, title, currentIcon, onPick, returnWidget)
+        if ns.IconPool and ns.IconPool.EnsureLiveNames then ns.IconPool:EnsureLiveNames() end
         self.mode, self.page, self.returnFocusWidget = "CALLBACK", 1, returnWidget
         self.callbackTitle, self.callbackIcon, self.pickCallback = title, currentIcon, onPick
         self.searchQuery = ""

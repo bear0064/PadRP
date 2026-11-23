@@ -370,14 +370,22 @@ end
 local function ResolveDossierIconValue(iconVal)
     if iconVal == nil or iconVal == false then return nil end
     local clean = strtrim(tostring(iconVal))
+    local strippedNum = string.match(clean, "^[Ii]nterface[/\\][Ii]cons[/\\](%d+)$")
+    if strippedNum then
+        clean = strippedNum
+    end
+
     local lower = string.lower(clean)
     if clean == "" or lower == "nil" or lower == "none" or lower == "0" then
         return nil
     end
 
     local directNum = tonumber(clean)
-    if directNum and IsSentinelOrInvalidIconID(directNum) then
-        return nil
+    if directNum then
+        if IsSentinelOrInvalidIconID(directNum) then
+            return nil
+        end
+        return directNum
     end
 
     if ns.ResolveIconTexture then
@@ -389,18 +397,20 @@ local function ResolveDossierIconValue(iconVal)
             return resolved
         elseif type(resolved) == "string" then
             local rClean = strtrim(resolved)
+            local rStripped = string.match(rClean, "^[Ii]nterface[/\\][Ii]cons[/\\](%d+)$")
+            if rStripped then rClean = rStripped end
             local rLower = string.lower(rClean)
             if rClean ~= "" and rLower ~= "nil" and rLower ~= "none" and rLower ~= "0" then
                 local rNum = tonumber(rClean)
-                if not rNum or not IsSentinelOrInvalidIconID(rNum) then
-                    return rClean
+                if rNum then
+                    if not IsSentinelOrInvalidIconID(rNum) then
+                        return rNum
+                    end
+                    return nil
                 end
+                return rClean
             end
         end
-    end
-
-    if directNum and not IsSentinelOrInvalidIconID(directNum) then
-        return directNum
     end
 
     return string.find(clean, "\\", 1, true) and clean or ("Interface\\Icons\\" .. clean)
@@ -731,21 +741,58 @@ local function BuildAboutText(data)
     return table.concat(lines, "\n\n")
 end
 
+local function FormatDossierGlanceIconTag(rawIcon)
+    local clean = strtrim(tostring(rawIcon or ""))
+    local strippedNum = string.match(clean, "^[Ii]nterface[/\\][Ii]cons[/\\](%d+)$")
+    if strippedNum then
+        clean = strippedNum
+    end
+    local resolved = ResolveDossierIconValue(clean)
+    if type(resolved) == "number" then
+        return string.format("|T%.0f:22:22:0:0:64:64:4:60:4:60|t ", resolved)
+    elseif type(resolved) == "string" and resolved ~= "" then
+        return string.format("|T%s:22:22:0:0:64:64:4:60:4:60|t ", resolved)
+    end
+    return "|T134400:22:22:0:0:64:64:4:60:4:60|t "
+end
+
 local function BuildGlancesStatusText(data, isSelf)
     local accentHex = GetThemeAccentHex()
     local lines = {}
-    local structured = ns:ParseGlancesStructured(data.PE)
-    if #structured > 0 then
-        local gLines = {}
+    local gLines = {}
+
+    if isSelf and ns.profile and type(ns.profile.glances) == "table" then
+        for idx = 1, math.min(5, #ns.profile.glances) do
+            local g = ns.profile.glances[idx]
+            if type(g) == "table" then
+                local title = strtrim(tostring(g.title or ""))
+                local detail = strtrim(tostring(g.detail or g.text or ""))
+                if title ~= "" or detail ~= "" then
+                    local iconTag = FormatDossierGlanceIconTag(g.icon)
+                    if detail ~= "" then
+                        table.insert(gLines, string.format("%s|cfffdd663%s|r\n%s", iconTag, title ~= "" and title or ("Glance #" .. idx), detail))
+                    else
+                        table.insert(gLines, string.format("%s|cfffdd663%s|r", iconTag, title))
+                    end
+                end
+            end
+        end
+    end
+
+    if #gLines == 0 then
+        local structured = ns:ParseGlancesStructured(data.PE)
         for idx = 1, math.min(5, #structured) do
             local g = structured[idx]
-            local iconTag = string.format("|T%s:22:22:0:0:64:64:4:60:4:60|t ", g.icon)
+            local iconTag = FormatDossierGlanceIconTag(g.icon)
             if g.detail and g.detail ~= "" then
                 table.insert(gLines, string.format("%s|cfffdd663%s|r\n%s", iconTag, g.title, g.detail))
             else
                 table.insert(gLines, string.format("%s|cfffdd663%s|r", iconTag, g.title))
             end
         end
+    end
+
+    if #gLines > 0 then
         table.insert(lines, "|cfffdd663AT FIRST GLANCE|r\n" .. table.concat(gLines, "\n\n"))
     end
 

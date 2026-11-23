@@ -30,7 +30,7 @@ local function AddEntry(seen, idVal, nameVal)
     end
     seen[dedupKey] = true
 
-    local entry = { primaryID or displayName, displayName or tostring(primaryID) }
+    local entry = { primaryID or displayName, displayName }
     Pool.entries[#Pool.entries + 1] = entry
 
     if primaryID then
@@ -41,7 +41,31 @@ local function AddEntry(seen, idVal, nameVal)
     end
 end
 
-local function HarvestMacroIcons(seen)
+local function BuildCatalogNameMap()
+    local map = {}
+    local catalogEntries = (ns.IconCatalog and ns.IconCatalog.entries) or {}
+    for _, rawEntry in ipairs(catalogEntries) do
+        if type(rawEntry) == "table" then
+            local id = tonumber(rawEntry[1])
+            local name = Trim(rawEntry[2])
+            if id and id > 0 and name ~= "" then
+                map[id] = string.lower(name)
+            end
+        end
+    end
+    return map
+end
+
+local function RebuildIndex()
+    wipe(Pool.entries)
+    wipe(Pool.byID)
+    wipe(Pool.byName)
+
+    local catalogNames = BuildCatalogNameMap()
+    local seen = {}
+
+    -- Use the running client's own macro/item icon list as the strict whitelist
+    -- so icons from other WoW builds never appear as green squares.
     local fnSpell = _G.GetMacroIcons or (C_MacroInfo and C_MacroInfo.GetMacroIcons)
     local fnItem  = _G.GetMacroItemIcons or (C_MacroInfo and C_MacroInfo.GetMacroItemIcons)
 
@@ -59,7 +83,7 @@ local function HarvestMacroIcons(seen)
             if clean ~= "" then
                 local num = tonumber(clean)
                 if num and num > 0 then
-                    AddEntry(seen, num, tostring(num))
+                    AddEntry(seen, num, catalogNames[num] or tostring(num))
                 else
                     local lower = string.lower(clean)
                     local stripped = string.gsub(lower, "^interface\\icons\\", "")
@@ -70,24 +94,15 @@ local function HarvestMacroIcons(seen)
             end
         end
     end
-end
 
-local function RebuildIndex()
-    wipe(Pool.entries)
-    wipe(Pool.byID)
-    wipe(Pool.byName)
-
-    local seen = {}
-    local catalogEntries = (ns.IconCatalog and ns.IconCatalog.entries) or {}
-    for _, rawEntry in ipairs(catalogEntries) do
-        if type(rawEntry) == "table" then
-            AddEntry(seen, rawEntry[1], rawEntry[2])
-        elseif rawEntry ~= nil then
-            AddEntry(seen, tonumber(rawEntry), tostring(rawEntry))
+    -- Fallback if the client macro icon API returned nothing
+    if #Pool.entries == 0 and ns.IconCatalog and ns.IconCatalog.entries then
+        for _, rawEntry in ipairs(ns.IconCatalog.entries) do
+            if type(rawEntry) == "table" then
+                AddEntry(seen, rawEntry[1], rawEntry[2])
+            end
         end
     end
-
-    HarvestMacroIcons(seen)
 end
 
 function Pool:Init()
@@ -95,14 +110,27 @@ function Pool:Init()
     self.initialized = true
 end
 
+function Pool:GetDisplayName(idOrName)
+    local num = tonumber(idOrName)
+    if num and self.byID[num] then
+        return self.byID[num][2] or tostring(num)
+    end
+    return tostring(idOrName or "")
+end
+
 function Pool:Search(query)
-    if not self.initialized or (#self.entries == 0 and ns.IconCatalog and ns.IconCatalog.entries and #ns.IconCatalog.entries > 0) then
+    if not self.initialized then
         self:Init()
     end
 
     local q = string.lower(Trim(query))
     if q == "" then
         return self.entries
+    end
+
+    local tokens = {}
+    for tok in string.gmatch(q, "%S+") do
+        tokens[#tokens + 1] = tok
     end
 
     local results = {}
@@ -114,10 +142,20 @@ function Pool:Search(query)
     end
 
     for _, entry in ipairs(self.entries) do
-        local id = entry[1]
-        local name = string.lower(tostring(entry[2] or ""))
         if entry ~= exactEntry then
-            if string.find(name, q, 1, true) or string.find(tostring(id or ""), q, 1, true) then
+            local idStr = tostring(entry[1] or "")
+            local nameStr = string.lower(tostring(entry[2] or ""))
+            local haystack = idStr .. " " .. nameStr
+
+            local allMatched = true
+            for _, tok in ipairs(tokens) do
+                if not string.find(haystack, tok, 1, true) then
+                    allMatched = false
+                    break
+                end
+            end
+
+            if allMatched then
                 results[#results + 1] = entry
             end
         end

@@ -47,9 +47,9 @@ local THEME_PALETTES = {
         typingBorder   = { 0.51, 0.79, 0.58, 0.98 },
     },
     NATIVE = {
-        surfaceDim     = { 0.07, 0.06, 0.04, 0.97 },
-        surfaceLow     = { 0.11, 0.09, 0.06, 0.98 },
-        surface        = { 0.15, 0.12, 0.08, 0.98 },
+        surfaceDim     = { 0.07, 0.06, 0.04, 0.99 },
+        surfaceLow     = { 0.11, 0.09, 0.06, 1.00 },
+        surface        = { 0.15, 0.12, 0.08, 1.00 },
         surfaceHigh    = { 0.20, 0.16, 0.11, 1.00 },
         surfaceBright  = { 0.27, 0.21, 0.13, 1.00 },
         outline        = { 0.58, 0.46, 0.22, 0.85 },
@@ -102,10 +102,9 @@ local SOLID_BACKDROP = {
 }
 
 local NATIVE_WINDOW_BACKDROP = {
-    bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+    bgFile   = "Interface\\Buttons\\WHITE8x8",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile     = true,
-    tileSize = 32,
+    tile     = false,
     edgeSize = 14,
     insets   = { left = 3, right = 3, top = 3, bottom = 3 },
 }
@@ -161,7 +160,7 @@ local function ApplyBackdropForTheme(frame, bgColor, borderColor, bgKey)
         frame:SetBackdrop(NATIVE_WINDOW_BACKDROP)
         local bg = bgColor or ns.M3.surfaceDim
         local brd = borderColor or ns.M3.outline
-        frame:SetBackdropColor(bg[1], bg[2], bg[3], math.min(0.98, bg[4] or 0.96))
+        frame:SetBackdropColor(bg[1], bg[2], bg[3], math.max(0.98, bg[4] or 0.99))
         frame:SetBackdropBorderColor(brd[1], brd[2], brd[3], brd[4] or 0.95)
     else
         frame:SetBackdrop(theme == "NATIVE" and NATIVE_CONTROL_BACKDROP or SOLID_BACKDROP)
