@@ -334,7 +334,7 @@ end
 function ns:GetActiveModalScope()
     if ns.dossierFrame and ns.dossierFrame:IsShown() then
         if ns.dossierFrame.standingDropdown and ns.dossierFrame.standingDropdown:IsShown() then
-            return ns.dossierFrame
+            return ns.dossierFrame.standingDropdown
         end
         return ns.dossierFrame
     end
@@ -814,7 +814,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
         padBtn:Hide()
         ns:SetControllerFocus(container)
         container:SetBackdropColor(unpack(M3.surfaceHigh))
-        container.bottomBar:SetColorTexture(0.51, 0.79, 0.58, 1)
+        container.bottomBar:SetColorTexture(0.51, 0.79, 0.58, 1.0)
         UpdateState()
         if ns.ShowStatusToast then
             ns:ShowStatusToast("Editing Text: Press [B] or [Escape] when finished")

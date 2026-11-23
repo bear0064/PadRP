@@ -151,12 +151,47 @@ function ns:GetPlayerCharKey()
     return name .. "-" .. realm
 end
 
+local function SyncProfileFields(p)
+    if type(p) ~= "table" then return p end
+
+    local function CleanText(val)
+        local str = tostring(val or "")
+        if type(SanitizeFontText) == "function" then
+            return SanitizeFontText(str)
+        end
+        return str
+    end
+
+    if p.oocNotes == nil and p.oocInfo ~= nil then
+        p.oocNotes = CleanText(p.oocInfo)
+    elseif p.oocInfo == nil and p.oocNotes ~= nil then
+        p.oocInfo = CleanText(p.oocNotes)
+    else
+        local baseOOC = p.oocNotes
+        if baseOOC == nil then baseOOC = p.oocInfo end
+        if baseOOC == nil then baseOOC = "" end
+        local cleanOOC = CleanText(baseOOC)
+        p.oocNotes = cleanOOC
+        p.oocInfo = cleanOOC
+    end
+
+    p.gender         = tostring(p.gender or "")
+    p.classColorHex  = tostring(p.classColorHex or "")
+    p.nameColorHex   = tostring(p.nameColorHex or "")
+    p.eyeColorHex    = tostring(p.eyeColorHex or "")
+    p.facialFeatures = tostring(p.facialFeatures or "")
+    p.tattoos        = tostring(p.tattoos or "")
+    p.voiceReference = tostring(p.voiceReference or "")
+
+    return p
+end
+
 function ns:CreateBlankProfile(profileName)
-    return {
-        profileName = profileName or "Main Character",
+    local p = {
+        profileName = profileName or "New Profile",
         icon = "INV_Helmet_46",
         titlePrefix = "",
-        firstName = UnitName("player") or "Adventurer",
+        firstName = "",
         lastName = "",
         title = "",
         nickname = "",
@@ -165,16 +200,24 @@ function ns:CreateBlankProfile(profileName)
         pronouns = "",
         race = "",
         class = "",
+        gender = "",
         age = "",
         height = "",
         weight = "",
         eyeColor = "",
+        eyeColorHex = "",
+        classColorHex = "",
+        nameColorHex = "",
         birthplace = "",
         residence = "",
+        facialFeatures = "",
+        tattoos = "",
+        voiceReference = "",
         relationship = "0",
         rpStyle = "1",
-        currently = "Available for walk-up RP.",
-        oocInfo = "Playing on controller via PadRP.",
+        currently = "",
+        oocNotes = "",
+        oocInfo = "",
         description = "",
         history = "",
         glances = {
@@ -188,6 +231,7 @@ function ns:CreateBlankProfile(profileName)
         walkUp = "WELCOME",
         presetIndex = 1,
     }
+    return SyncProfileFields(p)
 end
 
 local function EnsureProfileStructure(p)
@@ -195,7 +239,7 @@ local function EnsureProfileStructure(p)
     p.profileName  = p.profileName or "Main Character"
     p.icon         = (p.icon and p.icon ~= "") and p.icon or "INV_Helmet_46"
     p.titlePrefix  = p.titlePrefix or ""
-    p.firstName    = p.firstName or (UnitName("player") or "")
+    p.firstName    = p.firstName or ""
     p.lastName     = p.lastName or ""
     p.title        = p.title or ""
     p.nickname     = p.nickname or ""
@@ -213,7 +257,6 @@ local function EnsureProfileStructure(p)
     p.relationship = RELATIONSHIP_LABELS[tostring(p.relationship or "0")] and tostring(p.relationship) or "0"
     p.rpStyle      = RPSTYLE_LABELS[tostring(p.rpStyle or "1")] and tostring(p.rpStyle) or "1"
     p.currently    = SanitizeFontText(p.currently or "")
-    p.oocInfo      = p.oocInfo or ""
     p.description  = p.description or ""
     p.history      = p.history or ""
     if p.isIC == nil then p.isIC = true end
@@ -227,6 +270,7 @@ local function EnsureProfileStructure(p)
         p.glances[i].title  = p.glances[i].title or ""
         p.glances[i].detail = p.glances[i].detail or ""
     end
+    return SyncProfileFields(p)
 end
 
 local function ProfileHasContent(p)
@@ -241,6 +285,8 @@ local function ProfileHasContent(p)
         or (p.residence and p.residence ~= "")
         or (p.description and p.description ~= "")
         or (p.history and p.history ~= "")
+        or (p.oocNotes and p.oocNotes ~= "")
+        or (p.oocInfo and p.oocInfo ~= "")
         or (p.age and p.age ~= "") then
         return true
     end
@@ -256,6 +302,7 @@ end
 
 function ns:SnapshotActiveProfile()
     if not ns.db or not ns.profile or not ns.activeProfileId then return end
+    SyncProfileFields(ns.profile)
     ns.db.profileBackups = ns.db.profileBackups or {}
     if ProfileHasContent(ns.profile) then
         ns.db.profileBackups[ns.activeProfileId] = CopyTableShallow(ns.profile)
@@ -394,6 +441,7 @@ end
 function ns:ExportCurrentProfileString()
     local p = ns.profile
     if not p then return "" end
+    SyncProfileFields(p)
     local g1 = p.glances[1] or {}
     local g2 = p.glances[2] or {}
     local g3 = p.glances[3] or {}
@@ -413,7 +461,7 @@ function ns:ExportCurrentProfileString()
         EscapeField(p.weight),
         EscapeField(p.eyeColor),
         EscapeField(p.currently),
-        EscapeField(p.oocInfo),
+        EscapeField(p.oocNotes or p.oocInfo),
         EscapeField(g1.icon), EscapeField(g1.title), EscapeField(g1.detail),
         EscapeField(g2.icon), EscapeField(g2.title), EscapeField(g2.detail),
         EscapeField(g3.icon), EscapeField(g3.title), EscapeField(g3.detail),
@@ -460,6 +508,7 @@ function ns:ImportProfileString(raw)
     np.eyeColor    = UnescapeField(fields[12])
     np.currently   = UnescapeField(fields[13])
     np.oocInfo     = UnescapeField(fields[14])
+    np.oocNotes    = np.oocInfo
     np.glances[1]  = { icon = UnescapeField(fields[15] or DEFAULT_GLANCE_ICONS[1]), title = UnescapeField(fields[16]), detail = UnescapeField(fields[17]) }
     np.glances[2]  = { icon = UnescapeField(fields[18] or DEFAULT_GLANCE_ICONS[2]), title = UnescapeField(fields[19]), detail = UnescapeField(fields[20]) }
     np.glances[3]  = { icon = UnescapeField(fields[21] or DEFAULT_GLANCE_ICONS[3]), title = UnescapeField(fields[22]), detail = UnescapeField(fields[23]) }
@@ -640,7 +689,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 
         if not profId or not ns.db.profiles[profId] then
             profId = "default_" .. charKey
-            ns.db.profiles[profId] = ns:CreateBlankProfile(UnitName("player") or "Main Character")
+            local initialProfile = ns:CreateBlankProfile(UnitName("player") or "Main Character")
+            initialProfile.firstName = UnitName("player") or ""
+            ns.db.profiles[profId] = initialProfile
             ns.db.activeProfileByChar[charKey] = profId
         end
 
@@ -689,7 +740,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             ns:PlayUISound()
         end)
 
-        print("|cff8ab4f8[PadRP]|r RP Suite v1.1 loaded. Profile: |cfffdd663" .. (ns.profile.firstName or UnitName("player")) .. "|r.")
+        local loadedLabel = (ns.profile.firstName and ns.profile.firstName ~= "") and ns.profile.firstName or (ns.profile.profileName or UnitName("player"))
+        print("|cff8ab4f8[PadRP]|r PadRP Suite v1.0.0 loaded. Profile: |cfffdd663" .. loadedLabel .. "|r.")
     elseif event == "PLAYER_LOGOUT" then
         ns:SnapshotActiveProfile()
     elseif event == "PLAYER_FLAGS_CHANGED" and arg1 == "player" then

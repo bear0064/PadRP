@@ -29,6 +29,20 @@ function ns:ResetWireThrottles()
     passiveTickerActive = false
 end
 
+local function SanitizeWirePreview(raw)
+    local slice = string.sub(tostring(raw or ""), 1, 64)
+    local out = {}
+    for i = 1, #slice do
+        local b = string.byte(slice, i)
+        if not b or b < 32 or b == 127 then
+            out[i] = "|"
+        else
+            out[i] = string.sub(slice, i, i)
+        end
+    end
+    return table.concat(out)
+end
+
 function ns:LogNet(tag, colorHex, msg)
     local stamp = date("%H:%M:%S")
     local line = string.format("|cff9aa0a6[%s]|r |c%s[%s]|r %s", stamp, colorHex or "ff8ab4f8", tag or "INFO", tostring(msg))
@@ -345,10 +359,10 @@ function ns:InitMSPProtocol()
     commFrame:RegisterEvent("CHAT_MSG_ADDON")
     commFrame:RegisterEvent("CHAT_MSG_ADDON_LOGGED")
 
-    commFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
+    commFrame:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
         if event == "CHAT_MSG_ADDON" or event == "CHAT_MSG_ADDON_LOGGED" then
-            if ns.mspSniff and arg1 and (string.find(arg1, "^MSP") or string.find(arg1, "^TRP")) then
-                local preview = string.gsub(string.sub(tostring(arg2 or ""), 1, 64), "[\000-\031]", "|")
+            if ns.mspSniff and arg1 and (string.find(arg1, "^MSP", 1, false) or string.find(arg1, "^TRP", 1, false)) then
+                local preview = SanitizeWirePreview(arg2)
                 ns:LogNet(event == "CHAT_MSG_ADDON_LOGGED" and "WIRE LOG" or "WIRE STD", "fffdd663", string.format("[%s] %s: %s", arg1, tostring(arg4 or "?"), preview))
             end
         elseif event == "PLAYER_ENTERING_WORLD" then
@@ -379,29 +393,4 @@ function ns:InitMSPProtocol()
             end
         end
     end)
-
-    SlashCmdList["PADRP"] = function(msg)
-        local cmd = strtrim(string.lower(msg or ""))
-        if cmd == "minimap" then
-            if ns.ResetMinimapButton then ns:ResetMinimapButton() end
-        elseif cmd == "scan" then
-            ns:ScanNearbyPlayers()
-        elseif cmd == "clearcache" and ns.ClearMSPCache then
-            local removed = ns:ClearMSPCache()
-            print(string.format("|cff8ab4f8[PadRP]|r Cleared |cfffdd663%d|r cached RP profiles.", removed))
-        elseif cmd == "dev" or cmd == "console" or cmd == "debug" or cmd == "sniff" then
-            ns.db.ui.devMode = true
-            if cmd == "debug" or cmd == "dev" then ns.mspDebug = true end
-            if cmd == "sniff" then ns.mspSniff = true; ns.mspDebug = true end
-            if ns.mainFrame and ns.mainFrame:IsShown() and ns.RefreshControllerUI then ns:RefreshControllerUI() end
-            if ns.ToggleNetInspector then ns:ToggleNetInspector(true) end
-        elseif cmd == "test" then
-            ns.db.ui.devMode = true
-            if ns.mainFrame and ns.mainFrame:IsShown() and ns.RefreshControllerUI then ns:RefreshControllerUI() end
-            if ns.ToggleNetInspector then ns:ToggleNetInspector(true) end
-            ns:RunMSPSelfTest()
-        else
-            if ns.ToggleMainFrame then ns:ToggleMainFrame() end
-        end
-    end
 end
