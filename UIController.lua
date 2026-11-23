@@ -2,6 +2,10 @@ local _, ns = ...
 
 local UI = ns.UI
 
+local function GetAccentHex()
+    return (ns.GetUITheme and ns:GetUITheme() == "NATIVE") and "fff5c73d" or "ff8ab4f8"
+end
+
 local function CloseAnyOpenPopup()
     local mf = UI.mainFrame
     if not mf then return false end
@@ -46,6 +50,63 @@ local function CloseAnyOpenPopup()
         return true
     end
     return false
+end
+
+local function ApplyTabVisualStates()
+    local M3 = ns.M3
+    local isNative = (ns.GetUITheme and ns:GetUITheme() == "NATIVE")
+    local activeIdx = UI.activeTab or 1
+
+    for i, tb in ipairs(UI.tabButtons) do
+        if tb then
+            if i == activeIdx then
+                tb:SetBackdropColor(unpack(M3.primaryTonal))
+                tb:SetBackdropBorderColor(unpack(M3.primary))
+                tb.activeBar:SetColorTexture(
+                    i == 8 and M3.amber[1] or M3.primary[1],
+                    i == 8 and M3.amber[2] or M3.primary[2],
+                    i == 8 and M3.amber[3] or M3.primary[3],
+                    1
+                )
+                tb.activeBar:Show()
+                if isNative then
+                    tb.label:SetTextColor(1.0, 0.93, 0.72)
+                else
+                    tb.label:SetTextColor(0.90, 0.95, 1.0)
+                end
+            else
+                tb:SetBackdropColor(unpack(M3.surfaceLow))
+                tb:SetBackdropBorderColor(0, 0, 0, 0)
+                tb.activeBar:Hide()
+                if isNative then
+                    tb.label:SetTextColor(0.76, 0.70, 0.58)
+                else
+                    tb.label:SetTextColor(0.64, 0.68, 0.75)
+                end
+            end
+        end
+    end
+end
+
+local function RefreshShellThemeAccents()
+    local mf = UI.mainFrame
+    if not mf then return end
+    local M3 = ns.M3
+    local accentHex = GetAccentHex()
+
+    if mf.topAccent then
+        mf.topAccent:SetColorTexture(M3.primary[1], M3.primary[2], M3.primary[3], 0.92)
+    end
+    if mf.sbHeader then
+        mf.sbHeader:SetText("|c" .. accentHex .. "[LB]  SECTIONS  [RB]|r")
+    end
+    if mf.footerText then
+        mf.footerText:SetText(string.format(
+            "|c%s[LB]/[RB]|r Sections   |c%s[D-Pad]|r Move Focus   |c%s[A]|r Edit/Confirm   |c%s[B]|r Back/Close",
+            accentHex, accentHex, accentHex, accentHex
+        ))
+    end
+    ApplyTabVisualStates()
 end
 
 function ns:ControllerConfirmAction()
@@ -140,23 +201,14 @@ function ns:SelectTab(index)
     if UI.mainFrame then
         UI.mainFrame.activeTab = index
     end
-    local M3 = ns.M3
     for i, panel in ipairs(UI.tabPanels) do
-        local tb = UI.tabButtons[i]
         if i == index then
             panel:Show()
-            tb:SetBackdropColor(unpack(M3.primaryTonal))
-            tb:SetBackdropBorderColor(unpack(M3.primary))
-            tb.activeBar:Show()
-            tb.label:SetTextColor(0.88, 0.94, 1.0)
         else
             panel:Hide()
-            tb:SetBackdropColor(unpack(M3.surfaceLow))
-            tb:SetBackdropBorderColor(0, 0, 0, 0)
-            tb.activeBar:Hide()
-            tb.label:SetTextColor(0.62, 0.66, 0.72)
         end
     end
+    ApplyTabVisualStates()
     CloseAnyOpenPopup()
     ns:RefreshControllerUI()
     ns:FocusFirstInScope()
@@ -249,7 +301,7 @@ local function UpdateSidebarLayout()
         if tb then
             tb:ClearAllPoints()
             tb:SetSize(sbW - 14, 30)
-            tb:SetPoint("TOPLEFT", sb, "TOPLEFT", 7, -26 - (slot - 1) * 34)
+            tb:SetPoint("TOPLEFT", sb, "TOPLEFT", 7, -28 - (slot - 1) * 34)
             tb:Show()
         end
     end
@@ -274,6 +326,7 @@ function UI:RefreshHeaderBanner()
     if not mf or not ns.profile then return end
     local p = ns.profile
     local M3 = ns.M3
+    local accentHex = GetAccentHex()
     local activeHex = UI:GetPlayerActiveClassColorHex()
     local fallbackIcon = UI:GetDefaultIconFallback()
 
@@ -299,7 +352,7 @@ function UI:RefreshHeaderBanner()
     end
 
     local titlePart = (p.title and p.title ~= "") and ("|cfffdd663<" .. p.title .. ">|r") or "|cff9aa0a6No RP Title|r"
-    local housePart = (houseClean ~= "") and ("  |cff8ab4f8-  " .. houseClean .. "|r") or ""
+    local housePart = (houseClean ~= "") and ("  |c" .. accentHex .. "-  " .. houseClean .. "|r") or ""
     mf.bannerTitle:SetText(titlePart .. housePart .. guildPart)
 
     if mf.bannerCurrently then
@@ -316,7 +369,7 @@ function UI:RefreshHeaderBanner()
     mf.profChip:SetText(p.profileName or "Default")
 
     if mf.bannerExpBtn then
-        mf.bannerExpBtn:SetText("|cff8ab4f8RP:|r " .. UI:GetRPExperienceLabelText(p.rpStyle) .. " [v]")
+        mf.bannerExpBtn:SetText("|c" .. accentHex .. "RP:|r " .. UI:GetRPExperienceLabelText(p.rpStyle) .. " [v]")
     end
 
     local wuBtn = mf.walkUpBtn
@@ -361,6 +414,7 @@ function ns:RefreshControllerUI()
     local mf = UI.mainFrame
     if not mf or not ns.profile then return end
     mf:SetScale(ns.db.ui.scale or 1.0)
+    RefreshShellThemeAccents()
     UpdateSidebarLayout()
     UpdateResponsiveLayouts()
     UI:RefreshHeaderBanner()
@@ -371,7 +425,11 @@ function ns:RefreshControllerUI()
         end
     end
 
-    if inspectorFrame and inspectorFrame:IsShown() then
+    if ns.dossierFrame and ns.dossierFrame:IsShown() and ns.RefreshDossierWindow then
+        ns:RefreshDossierWindow()
+    end
+
+    if ns.netInspectorFrame and ns.netInspectorFrame:IsShown() and ns.RefreshNetInspector then
         ns:RefreshNetInspector()
     end
 end
@@ -464,15 +522,17 @@ function ns:InitControllerUI()
     ns:ApplySurface(mainFrame, M3.surfaceDim, M3.outline)
 
     local topAccent = mainFrame:CreateTexture(nil, "OVERLAY")
-    topAccent:SetHeight(2)
-    topAccent:SetPoint("TOPLEFT", 1, -1)
-    topAccent:SetPoint("TOPRIGHT", -1, -1)
-    topAccent:SetColorTexture(0.54, 0.71, 0.97, 0.85)
+    topAccent:SetHeight(3)
+    topAccent:SetPoint("TOPLEFT", 2, -2)
+    topAccent:SetPoint("TOPRIGHT", -2, -2)
+    topAccent:SetColorTexture(M3.primary[1], M3.primary[2], M3.primary[3], 0.92)
+    mainFrame.topAccent = topAccent
 
     tinsert(UISpecialFrames, "PadRP_MainFrame")
 
     mainFrame:SetScript("OnShow", function()
         ns:PlayUISound(SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_OPEN)
+        RefreshShellThemeAccents()
         UpdateSidebarLayout()
         UpdateResponsiveLayouts()
         ns:UpdateControllerBindings()
@@ -519,13 +579,14 @@ function ns:InitControllerUI()
 
     -- Hero Banner
     local banner = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
-    banner:SetHeight(56)
+    banner:SetHeight(62)
     banner:SetPoint("TOPLEFT", 12, -10)
     banner:SetPoint("TOPRIGHT", -12, -10)
     ns:ApplySurface(banner, M3.surfaceLow, M3.outline)
     ns:EnableClipping(banner)
+    mainFrame.banner = banner
 
-    local closeBtn = ns:CreateMaterialButton(banner, "X", 28, 28, 0, -6, "CORAL", function() mainFrame:Hide() end)
+    local closeBtn = ns:CreateMaterialButton(banner, "X", 28, 28, 0, -8, "CORAL", function() mainFrame:Hide() end)
     closeBtn:ClearAllPoints()
     closeBtn:SetPoint("TOPRIGHT", banner, "TOPRIGHT", -8, -8)
     closeBtn.label:ClearAllPoints()
@@ -533,12 +594,12 @@ function ns:InitControllerUI()
     mainFrame.closeBtn = closeBtn
 
     local portraitBtn = CreateFrame("Button", nil, banner, "BackdropTemplate")
-    portraitBtn:SetSize(42, 42)
+    portraitBtn:SetSize(46, 46)
     portraitBtn:SetPoint("LEFT", banner, "LEFT", 8, 0)
     ns:ApplySurface(portraitBtn, M3.surface, M3.primary)
     mainFrame.portraitBtn = portraitBtn
     mainFrame.portraitTex = portraitBtn:CreateTexture(nil, "ARTWORK")
-    mainFrame.portraitTex:SetSize(36, 36)
+    mainFrame.portraitTex:SetSize(40, 40)
     mainFrame.portraitTex:SetPoint("CENTER")
     mainFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     portraitBtn:SetScript("OnEnter", function(self) ns:SetControllerFocus(self) end)
@@ -546,35 +607,35 @@ function ns:InitControllerUI()
     ns:RegisterFocusable(portraitBtn, function() portraitBtn:Click("LeftButton") end)
 
     mainFrame.bannerName = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    mainFrame.bannerName:SetPoint("TOPLEFT", banner, "TOPLEFT", 58, -7)
+    mainFrame.bannerName:SetPoint("TOPLEFT", banner, "TOPLEFT", 62, -8)
     mainFrame.bannerName:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
     mainFrame.bannerName:SetJustifyH("LEFT")
     mainFrame.bannerName:SetWordWrap(false)
 
     mainFrame.bannerTitle = banner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    mainFrame.bannerTitle:SetPoint("TOPLEFT", banner, "TOPLEFT", 58, -25)
+    mainFrame.bannerTitle:SetPoint("TOPLEFT", banner, "TOPLEFT", 62, -28)
     mainFrame.bannerTitle:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
     mainFrame.bannerTitle:SetJustifyH("LEFT")
     mainFrame.bannerTitle:SetWordWrap(false)
 
     mainFrame.bannerCurrently = banner:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    mainFrame.bannerCurrently:SetPoint("TOPLEFT", banner, "TOPLEFT", 58, -39)
+    mainFrame.bannerCurrently:SetPoint("TOPLEFT", banner, "TOPLEFT", 62, -44)
     mainFrame.bannerCurrently:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
     mainFrame.bannerCurrently:SetJustifyH("LEFT")
     mainFrame.bannerCurrently:SetWordWrap(false)
 
     -- Control Strip
     local controlBar = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
-    controlBar:SetHeight(36)
-    controlBar:SetPoint("TOPLEFT", 12, -70)
-    controlBar:SetPoint("TOPRIGHT", -12, -70)
+    controlBar:SetHeight(38)
+    controlBar:SetPoint("TOPLEFT", 12, -78)
+    controlBar:SetPoint("TOPRIGHT", -12, -78)
     ns:ApplySurface(controlBar, M3.surface, M3.outline)
     ns:EnableClipping(controlBar)
     mainFrame.controlBar = controlBar
 
-    local profPrevBtn = ns:CreateMaterialButton(controlBar, "<", 24, 26, 10, -5, nil, function() UI:CommitModifiedBoxesToProfile(false); ns:CycleProfile(-1) end)
-    local profChip = ns:CreateMaterialButton(controlBar, "Profile", 110, 26, 37, -5, nil, function() UI:CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
-    local profNextBtn = ns:CreateMaterialButton(controlBar, ">", 24, 26, 150, -5, nil, function() UI:CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
+    local profPrevBtn = ns:CreateMaterialButton(controlBar, "<", 24, 26, 10, -6, nil, function() UI:CommitModifiedBoxesToProfile(false); ns:CycleProfile(-1) end)
+    local profChip = ns:CreateMaterialButton(controlBar, "Profile", 110, 26, 37, -6, nil, function() UI:CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
+    local profNextBtn = ns:CreateMaterialButton(controlBar, ">", 24, 26, 150, -6, nil, function() UI:CommitModifiedBoxesToProfile(false); ns:CycleProfile(1) end)
     mainFrame.profPrevBtn = profPrevBtn
     mainFrame.profChip = profChip
     mainFrame.profNextBtn = profNextBtn
@@ -598,7 +659,7 @@ function ns:InitControllerUI()
     ns:RegisterFocusable(icSwitch, function() icSwitch:Click("LeftButton") end)
     mainFrame.icSwitch = icSwitch
 
-    local walkUpBtn = ns:CreateMaterialButton(controlBar, "WALK-UPS: OPEN", 136, 26, 0, -5, "MINT", function()
+    local walkUpBtn = ns:CreateMaterialButton(controlBar, "WALK-UPS: OPEN", 136, 26, 0, -6, "MINT", function()
         local code = ns:CycleWalkUpStatus()
         UI:RefreshHeaderBanner()
         if ns.RefreshMinimapButton then ns:RefreshMinimapButton() end
@@ -637,7 +698,7 @@ function ns:InitControllerUI()
     end
     mainFrame.expDropdown = expDropdown
 
-    local bannerExpBtn = ns:CreateMaterialButton(controlBar, "|cff8ab4f8RP:|r Normal [v]", 122, 26, 0, -5, nil, function(self)
+    local bannerExpBtn = ns:CreateMaterialButton(controlBar, "|cff8ab4f8RP:|r Normal [v]", 122, 26, 0, -6, nil, function(self)
         if mainFrame.presetDropdown then mainFrame.presetDropdown:Hide() end
         if mainFrame.modeDropdown then mainFrame.modeDropdown:Hide() end
         if mainFrame.poolDropdown then mainFrame.poolDropdown:Hide() end
@@ -657,17 +718,17 @@ function ns:InitControllerUI()
     -- Left Sidebar Rail
     local sidebar = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
     sidebar:SetWidth(UI.SIDEBAR_WIDTH)
-    sidebar:SetPoint("TOPLEFT", 12, -112)
-    sidebar:SetPoint("BOTTOMLEFT", 12, 40)
+    sidebar:SetPoint("TOPLEFT", 12, -122)
+    sidebar:SetPoint("BOTTOMLEFT", 12, 42)
     ns:ApplySurface(sidebar, M3.surfaceLow, M3.outline)
     ns:EnableClipping(sidebar)
     mainFrame.sidebar = sidebar
 
     local sbHeader = sidebar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    sbHeader:SetPoint("TOPLEFT", 10, -8)
-    sbHeader:SetPoint("TOPRIGHT", -10, -8)
+    sbHeader:SetPoint("TOPLEFT", 10, -9)
+    sbHeader:SetPoint("TOPRIGHT", -10, -9)
     sbHeader:SetJustifyH("CENTER")
-    sbHeader:SetText("|cff8ab4f8[LB]  SECTIONS  [RB]|r")
+    mainFrame.sbHeader = sbHeader
 
     local tabTitles = {
         "Identity",
@@ -684,7 +745,7 @@ function ns:InitControllerUI()
     for i, title in ipairs(tabTitles) do
         local tb = CreateFrame("Button", nil, sidebar, "BackdropTemplate")
         tb:SetSize(UI.SIDEBAR_WIDTH - 14, 30)
-        tb:SetPoint("TOPLEFT", 7, -26 - (i - 1) * 34)
+        tb:SetPoint("TOPLEFT", 7, -28 - (i - 1) * 34)
         ns:ApplySurface(tb, M3.surfaceLow, { 0, 0, 0, 0 })
         ns:EnableClipping(tb)
         tb.isTabBarBtn = true
@@ -693,7 +754,6 @@ function ns:InitControllerUI()
         tb.activeBar:SetWidth(3)
         tb.activeBar:SetPoint("TOPLEFT", 2, -5)
         tb.activeBar:SetPoint("BOTTOMLEFT", 2, 5)
-        tb.activeBar:SetColorTexture(i == 8 and 0.99 or 0.54, i == 8 and 0.84 or 0.71, i == 8 and 0.39 or 0.97, 1)
         tb.activeBar:Hide()
 
         tb.label = tb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -708,7 +768,7 @@ function ns:InitControllerUI()
 
         local panel = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
         panel:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 8, 0)
-        panel:SetPoint("BOTTOMRIGHT", -12, 40)
+        panel:SetPoint("BOTTOMRIGHT", -12, 42)
         ns:ApplySurface(panel, M3.surfaceLow, M3.outline)
         ns:EnableClipping(panel)
         panel:Hide()
@@ -725,18 +785,18 @@ function ns:InitControllerUI()
     local footer = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
     footer:SetHeight(26)
     footer:SetPoint("BOTTOMLEFT", 12, 10)
-    footer:SetPoint("BOTTOMRIGHT", -34, 10)
+    footer:SetPoint("BOTTOMRIGHT", -38, 10)
     ns:ApplySurface(footer, M3.surfaceLow, M3.outline)
     local footerText = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     footerText:SetPoint("LEFT", 14, 0)
-    footerText:SetText("|cff8ab4f8[LB]/[RB]|r Sections   |cff8ab4f8[D-Pad]|r Move Focus   |cff8ab4f8[A]|r Edit/Confirm   |cff8ab4f8[B]|r Back/Close")
+    mainFrame.footerText = footerText
     mainFrame.statusToast = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     mainFrame.statusToast:SetPoint("RIGHT", -14, 0)
     mainFrame.statusToast:SetText("|cff9aa0a6Saved in PadRPDB|r")
 
     local resizeGrip = CreateFrame("Button", "PadRP_ResizeGrip", mainFrame, "BackdropTemplate")
-    resizeGrip:SetSize(20, 26)
-    resizeGrip:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -10, 10)
+    resizeGrip:SetSize(22, 26)
+    resizeGrip:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -12, 10)
     ns:ApplySurface(resizeGrip, M3.surfaceHigh, M3.outline)
     local gripLabel = resizeGrip:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     gripLabel:SetPoint("CENTER", 0, 0)
@@ -744,6 +804,7 @@ function ns:InitControllerUI()
     resizeGrip:SetScript("OnMouseDown", function(_, button) if button == "LeftButton" then mainFrame:StartSizing("BOTTOMRIGHT") end end)
     resizeGrip:SetScript("OnMouseUp", function() mainFrame:StopMovingOrSizing(); ns:RefreshControllerUI() end)
 
+    RefreshShellThemeAccents()
     ns:LoadProfileIntoUI()
     ns:SelectTab(1)
 

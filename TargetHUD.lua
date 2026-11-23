@@ -22,6 +22,17 @@ local STANDING_COLORS = {
     Marked       = "|cfffdd663[MARKED]|r ",
 }
 
+local function GetThemeAccentHex()
+    return (ns.GetUITheme and ns:GetUITheme() == "NATIVE") and "fff5c73d" or "ff8ab4f8"
+end
+
+local function GetThemeAccentRGB()
+    if ns.M3 and ns.M3.primary then
+        return ns.M3.primary[1], ns.M3.primary[2], ns.M3.primary[3]
+    end
+    return 0.54, 0.71, 0.97
+end
+
 function ns:EnsureUIDefaults()
     if not ns.db then return end
     ns.db.ui = ns.db.ui or {}
@@ -109,45 +120,25 @@ local function TruncateTooltipBlock(text, maxChars)
     if lastSpace and #lastSpace > math.floor(maxChars * 0.6) then
         cut = lastSpace
     end
-    return cut .. "... |cff8ab4f8(Dossier for full)|r"
+    return cut .. "... |c" .. GetThemeAccentHex() .. "(Dossier for full)|r"
 end
 
-local function FormatInlineTexture(texVal, size)
-    local px = size or 16
-    if type(texVal) == "number" and not IsSentinelOrInvalidID(texVal) then
-        return string.format("|T%.0f:%d:%d:0:0:64:64:4:60:4:60|t ", texVal, px, px)
-    elseif type(texVal) == "string" then
-        local clean = strtrim(texVal)
-        local numId = tonumber(clean)
-        if numId then
-            if IsSentinelOrInvalidID(numId) then
-                return ""
-            end
-            return string.format("|T%.0f:%d:%d:0:0:64:64:4:60:4:60|t ", numId, px, px)
-        end
-        if clean ~= "" then
-            return string.format("|T%s:%d:%d:0:0:64:64:4:60:4:60|t ", clean, px, px)
-        end
-    end
-    return ""
-end
-
-local function ResolveCustomPortraitTag(iconVal, size)
+local function ResolveIconTextureValue(iconVal)
     if iconVal == nil or iconVal == false then
-        return ""
+        return nil
     end
     local clean = strtrim(tostring(iconVal))
     if clean == "" then
-        return ""
+        return nil
     end
     local low = string.lower(clean)
     if low == "nil" or low == "none" or low == "0" then
-        return ""
+        return nil
     end
 
     local directNum = tonumber(clean)
     if directNum and IsSentinelOrInvalidID(directNum) then
-        return ""
+        return nil
     end
 
     local resolved = nil
@@ -186,7 +177,31 @@ local function ResolveCustomPortraitTag(iconVal, size)
         end
     end
 
-    return FormatInlineTexture(resolved, size)
+    return resolved
+end
+
+local function FormatInlineTexture(texVal, size)
+    local px = size or 16
+    if type(texVal) == "number" and not IsSentinelOrInvalidID(texVal) then
+        return string.format("|T%.0f:%d:%d:0:0:64:64:4:60:4:60|t ", texVal, px, px)
+    elseif type(texVal) == "string" then
+        local clean = strtrim(texVal)
+        local numId = tonumber(clean)
+        if numId then
+            if IsSentinelOrInvalidID(numId) then
+                return ""
+            end
+            return string.format("|T%.0f:%d:%d:0:0:64:64:4:60:4:60|t ", numId, px, px)
+        end
+        if clean ~= "" then
+            return string.format("|T%s:%d:%d:0:0:64:64:4:60:4:60|t ", clean, px, px)
+        end
+    end
+    return ""
+end
+
+local function ResolveCustomPortraitTag(iconVal, size)
+    return FormatInlineTexture(ResolveIconTextureValue(iconVal), size)
 end
 
 local function FormatGlanceTooltipLine(rawGlance)
@@ -261,6 +276,45 @@ local function BuildTooltipPortraitTag(iconVal, unit, hasProfile)
     return ""
 end
 
+local function UpdateHUDPortrait(iconVal, classFile, hasProfile)
+    if not hudFrame or not hudFrame.portraitBox or not hudFrame.portraitTex then return end
+    hudFrame.portraitTex:SetTexture(nil)
+
+    local texVal = ResolveIconTextureValue(iconVal)
+    if texVal then
+        hudFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        local ok = pcall(function()
+            hudFrame.portraitTex:SetTexture(texVal)
+        end)
+        local applied = ok and hudFrame.portraitTex:GetTexture()
+        if applied and applied ~= "" and applied ~= 0 then
+            hudFrame.portraitBox:Show()
+            hudFrame.portraitTex:Show()
+            return
+        end
+    end
+
+    local coords = classFile and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classFile]
+    if coords then
+        hudFrame.portraitTex:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+        hudFrame.portraitTex:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+        if hudFrame.portraitTex:GetTexture() then
+            hudFrame.portraitBox:Show()
+            hudFrame.portraitTex:Show()
+            return
+        end
+    end
+
+    if hasProfile then
+        hudFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        hudFrame.portraitTex:SetTexture(134400)
+        hudFrame.portraitBox:Show()
+        hudFrame.portraitTex:Show()
+    else
+        hudFrame.portraitBox:Hide()
+    end
+end
+
 local function BuildProfileSignature(data, standing, hasNote, portraitTag, isSelf)
     local selfGlanceSig = ""
     if isSelf and ns.profile and type(ns.profile.glances) == "table" then
@@ -276,10 +330,12 @@ local function BuildProfileSignature(data, standing, hasNote, portraitTag, isSel
         selfGlanceSig = table.concat(parts, ";")
     end
 
+    local themeKey = (ns.GetUITheme and ns:GetUITheme()) or "MODERN"
     if not data then
-        return "NONE|" .. tostring(standing or "") .. "|" .. tostring(hasNote and 1 or 0) .. "|" .. tostring(portraitTag or "") .. "|" .. selfGlanceSig
+        return themeKey .. "|NONE|" .. tostring(standing or "") .. "|" .. tostring(hasNote and 1 or 0) .. "|" .. tostring(portraitTag or "") .. "|" .. selfGlanceSig
     end
     return table.concat({
+        themeKey,
         tostring(data.NA or ""),
         tostring(data.NT or ""),
         tostring(data.FC or ""),
@@ -437,16 +493,20 @@ local function HandleMinimapClick(button)
 end
 
 local function PopulateMinimapTooltip(tooltip)
-    tooltip:AddLine("PadRP - Material Dark RP Suite", 0.54, 0.71, 0.97)
+    local ar, ag, ab = GetThemeAccentRGB()
+    local accentHex = GetThemeAccentHex()
+    local themeLabel = (ns.GetUITheme and ns:GetUITheme() == "NATIVE") and "WoW Native" or "Modern Dark"
+
+    tooltip:AddLine("PadRP - Controller RP Suite (" .. themeLabel .. ")", ar, ag, ab)
     local status = (ns.profile and ns.profile.isIC) and "|cff81c995In Character (IC)|r" or "|cfff28b82Out of Character (OOC)|r"
     tooltip:AddLine("Status: " .. status, 1, 1, 1)
     tooltip:AddLine("Walk-Ups: |cfffdd663" .. ns:GetWalkUpLabel() .. "|r", 1, 1, 1)
     tooltip:AddLine("Currently: |cffe8eaed" .. ((ns.profile and ns.profile.currently) or "None") .. "|r", 0.8, 0.8, 0.8)
     tooltip:AddLine(" ")
-    tooltip:AddLine("|cff8ab4f8Left-Click:|r Open PadRP Menu", 0.75, 0.8, 0.88)
-    tooltip:AddLine("|cff8ab4f8Right-Click:|r Toggle IC / OOC", 0.75, 0.8, 0.88)
-    tooltip:AddLine("|cff8ab4f8Middle-Click:|r Quick-Thank Helper", 0.75, 0.8, 0.88)
-    tooltip:AddLine("|cff8ab4f8Drag:|r Move Around Minimap", 0.75, 0.8, 0.88)
+    tooltip:AddLine("|c" .. accentHex .. "Left-Click:|r Open PadRP Menu", 0.75, 0.8, 0.88)
+    tooltip:AddLine("|c" .. accentHex .. "Right-Click:|r Toggle IC / OOC", 0.75, 0.8, 0.88)
+    tooltip:AddLine("|c" .. accentHex .. "Middle-Click:|r Quick-Thank Helper", 0.75, 0.8, 0.88)
+    tooltip:AddLine("|c" .. accentHex .. "Drag:|r Move Around Minimap", 0.75, 0.8, 0.88)
 end
 
 local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
@@ -570,8 +630,9 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
             end
         end
         if #glanceLines > 0 then
+            local ar, ag, ab = GetThemeAccentRGB()
             tooltip:AddLine(" ")
-            tooltip:AddLine("At First Glance", 0.54, 0.71, 0.97, false)
+            tooltip:AddLine("At First Glance", ar, ag, ab, false)
             for _, gLine in ipairs(glanceLines) do
                 tooltip:AddLine(gLine, 0.85, 0.88, 0.92, false)
             end
@@ -710,19 +771,24 @@ local function InitMinimapButton()
     if TryRegisterLDBIcon() then return end
 
     if Minimap and not fallbackMinimapBtn then
+        local M3 = ns.M3
         fallbackMinimapBtn = CreateFrame("Button", "PadRP_FallbackMinimapButton", Minimap, "BackdropTemplate")
         fallbackMinimapBtn:SetSize(32, 32)
         fallbackMinimapBtn:SetFrameStrata("MEDIUM")
         fallbackMinimapBtn:SetFrameLevel(8)
         fallbackMinimapBtn:RegisterForClicks("AnyUp")
         fallbackMinimapBtn:RegisterForDrag("LeftButton")
-        fallbackMinimapBtn:SetBackdrop({
-            bgFile   = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            edgeSize = 2,
-            insets   = { left = 2, right = 2, top = 2, bottom = 2 },
-        })
-        fallbackMinimapBtn:SetBackdropColor(0.08, 0.10, 0.13, 0.96)
+        if ns.ApplySurface and M3 then
+            ns:ApplySurface(fallbackMinimapBtn, M3.surfaceLow, M3.outline)
+        else
+            fallbackMinimapBtn:SetBackdrop({
+                bgFile   = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 2,
+                insets   = { left = 2, right = 2, top = 2, bottom = 2 },
+            })
+            fallbackMinimapBtn:SetBackdropColor(0.08, 0.10, 0.13, 0.96)
+        end
         local icon = fallbackMinimapBtn:CreateTexture(nil, "ARTWORK")
         icon:SetSize(22, 22)
         icon:SetPoint("CENTER")
@@ -807,6 +873,19 @@ local function SyncHUDFocusState(shouldShow, activeKey)
     end
 end
 
+local function ReanchorHUDText(hasPortrait)
+    if not hudFrame then return end
+    local leftX = hasPortrait and 62 or 14
+    local textW = hasPortrait and 368 or 416
+    hudFrame.nameText:ClearAllPoints()
+    hudFrame.nameText:SetPoint("TOPLEFT", leftX, -10)
+    hudFrame.nameText:SetWidth(textW)
+
+    hudFrame.subText:ClearAllPoints()
+    hudFrame.subText:SetPoint("TOPLEFT", leftX, -29)
+    hudFrame.subText:SetWidth(textW)
+end
+
 function ns:RefreshTargetHUD()
     if not hudFrame then return end
     ns:EnsureUIDefaults()
@@ -860,8 +939,13 @@ function ns:RefreshTargetHUD()
     local assignedRel = activeKey and ns.GetAssignedRelationship and ns:GetAssignedRelationship(activeKey) or ""
     local relTag = (assignedRel ~= "") and ("  |cfffdd663[" .. assignedRel .. "]|r") or ""
     local noteTag = hasNote and " |TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t" or ""
+    local hasProfile = (data and data.NA and data.NA ~= "") and true or false
 
-    if data and data.NA and data.NA ~= "" then
+    UpdateHUDPortrait(data and data.IC, tClass, hasProfile)
+    ReanchorHUDText(hudFrame.portraitBox and hudFrame.portraitBox:IsShown())
+
+    local accentHex = GetThemeAccentHex()
+    if hasProfile then
         local cleanNA = StripColorCodes(data.NA)
         local titleStr = (data.NT and data.NT ~= "") and ("  |cfffdd663<" .. data.NT .. ">|r") or ""
         hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. cleanNA .. "|r" .. titleStr .. relTag .. noteTag)
@@ -871,13 +955,15 @@ function ns:RefreshTargetHUD()
         local prefixBadges = wuBadge and (icDot .. " " .. wuBadge) or icDot
         local cuStr = (data.CU and data.CU ~= "") and StripColorCodes(data.CU) or "|cff9aa0a6Focus / Click to open Dossier|r"
         hudFrame.subText:SetText(prefixBadges .. "  |cffe8eaed" .. cuStr .. "|r")
-        hudFrame.hintText:SetText("|cff81c995Focus / Click to Open Dossier|r")
-        hudFrame.accentBar:SetColorTexture(isIC and 0.51 or 0.95, isIC and 0.79 or 0.55, isIC and 0.58 or 0.51, 1)
+        hudFrame.hintText:SetText("|c" .. accentHex .. "[A] / Click for Dossier|r")
+        local barCol = isIC and ns.M3.mint or ns.M3.coral
+        hudFrame.accentBar:SetColorTexture(barCol[1], barCol[2], barCol[3], 1)
     else
         hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. rawName .. "|r" .. relTag .. noteTag)
         hudFrame.subText:SetText("|cff9aa0a6Standard Player (No RP Profile Cached)|r")
-        hudFrame.hintText:SetText("Focus / Click to Open Dossier")
-        hudFrame.accentBar:SetColorTexture(0.35, 0.39, 0.46, 0.65)
+        hudFrame.hintText:SetText("|cff9aa0a6[A] / Click for Dossier|r")
+        local outCol = ns.M3.outline
+        hudFrame.accentBar:SetColorTexture(outCol[1], outCol[2], outCol[3], 0.85)
     end
 
     CancelHUDFadeOut()
@@ -892,9 +978,10 @@ function ns:InitTargetHUD()
     InitMinimapButton()
     InitTooltipHook()
 
+    local M3 = ns.M3
     hudFrame = CreateFrame("Button", "PadRP_TargetHUD", UIParent, "BackdropTemplate")
     ns.hudFrame = hudFrame
-    hudFrame:SetSize(430, 62)
+    hudFrame:SetSize(444, 66)
     hudFrame:SetPoint("TOP", UIParent, "TOP", 0, -44)
     hudFrame:SetMovable(true)
     hudFrame:EnableMouse(true)
@@ -905,42 +992,61 @@ function ns:InitTargetHUD()
     hudFrame:SetScript("OnUpdate", UpdateHUDFrame)
     hudFrame:Hide()
 
-    hudFrame:SetBackdrop({
-        bgFile   = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-        insets   = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    hudFrame:SetBackdropColor(0.08, 0.10, 0.13, 0.96)
-    hudFrame:SetBackdropBorderColor(0.20, 0.24, 0.31, 0.85)
+    if ns.ApplySurface and M3 then
+        ns:ApplySurface(hudFrame, M3.surfaceDim, M3.outline)
+    else
+        hudFrame:SetBackdrop({
+            bgFile   = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets   = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        hudFrame:SetBackdropColor(0.08, 0.10, 0.13, 0.96)
+        hudFrame:SetBackdropBorderColor(0.20, 0.24, 0.31, 0.85)
+    end
+    if ns.EnableClipping then ns:EnableClipping(hudFrame) end
+
+    local portraitBox = CreateFrame("Frame", nil, hudFrame, "BackdropTemplate")
+    portraitBox:SetSize(42, 42)
+    portraitBox:SetPoint("LEFT", hudFrame, "LEFT", 10, 1)
+    if ns.ApplySurface and M3 then
+        ns:ApplySurface(portraitBox, M3.surface, M3.primary)
+    end
+    hudFrame.portraitBox = portraitBox
+    hudFrame.portraitTex = portraitBox:CreateTexture(nil, "OVERLAY")
+    hudFrame.portraitTex:SetSize(36, 36)
+    hudFrame.portraitTex:SetPoint("CENTER")
+    hudFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
     hudFrame.accentBar = hudFrame:CreateTexture(nil, "OVERLAY")
     hudFrame.accentBar:SetHeight(3)
-    hudFrame.accentBar:SetPoint("BOTTOMLEFT", 1, 1)
-    hudFrame.accentBar:SetPoint("BOTTOMRIGHT", -1, 1)
-    hudFrame.accentBar:SetColorTexture(0.54, 0.71, 0.97, 1)
+    hudFrame.accentBar:SetPoint("BOTTOMLEFT", 2, 2)
+    hudFrame.accentBar:SetPoint("BOTTOMRIGHT", -2, 2)
+    hudFrame.accentBar:SetColorTexture(M3.primary[1], M3.primary[2], M3.primary[3], 1)
 
     hudFrame.nameText = hudFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    hudFrame.nameText:SetPoint("TOPLEFT", 14, -10)
-    hudFrame.nameText:SetWidth(402)
+    hudFrame.nameText:SetPoint("TOPLEFT", 62, -10)
+    hudFrame.nameText:SetWidth(368)
     hudFrame.nameText:SetJustifyH("LEFT")
     hudFrame.nameText:SetWordWrap(false)
 
     hudFrame.subText = hudFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    hudFrame.subText:SetPoint("TOPLEFT", 14, -27)
-    hudFrame.subText:SetWidth(402)
+    hudFrame.subText:SetPoint("TOPLEFT", 62, -29)
+    hudFrame.subText:SetWidth(368)
     hudFrame.subText:SetJustifyH("LEFT")
     hudFrame.subText:SetWordWrap(false)
 
     hudFrame.hintText = hudFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    hudFrame.hintText:SetPoint("BOTTOMRIGHT", -12, 7)
+    hudFrame.hintText:SetPoint("BOTTOMRIGHT", -12, 8)
 
     hudFrame:SetScript("OnEnter", function(self)
-        self:SetBackdropBorderColor(0.54, 0.71, 0.97, 1.0)
+        self:SetBackdropBorderColor(unpack(ns.M3.primary))
         RegisterHUDWithConsolePort()
     end)
     hudFrame:SetScript("OnLeave", function(self)
-        self:SetBackdropBorderColor(0.20, 0.24, 0.31, 0.85)
+        if ns.currentFocus ~= self then
+            self:SetBackdropBorderColor(unpack(ns.M3.outline))
+        end
     end)
     hudFrame:SetScript("OnClick", function(self)
         if ns.OpenTargetDossier then
@@ -955,9 +1061,9 @@ function ns:InitTargetHUD()
             end
         end, function(self, isFocused)
             if isFocused then
-                self:SetBackdropBorderColor(0.54, 0.71, 0.97, 1.0)
+                self:SetBackdropBorderColor(unpack(ns.M3.primary))
             else
-                self:SetBackdropBorderColor(0.20, 0.24, 0.31, 0.85)
+                self:SetBackdropBorderColor(unpack(ns.M3.outline))
             end
         end)
     end

@@ -8,14 +8,34 @@ local lastRenderedSubView = nil
 local SUB_VIEWS = { "CHAR", "ABOUT", "GLANCES", "NOTES" }
 
 local CORE_STANDINGS = {
-    { key = "None",       tone = nil,       colorHex = "ff9aa0a6" },
-    { key = "Ally",       tone = "MINT",    colorHex = "ff81c995" },
-    { key = "Friendly",   tone = "MINT",    colorHex = "ff81c995" },
-    { key = "Neutral",    tone = "PRIMARY", colorHex = "ff8ab4f8" },
-    { key = "Unfriendly", tone = "CORAL",   colorHex = "fff28b82" },
-    { key = "Rival",      tone = "CORAL",   colorHex = "fff28b82" },
-    { key = "Marked",     tone = "AMBER",   colorHex = "fffdd663" },
+    { key = "None",       tone = nil,       colorHex = "ff9aa0a6", rgb = nil },
+    { key = "Ally",       tone = "MINT",    colorHex = "ff81c995", rgb = { 0.00, 0.92, 0.95 } },
+    { key = "Friendly",   tone = "MINT",    colorHex = "ff81c995", rgb = { 0.22, 0.96, 0.45 } },
+    { key = "Neutral",    tone = "PRIMARY", colorHex = "ff8ab4f8", rgb = { 0.38, 0.65, 1.00 } },
+    { key = "Unfriendly", tone = "CORAL",   colorHex = "fff28b82", rgb = { 1.00, 0.46, 0.08 } },
+    { key = "Rival",      tone = "CORAL",   colorHex = "fff28b82", rgb = { 0.98, 0.14, 0.36 } },
+    { key = "Marked",     tone = "AMBER",   colorHex = "fffdd663", rgb = { 1.00, 0.82, 0.10 } },
 }
+
+local function GetThemeAccentHex()
+    return (ns.GetUITheme and ns:GetUITheme() == "NATIVE") and "fff5c73d" or "ff8ab4f8"
+end
+
+local function GetStandingAccentRGB(standingName)
+    if standingName and standingName ~= "" and standingName ~= "None" then
+        for _, item in ipairs(CORE_STANDINGS) do
+            if string.lower(item.key) == string.lower(tostring(standingName)) and item.rgb then
+                return item.rgb[1], item.rgb[2], item.rgb[3]
+            end
+        end
+        local tone = ns.GetStandingTone and ns:GetStandingTone(standingName)
+        if tone == "MINT" then return ns.M3.mint[1], ns.M3.mint[2], ns.M3.mint[3]
+        elseif tone == "CORAL" then return ns.M3.coral[1], ns.M3.coral[2], ns.M3.coral[3]
+        elseif tone == "AMBER" then return ns.M3.amber[1], ns.M3.amber[2], ns.M3.amber[3]
+        end
+    end
+    return ns.M3.primary[1], ns.M3.primary[2], ns.M3.primary[3]
+end
 
 local function NormalizeKey(k)
     return string.lower(strtrim(tostring(k or "")))
@@ -458,22 +478,24 @@ local function ResolveClassFileToken(rawClass, key, isSelf, isLiveTarget)
 end
 
 local function ReanchorDossierHeader(hasIcon)
-    if not dossierFrame then return end
-    local leftX = hasIcon and 78 or 18
+    if not dossierFrame or not dossierFrame.headerCard then return end
+    local card = dossierFrame.headerCard
+    local leftX = hasIcon and 74 or 14
+
     dossierFrame.modeBadge:ClearAllPoints()
-    dossierFrame.modeBadge:SetPoint("TOPLEFT", dossierFrame, "TOPLEFT", leftX, -10)
+    dossierFrame.modeBadge:SetPoint("TOPLEFT", card, "TOPLEFT", leftX, -9)
 
     dossierFrame.headerName:ClearAllPoints()
-    dossierFrame.headerName:SetPoint("TOPLEFT", dossierFrame, "TOPLEFT", leftX, -25)
+    dossierFrame.headerName:SetPoint("TOPLEFT", card, "TOPLEFT", leftX, -25)
     if dossierFrame.closeBtn then
-        dossierFrame.headerName:SetPoint("RIGHT", dossierFrame.closeBtn, "LEFT", -12, 0)
+        dossierFrame.headerName:SetPoint("RIGHT", dossierFrame.closeBtn, "LEFT", -10, 0)
     else
-        dossierFrame.headerName:SetPoint("TOPRIGHT", dossierFrame, "TOPRIGHT", -48, -25)
+        dossierFrame.headerName:SetPoint("TOPRIGHT", card, "TOPRIGHT", -44, -25)
     end
 
     dossierFrame.vitalsText:ClearAllPoints()
-    dossierFrame.vitalsText:SetPoint("TOPLEFT", dossierFrame, "TOPLEFT", leftX, -50)
-    dossierFrame.vitalsText:SetPoint("TOPRIGHT", dossierFrame, "TOPRIGHT", -16, -50)
+    dossierFrame.vitalsText:SetPoint("TOPLEFT", card, "TOPLEFT", leftX, -49)
+    dossierFrame.vitalsText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, -49)
 end
 
 local function HideDossierPortrait()
@@ -587,6 +609,7 @@ local function ResolveRelationshipDisplay(rsVal, assignedRel)
 end
 
 local function BuildCharacteristicsText(data, isSelf, key)
+    local accentHex = GetThemeAccentHex()
     local lines = {}
     local basic = {}
     local classHex = (isSelf and ns.GetPlayerClassColorCode and ns:GetPlayerClassColorCode()) or nil
@@ -619,7 +642,7 @@ local function BuildCharacteristicsText(data, isSelf, key)
     end
 
     if #basic > 0 then
-        table.insert(lines, "|cff8ab4f8BASIC INFORMATION|r\n" .. table.concat(basic, "\n"))
+        table.insert(lines, "|c" .. accentHex .. "BASIC INFORMATION|r\n" .. table.concat(basic, "\n"))
     end
 
     local extra = {}
@@ -662,7 +685,7 @@ local function BuildCharacteristicsText(data, isSelf, key)
         end
 
         if #styleLines > 0 then
-            table.insert(lines, "|cff8ab4f8ROLEPLAY STYLE|r\n" .. table.concat(styleLines, "\n"))
+            table.insert(lines, "|c" .. accentHex .. "ROLEPLAY STYLE|r\n" .. table.concat(styleLines, "\n"))
         end
 
         local oocLines = {}
@@ -694,9 +717,10 @@ local function BuildCharacteristicsText(data, isSelf, key)
 end
 
 local function BuildAboutText(data)
+    local accentHex = GetThemeAccentHex()
     local lines = {}
     if data.DE and strtrim(data.DE) ~= "" then
-        table.insert(lines, "|cff8ab4f8PHYSICAL DESCRIPTION & PERSONALITY|r\n" .. data.DE)
+        table.insert(lines, "|c" .. accentHex .. "PHYSICAL DESCRIPTION & PERSONALITY|r\n" .. data.DE)
     end
     if data.HI and strtrim(data.HI) ~= "" then
         table.insert(lines, "|cfffdd663CHARACTER HISTORY|r\n" .. data.HI)
@@ -708,6 +732,7 @@ local function BuildAboutText(data)
 end
 
 local function BuildGlancesStatusText(data, isSelf)
+    local accentHex = GetThemeAccentHex()
     local lines = {}
     local structured = ns:ParseGlancesStructured(data.PE)
     if #structured > 0 then
@@ -726,7 +751,7 @@ local function BuildGlancesStatusText(data, isSelf)
 
     local cuVal = (isSelf and ns.profile and ns.profile.currently) or data.CU
     if cuVal and strtrim(cuVal) ~= "" then
-        table.insert(lines, "|cff8ab4f8CURRENTLY|r\n" .. strtrim(cuVal))
+        table.insert(lines, "|c" .. accentHex .. "CURRENTLY|r\n" .. strtrim(cuVal))
     end
 
     if #lines == 0 then
@@ -751,6 +776,14 @@ end
 function ns:RefreshDossierWindow()
     if not dossierFrame or not dossierFrame:IsShown() then return end
 
+    local accentHex = GetThemeAccentHex()
+    if dossierFrame.footerText then
+        dossierFrame.footerText:SetText(string.format(
+            "|c%s[LB]/[RB]|r Sections   |c%s[D-Pad]|r Scroll / Focus   |c%s[A]|r Edit / Select   |c%s[B]|r Close",
+            accentHex, accentHex, accentHex, accentHex
+        ))
+    end
+
     local key = selectedDossierKey
     if not key and UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
         key = (ns.GetUnitKey and ns:GetUnitKey("target")) or UnitName("target")
@@ -763,6 +796,9 @@ function ns:RefreshDossierWindow()
     dossierFrame.tabNotes:SetTone(activeSubView == "NOTES" and "PRIMARY" or nil)
 
     if not key then
+        if dossierFrame.topAccent then
+            dossierFrame.topAccent:SetColorTexture(ns.M3.primary[1], ns.M3.primary[2], ns.M3.primary[3], 0.92)
+        end
         SetDossierPortraitIcon(nil, nil, false)
         dossierFrame.modeBadge:SetText("|cff9aa0a6[NO PROFILE SELECTED]|r")
         dossierFrame.headerName:SetText("|cff9aa0a6Select a Player from Known RP or Target Someone|r")
@@ -796,19 +832,28 @@ function ns:RefreshDossierWindow()
         tHex = (tClass and RAID_CLASS_COLORS and RAID_CLASS_COLORS[tClass] and RAID_CLASS_COLORS[tClass].colorStr) or "ffffffff"
     end
 
+    local data = ResolveProfileRecordForKey(key)
+    local standing, charNote, acctNote, hasNote = ns:GetNoteInfo(key)
+    local assignedRel = ns:GetAssignedRelationship(key)
+    local hasRPProfile = (data and data.NA and data.NA ~= "") and true or false
+
+    if dossierFrame.topAccent then
+        local ar, ag, ab = GetStandingAccentRGB(standing)
+        dossierFrame.topAccent:SetColorTexture(ar, ag, ab, 0.95)
+    end
+
     local topMetaParts = {}
     if isLiveTarget then
         table.insert(topMetaParts, "|cff81c995[LIVE TARGET]|r")
+    end
+    if standing and standing ~= "None" then
+        local sHex = ns:GetStandingColorHex(standing)
+        table.insert(topMetaParts, "|c" .. sHex .. "[" .. string.upper(standing) .. "]|r")
     end
     if realCharName ~= "" then
         table.insert(topMetaParts, "|cff9aa0a6(" .. realCharName .. ")|r")
     end
     dossierFrame.modeBadge:SetText(table.concat(topMetaParts, "  "))
-
-    local data = ResolveProfileRecordForKey(key)
-    local standing, charNote, acctNote, hasNote = ns:GetNoteInfo(key)
-    local assignedRel = ns:GetAssignedRelationship(key)
-    local hasRPProfile = (data and data.NA and data.NA ~= "") and true or false
 
     dossierFrame.tabNotes:SetText(hasNote and "Notes |cff81c995*|r" or "Notes")
 
@@ -979,7 +1024,7 @@ function ns:InitDossierWindow()
 
     dossierFrame = CreateFrame("Frame", "PadRP_DossierWindow", UIParent, "BackdropTemplate")
     ns.dossierFrame = dossierFrame
-    dossierFrame:SetSize(656, 524)
+    dossierFrame:SetSize(664, 552)
     dossierFrame:SetPoint("CENTER", UIParent, "CENTER", 40, -10)
     dossierFrame:SetFrameStrata("DIALOG")
     dossierFrame:SetFrameLevel(40)
@@ -1013,29 +1058,47 @@ function ns:InitDossierWindow()
     dossierFrame:Hide()
     tinsert(UISpecialFrames, "PadRP_DossierWindow")
 
-    local portraitBox = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
-    portraitBox:SetSize(50, 50)
-    portraitBox:SetPoint("TOPLEFT", 16, -12)
+    local topAccent = dossierFrame:CreateTexture(nil, "OVERLAY")
+    topAccent:SetHeight(3)
+    topAccent:SetPoint("TOPLEFT", 2, -2)
+    topAccent:SetPoint("TOPRIGHT", -2, -2)
+    topAccent:SetColorTexture(M3.primary[1], M3.primary[2], M3.primary[3], 0.92)
+    dossierFrame.topAccent = topAccent
+
+    -- Elevated Profile Header Card
+    local headerCard = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
+    headerCard:SetHeight(72)
+    headerCard:SetPoint("TOPLEFT", 14, -12)
+    headerCard:SetPoint("TOPRIGHT", -14, -12)
+    ns:ApplySurface(headerCard, M3.surfaceLow, M3.outline)
+    ns:EnableClipping(headerCard)
+    dossierFrame.headerCard = headerCard
+
+    local portraitBox = CreateFrame("Frame", nil, headerCard, "BackdropTemplate")
+    portraitBox:SetSize(54, 54)
+    portraitBox:SetPoint("LEFT", headerCard, "LEFT", 10, 0)
     ns:ApplySurface(portraitBox, M3.surface, M3.primary)
     dossierFrame.portraitBox = portraitBox
     dossierFrame.portraitTex = portraitBox:CreateTexture(nil, "OVERLAY")
-    dossierFrame.portraitTex:SetSize(44, 44)
+    dossierFrame.portraitTex:SetSize(48, 48)
     dossierFrame.portraitTex:SetPoint("CENTER")
     dossierFrame.portraitTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-    local closeBtn = ns:CreateMaterialButton(dossierFrame, "X", 28, 24, 616, -10, "CORAL", function()
+    local closeBtn = ns:CreateMaterialButton(headerCard, "X", 28, 28, 0, -8, "CORAL", function()
         dossierFrame:Hide()
     end)
     closeBtn:ClearAllPoints()
-    closeBtn:SetPoint("TOPRIGHT", dossierFrame, "TOPRIGHT", -14, -10)
+    closeBtn:SetPoint("TOPRIGHT", headerCard, "TOPRIGHT", -8, -8)
+    closeBtn.label:ClearAllPoints()
+    closeBtn.label:SetPoint("CENTER", 0, 0)
     dossierFrame.closeBtn = closeBtn
 
-    dossierFrame.modeBadge = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dossierFrame.headerName = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    dossierFrame.modeBadge = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    dossierFrame.headerName = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     dossierFrame.headerName:SetJustifyH("LEFT")
     dossierFrame.headerName:SetWordWrap(false)
 
-    dossierFrame.vitalsText = dossierFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    dossierFrame.vitalsText = headerCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     dossierFrame.vitalsText:SetJustifyH("LEFT")
     dossierFrame.vitalsText:SetWordWrap(false)
 
@@ -1048,29 +1111,29 @@ function ns:InitDossierWindow()
         ns:RefreshDossierWindow()
     end
 
-    dossierFrame.tabChar = ns:CreateMaterialButton(dossierFrame, "Characteristics", 151, 26, 16, -70, "PRIMARY", function()
+    dossierFrame.tabChar = ns:CreateMaterialButton(dossierFrame, "Characteristics", 154, 28, 14, -90, "PRIMARY", function()
         SwitchSubView("CHAR")
     end)
-    dossierFrame.tabAbout = ns:CreateMaterialButton(dossierFrame, "About (Bio)", 151, 26, 173, -70, nil, function()
+    dossierFrame.tabAbout = ns:CreateMaterialButton(dossierFrame, "About (Bio)", 154, 28, 174, -90, nil, function()
         SwitchSubView("ABOUT")
     end)
-    dossierFrame.tabGlances = ns:CreateMaterialButton(dossierFrame, "Glances & Status", 151, 26, 330, -70, nil, function()
+    dossierFrame.tabGlances = ns:CreateMaterialButton(dossierFrame, "Glances & Status", 155, 28, 334, -90, nil, function()
         SwitchSubView("GLANCES")
     end)
-    dossierFrame.tabNotes = ns:CreateMaterialButton(dossierFrame, "Notes", 151, 26, 487, -70, nil, function()
+    dossierFrame.tabNotes = ns:CreateMaterialButton(dossierFrame, "Notes", 155, 28, 495, -90, nil, function()
         SwitchSubView("NOTES")
     end)
 
     local readerBox = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
-    readerBox:SetPoint("TOPLEFT", 16, -104)
-    readerBox:SetPoint("BOTTOMRIGHT", -16, 16)
+    readerBox:SetPoint("TOPLEFT", 14, -124)
+    readerBox:SetPoint("BOTTOMRIGHT", -14, 40)
     ns:ApplySurface(readerBox, M3.surfaceLow, M3.outline)
     ns:EnableClipping(readerBox)
     dossierFrame.readerBox = readerBox
 
     local scrollFrame = CreateFrame("ScrollFrame", "PadRP_DossierScrollFrame", readerBox, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 14, -12)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 12)
+    scrollFrame:SetPoint("TOPLEFT", 16, -14)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 14)
     scrollFrame:EnableMouseWheel(true)
     ns:EnableClipping(scrollFrame)
     dossierFrame.scrollFrame = scrollFrame
@@ -1093,18 +1156,18 @@ function ns:InitDossierWindow()
     dossierFrame.scrollText:SetWidth(570)
     dossierFrame.scrollText:SetJustifyH("LEFT")
     dossierFrame.scrollText:SetWordWrap(true)
-    dossierFrame.scrollText:SetSpacing(3)
+    dossierFrame.scrollText:SetSpacing(4)
 
     local notesPanel = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
-    notesPanel:SetPoint("TOPLEFT", 16, -104)
-    notesPanel:SetPoint("BOTTOMRIGHT", -16, 16)
+    notesPanel:SetPoint("TOPLEFT", 14, -124)
+    notesPanel:SetPoint("BOTTOMRIGHT", -14, 40)
     ns:ApplySurface(notesPanel, M3.surfaceLow, M3.outline)
     ns:EnableClipping(notesPanel)
     notesPanel:Hide()
     dossierFrame.notesPanel = notesPanel
 
     local standingDropdown = CreateFrame("Frame", "PadRP_DossierStandingDropdown", notesPanel, "BackdropTemplate")
-    standingDropdown:SetSize(192, 224)
+    standingDropdown:SetSize(194, 224)
     standingDropdown:SetFrameStrata("DIALOG")
     standingDropdown:SetFrameLevel(notesPanel:GetFrameLevel() + 30)
     ns:ApplySurface(standingDropdown, M3.surfaceDim, M3.primary)
@@ -1124,7 +1187,7 @@ function ns:InitDossierWindow()
         for idx, optName in ipairs(options) do
             local btn = self.rows[idx]
             if not btn then
-                btn = ns:CreateMaterialButton(self, "", 176, 24, 8, -6 - (idx - 1) * 27, nil, function(b)
+                btn = ns:CreateMaterialButton(self, "", 178, 24, 8, -6 - (idx - 1) * 27, nil, function(b)
                     ApplyStandingSelection(b.standingValue)
                 end)
                 btn.label:SetJustifyH("LEFT")
@@ -1139,7 +1202,7 @@ function ns:InitDossierWindow()
         end
     end
 
-    dossierFrame.standingBtn = ns:CreateMaterialButton(notesPanel, "Standing: None", 190, 26, 12, -12, nil, function(self)
+    dossierFrame.standingBtn = ns:CreateMaterialButton(notesPanel, "Standing: None", 192, 28, 12, -12, nil, function(self)
         if standingDropdown:IsShown() then
             standingDropdown:Hide()
             if ns.SetControllerFocus then ns:SetControllerFocus(self) end
@@ -1152,7 +1215,7 @@ function ns:InitDossierWindow()
         end
     end)
 
-    dossierFrame.relEditBox = ns:CreateMaterialEditBox(notesPanel, nil, "Optional relation label (e.g., Oath-Kin)...", 212, -12, 400, 26, function()
+    dossierFrame.relEditBox = ns:CreateMaterialEditBox(notesPanel, nil, "Optional relation label (e.g., Oath-Kin)...", 214, -12, 410, 28, function()
         SaveCurrentNotes()
     end)
 
@@ -1163,20 +1226,30 @@ function ns:InitDossierWindow()
     dossierFrame.charNoteBox = ns:CreateScrollableTextEditor(
         notesPanel,
         "Private RP notes from this character's perspective (e.g., how you met, debts, impressions)...",
-        12, -68, 600, 140,
+        12, -68, 612, 138,
         function() SaveCurrentNotes() end
     )
 
     local acctLabel = notesPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    acctLabel:SetPoint("TOPLEFT", 12, -220)
+    acctLabel:SetPoint("TOPLEFT", 12, -218)
     acctLabel:SetText("|cff8ab4f8Account-Wide Notes|r  |cff9aa0a6(Shared across all your characters)|r")
 
     dossierFrame.acctNoteBox = ns:CreateScrollableTextEditor(
         notesPanel,
         "OOC / Account-wide notes about this player...",
-        12, -238, 600, 140,
+        12, -236, 612, 138,
         function() SaveCurrentNotes() end
     )
+
+    -- Bottom Controller Footer
+    local footer = CreateFrame("Frame", nil, dossierFrame, "BackdropTemplate")
+    footer:SetHeight(24)
+    footer:SetPoint("BOTTOMLEFT", 14, 10)
+    footer:SetPoint("BOTTOMRIGHT", -14, 10)
+    ns:ApplySurface(footer, M3.surfaceLow, M3.outline)
+    local footerText = footer:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    footerText:SetPoint("CENTER", 0, 0)
+    dossierFrame.footerText = footerText
 
     if ConsolePort and ConsolePort.AddInterfaceCursorFrame then
         ConsolePort:AddInterfaceCursorFrame("PadRP_DossierWindow")
