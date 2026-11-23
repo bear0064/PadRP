@@ -22,26 +22,30 @@ local activeArcOuter = {}
 local activeArcInner = {}
 local activeSpokeLeft
 local activeSpokeRight
-local activeGlowTex
 local sliceButtons = {}
 
 -- Dynamic page list built on open:
--- MAIN -> STD (1..N) -> CUSTOM (1..N) -> STANDING -> DICE
--- Sub-views (not in LB/RB ring): WALKUP, CURRENTLY
+-- MAIN -> STD (1..N) -> STANDING -> DICE
+-- Sub-views (not in main LB/RB ring): WALKUP, CURRENTLY, CUSTOM_MENU, CUSTOM_EMOTE, CUSTOM_SAY, CUSTOM_YELL
 local pageList = {}
 local activePageIndex = 1
-local subViewMode = nil -- nil, "WALKUP", or "CURRENTLY"
+local subViewMode = nil
+local subPageIndex = 1
 local currentSlices = {}
 local selectedIdx = 1
 
 local SLICES_PER_PAGE = 8
-local OUTER_R = 176
-local INNER_R = 56
+local OUTER_R = 178
+local INNER_R = 54
 local CONTENT_R = 118
 local DEBOUNCE_SECONDS = 0.14
 local STICK_DEADZONE = 0.45
+local STICK_RELEASE_DEADZONE = 0.22
+local STICK_FLICK_COOLDOWN = 0.22
 local lastActionTime = 0
 local lastStickEventTime = 0
+local lastStickSelectTime = 0
+local stickArmed = false
 local initialized = false
 local cameraLocked = false
 
@@ -72,18 +76,17 @@ local CURRENTLY_ICONS = {
     "Interface\\Icons\\Ability_Rogue_Sprint",
     "Interface\\Icons\\INV_Drink_05",
     "Interface\\Icons\\INV_Misc_Book_09",
-    "Interface\\Icons\\INV_Scroll_02",
+    "Interface\\Icons\\INV_Misc_Note_01",
     "Interface\\Icons\\INV_Sword_04",
     "Interface\\Icons\\INV_Misc_Lantern_01",
     "Interface\\Icons\\INV_Letter_15",
 }
 
 local DEFAULT_CUSTOM_ICON = "Interface\\Icons\\INV_Letter_15"
+local DEFAULT_SAY_ICON = "Interface\\Icons\\INV_Misc_Book_09"
+local DEFAULT_YELL_ICON = "Interface\\Icons\\Ability_Warrior_BattleShout"
 local DEFAULT_BASE_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_Note_01"
 
--- 16 curated starter RP base emotes enabled by default (2 wheel pages);
--- all remaining WoW emotes are retained in the catalog with enabled = false by default.
--- All emotes use the standard normal icon (DEFAULT_BASE_FALLBACK_ICON) unless the player picks a custom override (`icon`).
 local DEFAULT_BASE_EMOTES = {
     -- Starter Page 1: Core RP Social
     { label = "Wave",          token = "WAVE",           defaultIcon = DEFAULT_BASE_FALLBACK_ICON, enabled = true },
@@ -296,6 +299,21 @@ local DEFAULT_CUSTOM_EMOTES = {
     { label = "Take Notes",   text = "jots a brief note into a worn journal.", icon = nil },
 }
 
+local DEFAULT_CUSTOM_SAYS = {
+    { label = "Warm Greeting", text = "Well met, travelers. Mind if I share the fire?", icon = nil },
+    { label = "Greet Target",  text = "Good to see you, %target.", icon = nil },
+    { label = "Safe Travels",  text = "Safe roads ahead, friends.", icon = nil },
+    { label = "Ask News",      text = "What brings you out this way tonight?", icon = nil },
+    { label = "One Moment",    text = "Hold a moment - let me catch my breath.", icon = nil },
+}
+
+local DEFAULT_CUSTOM_YELLS = {
+    { label = "Look Out!",     text = "Look out! Watch your flanks!", icon = nil },
+    { label = "Call for Aid",  text = "Over here! Could use a hand!", icon = nil },
+    { label = "Halt!",         text = "Halt right there!", icon = nil },
+    { label = "Rally!",        text = "Stand fast and hold the line!", icon = nil },
+}
+
 local function GetCVarSafe(name)
     if C_CVar and C_CVar.GetCVar then
         local ok, val = pcall(C_CVar.GetCVar, name)
@@ -344,6 +362,10 @@ end
 local function GetDefaultIconForEmote(kind, item)
     if kind == "custom" then
         return DEFAULT_CUSTOM_ICON
+    elseif kind == "say" then
+        return DEFAULT_SAY_ICON
+    elseif kind == "yell" then
+        return DEFAULT_YELL_ICON
     end
     if type(item) == "table" then
         local defOrig = item.defaultIcon
@@ -453,14 +475,41 @@ local function SanitizeBaseEmoteRecord(item, fallbackDef, forceNormalIconReset)
     }
 end
 
+function ns:SanitizeCustomLineText(rawText)
+    local out = strtrim(tostring(rawText or ""))
+    out = out:gsub("^/[eE][mM]?[oO]?[tT]?[eE]?%s+", "")
+    out = out:gsub("^/[sS][aA]?[yY]?%s+", "")
+    out = out:gsub("^/[yY][eE]?[lL]?[lL]?%s+", "")
+    return strtrim(out)
+end
+
+local function EnsureCustomBucket(db, fieldName, defaultsList, defaultIcon, forceIconReset)
+    if type(db[fieldName]) ~= "table" then
+        db[fieldName] = {}
+        for i, item in ipairs(defaultsList) do
+            db[fieldName][i] = {
+                label = item.label,
+                text = item.text,
+                icon = NormalizeRawIconValue(item.icon),
+            }
+        end
+    else
+        for _, item in ipairs(db[fieldName]) do
+            if type(item) == "table" then
+                local raw = NormalizeRawIconValue(item.icon)
+                item.icon = (forceIconReset or raw == defaultIcon) and nil or raw
+                item.text = ns:SanitizeCustomLineText(item.text)
+            end
+        end
+    end
+end
+
 function ns:EnsureFlyoutDB()
     ns.db = ns.db or _G.PadRPDB or {}
     if type(ns.db.flyout) ~= "table" then
         ns.db.flyout = {}
     end
 
-    -- One-time migration: switch all emotes to the normal default icon unless the player
-    -- explicitly picks a custom icon afterward.
     local needsNormalIconMigration = (ns.db.flyout.starterSetMigratedV3 ~= true)
         and (type(ns.db.flyout.standardEmotes) == "table" and #ns.db.flyout.standardEmotes > 0)
 
@@ -491,23 +540,9 @@ function ns:EnsureFlyoutDB()
     ns.db.flyout.starterSetMigratedV2 = true
     ns.db.flyout.starterSetMigratedV3 = true
 
-    if type(ns.db.flyout.customEmotes) ~= "table" then
-        ns.db.flyout.customEmotes = {}
-        for i, item in ipairs(DEFAULT_CUSTOM_EMOTES) do
-            ns.db.flyout.customEmotes[i] = {
-                label = item.label,
-                text = item.text,
-                icon = NormalizeRawIconValue(item.icon),
-            }
-        end
-    else
-        for _, item in ipairs(ns.db.flyout.customEmotes) do
-            if type(item) == "table" then
-                local raw = NormalizeRawIconValue(item.icon)
-                item.icon = (needsNormalIconMigration or raw == DEFAULT_CUSTOM_ICON) and nil or raw
-            end
-        end
-    end
+    EnsureCustomBucket(ns.db.flyout, "customEmotes", DEFAULT_CUSTOM_EMOTES, DEFAULT_CUSTOM_ICON, needsNormalIconMigration)
+    EnsureCustomBucket(ns.db.flyout, "customSays", DEFAULT_CUSTOM_SAYS, DEFAULT_SAY_ICON, false)
+    EnsureCustomBucket(ns.db.flyout, "customYells", DEFAULT_CUSTOM_YELLS, DEFAULT_YELL_ICON, false)
 
     return ns.db.flyout
 end
@@ -667,8 +702,8 @@ local function GetPlayerRPDisplayName()
     return UnitName("player") or "Player"
 end
 
-local function FormatCustomEmoteText(rawText)
-    local out = tostring(rawText or "")
+local function FormatCustomLineText(rawText)
+    local out = ns:SanitizeCustomLineText(rawText)
     local playerName = GetPlayerRPDisplayName()
     local targetName = "someone"
 
@@ -695,23 +730,40 @@ function ns:TriggerFlyoutStandardEmote(token)
     if ns.PlayUISound then pcall(ns.PlayUISound, ns) end
 end
 
-function ns:TriggerFlyoutCustomEmote(rawText)
+function ns:TriggerFlyoutCustomLine(rawText, channel)
     if not CanAct() then return end
-    local formatted = FormatCustomEmoteText(rawText)
+    local formatted = FormatCustomLineText(rawText)
     if formatted == "" then return end
-    if type(SendChatMessage) == "function" then pcall(SendChatMessage, formatted, "EMOTE") end
+    local chatType = string.upper(tostring(channel or "EMOTE"))
+    if chatType ~= "EMOTE" and chatType ~= "SAY" and chatType ~= "YELL" then
+        chatType = "EMOTE"
+    end
+    if type(SendChatMessage) == "function" then
+        pcall(SendChatMessage, formatted, chatType)
+    end
     if ns.PlayUISound then pcall(ns.PlayUISound, ns) end
 end
 
--- Emote list management (used by the Emotes tab in ControllerUI.lua)
-local MAX_CUSTOM_EMOTES = 64
+function ns:TriggerFlyoutCustomEmote(rawText)
+    ns:TriggerFlyoutCustomLine(rawText, "EMOTE")
+end
+
+-- Line list management (used by the Emotes/RP Lines tab in Tabs/TabEmotes.lua)
+local MAX_CUSTOM_LINES = 64
 local MAX_BASE_EMOTES = 250
 local DEFAULT_BASE_TOKENS = {}
 for _, item in ipairs(DEFAULT_BASE_EMOTES) do DEFAULT_BASE_TOKENS[item.token] = true end
 
 local function GetEmoteList(kind)
     local db = ns:EnsureFlyoutDB()
-    return (kind == "base") and db.standardEmotes or db.customEmotes
+    if kind == "base" then
+        return db.standardEmotes
+    elseif kind == "say" then
+        return db.customSays
+    elseif kind == "yell" then
+        return db.customYells
+    end
+    return db.customEmotes
 end
 
 local function CleanEmoteToken(token)
@@ -758,7 +810,7 @@ end
 
 function ns:AddFlyoutEmote(kind, fields)
     local list = GetEmoteList(kind)
-    local limit = (kind == "base") and MAX_BASE_EMOTES or MAX_CUSTOM_EMOTES
+    local limit = (kind == "base") and MAX_BASE_EMOTES or MAX_CUSTOM_LINES
     if #list >= limit then return nil, "limit" end
     fields = fields or {}
     local label = string.sub(strtrim(tostring(fields.label or "")), 1, 40)
@@ -780,11 +832,14 @@ function ns:AddFlyoutEmote(kind, fields)
             enabled = true,
         }
     else
-        local text = string.sub(strtrim(tostring(fields.text or "")), 1, 240)
-        if customIcon == DEFAULT_CUSTOM_ICON then customIcon = nil end
+        local text = string.sub(ns:SanitizeCustomLineText(fields.text or ""), 1, 240)
+        local defaultIcon = GetDefaultIconForEmote(kind)
+        if customIcon == defaultIcon then customIcon = nil end
+        local defaultLabel = (kind == "say" and "New Say") or (kind == "yell" and "New Yell") or "New Emote"
+        local defaultText = (kind == "say" and "Well met.") or (kind == "yell" and "Hear me!") or "does something memorable."
         item = {
-            label = (label ~= "") and label or "New Emote",
-            text = (text ~= "") and text or "does something memorable.",
+            label = (label ~= "") and label or defaultLabel,
+            text = (text ~= "") and text or defaultText,
             icon = customIcon,
         }
     end
@@ -835,10 +890,16 @@ function ns:SetAllFlyoutBaseEmotesEnabled(enabled)
     if wheelFrame and wheelFrame:IsShown() then ns:RefreshFlyoutWheel() end
 end
 
-function ns:PreviewFlyoutEmoteText(raw)
-    local formatted = FormatCustomEmoteText(raw)
+function ns:PreviewFlyoutEmoteText(raw, kind)
+    local formatted = FormatCustomLineText(raw)
     if formatted == "" then return "" end
-    return GetPlayerRPDisplayName() .. " " .. formatted
+    local name = GetPlayerRPDisplayName()
+    if kind == "say" then
+        return name .. ' says: "' .. formatted .. '"'
+    elseif kind == "yell" then
+        return name .. ' yells: "' .. formatted .. '"'
+    end
+    return name .. " " .. formatted
 end
 
 local function ToggleICState()
@@ -897,10 +958,8 @@ local function GetEnabledBaseEmotes()
 end
 
 local function RebuildPageRing()
-    local db = ns:EnsureFlyoutDB()
     local baseEnabled = GetEnabledBaseEmotes()
     local basePages = math.max(1, math.ceil(#baseEnabled / SLICES_PER_PAGE))
-    local customPages = math.max(1, math.ceil(#db.customEmotes / SLICES_PER_PAGE))
 
     pageList = {
         { kind = "MAIN", title = "RP Wheel" },
@@ -911,14 +970,6 @@ local function RebuildPageRing()
             subPage = p,
             totalSubPages = basePages,
             title = (basePages > 1) and string.format("Base Emotes (%d/%d)", p, basePages) or "Base Emotes",
-        })
-    end
-    for p = 1, customPages do
-        table.insert(pageList, {
-            kind = "CUSTOM",
-            subPage = p,
-            totalSubPages = customPages,
-            title = (customPages > 1) and string.format("Custom Emotes (%d/%d)", p, customPages) or "Custom Emotes",
         })
     end
     table.insert(pageList, { kind = "STANDING", title = "Target Standing" })
@@ -953,6 +1004,52 @@ local function SliceCenterAngle(index, total)
     return (math.pi / 2) - ((index - 1) * step)
 end
 
+local function BuildCustomChannelSlices(kind, channel, bucket, headerLabel, subTag)
+    local totalPages = math.max(1, math.ceil(#bucket / SLICES_PER_PAGE))
+    if subPageIndex > totalPages then subPageIndex = totalPages end
+    if subPageIndex < 1 then subPageIndex = 1 end
+
+    local startIdx = ((subPageIndex - 1) * SLICES_PER_PAGE) + 1
+    local endIdx = math.min(#bucket, startIdx + SLICES_PER_PAGE - 1)
+    local list = {}
+
+    for i = startIdx, endIdx do
+        local item = bucket[i]
+        local line = item.text
+        local chosenIcon = ns:GetFlyoutEmoteDisplayIcon(kind, item)
+        table.insert(list, {
+            label = ShortenLabel(item.label or (headerLabel .. " " .. i), 13),
+            sub = subTag,
+            icon = ns:ResolveWheelIconTexture(chosenIcon, kind, item),
+            onSelect = function()
+                ns:TriggerFlyoutCustomLine(line, channel)
+                ns:CloseFlyoutWheel()
+            end,
+        })
+    end
+
+    if #list == 0 then
+        table.insert(list, {
+            label = "Add in PadRP",
+            sub = "Emotes Tab",
+            icon = GetDefaultIconForEmote(kind),
+            onSelect = function()
+                ns:CloseFlyoutWheel()
+                if ns.OpenEmotesTab then
+                    ns:OpenEmotesTab()
+                elseif ns.ToggleMainFrame then
+                    ns:ToggleMainFrame()
+                end
+            end,
+        })
+    end
+
+    local title = (totalPages > 1)
+        and string.format("%s (%d/%d)", headerLabel, subPageIndex, totalPages)
+        or headerLabel
+    return title, list
+end
+
 local function BuildCurrentSlices()
     local db = ns:EnsureFlyoutDB()
     local isIC = ns.profile and ns.profile.isIC
@@ -964,7 +1061,52 @@ local function BuildCurrentSlices()
     local targetKey, targetName, targetHasRP = ResolveTargetKeyAndName()
     local curStanding = targetKey and GetTargetStandingValue(targetKey) or nil
 
-    if subViewMode == "WALKUP" then
+    if subViewMode == "CUSTOM_MENU" then
+        return "Custom RP Lines", {
+            {
+                label = "Custom /e",
+                sub = tostring(#db.customEmotes) .. " emotes",
+                icon = DEFAULT_CUSTOM_ICON,
+                onSelect = function()
+                    subViewMode = "CUSTOM_EMOTE"
+                    subPageIndex = 1
+                    selectedIdx = 1
+                    stickArmed = false
+                    ns:RefreshFlyoutWheel()
+                end,
+            },
+            {
+                label = "Custom /s",
+                sub = tostring(#db.customSays) .. " says",
+                icon = DEFAULT_SAY_ICON,
+                onSelect = function()
+                    subViewMode = "CUSTOM_SAY"
+                    subPageIndex = 1
+                    selectedIdx = 1
+                    stickArmed = false
+                    ns:RefreshFlyoutWheel()
+                end,
+            },
+            {
+                label = "Custom /y",
+                sub = tostring(#db.customYells) .. " yells",
+                icon = DEFAULT_YELL_ICON,
+                onSelect = function()
+                    subViewMode = "CUSTOM_YELL"
+                    subPageIndex = 1
+                    selectedIdx = 1
+                    stickArmed = false
+                    ns:RefreshFlyoutWheel()
+                end,
+            },
+        }
+    elseif subViewMode == "CUSTOM_EMOTE" then
+        return BuildCustomChannelSlices("custom", "EMOTE", db.customEmotes, "Custom Emotes", "/e custom")
+    elseif subViewMode == "CUSTOM_SAY" then
+        return BuildCustomChannelSlices("say", "SAY", db.customSays, "Custom Says", "/s custom")
+    elseif subViewMode == "CUSTOM_YELL" then
+        return BuildCustomChannelSlices("yell", "YELL", db.customYells, "Custom Yells", "/y custom")
+    elseif subViewMode == "WALKUP" then
         return "Walk-Up Status", {
             {
                 label = "Welcome",
@@ -1020,6 +1162,7 @@ local function BuildCurrentSlices()
 
     if meta.kind == "MAIN" then
         local baseEnabled = GetEnabledBaseEmotes()
+        local totalCustomCount = #db.customEmotes + #db.customSays + #db.customYells
         local targetColor = targetHasRP and "|cff81c995" or "|cff8ab4f8"
         return meta.title, {
             {
@@ -1032,13 +1175,13 @@ local function BuildCurrentSlices()
                 label = "Walk-Ups",
                 sub = "|cfffdd663" .. wuShort .. "|r",
                 icon = "Interface\\Icons\\INV_Misc_GroupLooking",
-                onSelect = function() subViewMode = "WALKUP"; ns:RefreshFlyoutWheel() end,
+                onSelect = function() subViewMode = "WALKUP"; selectedIdx = 1; stickArmed = false; ns:RefreshFlyoutWheel() end,
             },
             {
                 label = "Currently",
                 sub = "|cff8ab4f8" .. curText .. "|r",
                 icon = "Interface\\Icons\\INV_Misc_Lantern_01",
-                onSelect = function() subViewMode = "CURRENTLY"; ns:RefreshFlyoutWheel() end,
+                onSelect = function() subViewMode = "CURRENTLY"; selectedIdx = 1; stickArmed = false; ns:RefreshFlyoutWheel() end,
             },
             {
                 label = "Sit / Rest",
@@ -1049,7 +1192,7 @@ local function BuildCurrentSlices()
             {
                 label = "PadRP Menu",
                 sub = "Open Suite",
-                icon = "Interface\\Icons\\INV_Scroll_02",
+                icon = "Interface\\Icons\\INV_Misc_Note_01",
                 onSelect = function()
                     ns:CloseFlyoutWheel()
                     if ns.ToggleMainFrame then ns:ToggleMainFrame() end
@@ -1075,15 +1218,19 @@ local function BuildCurrentSlices()
                 disabled = (targetKey == nil),
                 onSelect = function()
                     activePageIndex = FindFirstPageOfKind("STANDING")
+                    selectedIdx = 1
+                    stickArmed = false
                     ns:RefreshFlyoutWheel()
                 end,
             },
             {
-                label = "Custom /e",
-                sub = tostring(#db.customEmotes) .. " saved",
+                label = "Custom RP",
+                sub = tostring(totalCustomCount) .. " lines",
                 icon = DEFAULT_CUSTOM_ICON,
                 onSelect = function()
-                    activePageIndex = FindFirstPageOfKind("CUSTOM")
+                    subViewMode = "CUSTOM_MENU"
+                    selectedIdx = 1
+                    stickArmed = false
                     ns:RefreshFlyoutWheel()
                 end,
             },
@@ -1093,6 +1240,8 @@ local function BuildCurrentSlices()
                 icon = DEFAULT_BASE_FALLBACK_ICON,
                 onSelect = function()
                     activePageIndex = FindFirstPageOfKind("STD")
+                    selectedIdx = 1
+                    stickArmed = false
                     ns:RefreshFlyoutWheel()
                 end,
             },
@@ -1118,37 +1267,6 @@ local function BuildCurrentSlices()
                 label = "Enable in PadRP",
                 sub = "Emotes Tab",
                 icon = DEFAULT_BASE_FALLBACK_ICON,
-                onSelect = function()
-                    ns:CloseFlyoutWheel()
-                    if ns.OpenEmotesTab then
-                        ns:OpenEmotesTab()
-                    elseif ns.ToggleMainFrame then
-                        ns:ToggleMainFrame()
-                    end
-                end,
-            })
-        end
-        return meta.title, list
-    elseif meta.kind == "CUSTOM" then
-        local startIdx = ((meta.subPage - 1) * SLICES_PER_PAGE) + 1
-        local endIdx = math.min(#db.customEmotes, startIdx + SLICES_PER_PAGE - 1)
-        local list = {}
-        for i = startIdx, endIdx do
-            local item = db.customEmotes[i]
-            local line = item.text
-            local chosenIcon = ns:GetFlyoutEmoteDisplayIcon("custom", item)
-            table.insert(list, {
-                label = ShortenLabel(item.label or ("Emote " .. i), 13),
-                sub = "/e custom",
-                icon = ns:ResolveWheelIconTexture(chosenIcon, "custom", item),
-                onSelect = function() ns:TriggerFlyoutCustomEmote(line); ns:CloseFlyoutWheel() end,
-            })
-        end
-        if #list == 0 then
-            table.insert(list, {
-                label = "Add in PadRP",
-                sub = "Emotes Tab",
-                icon = DEFAULT_CUSTOM_ICON,
                 onSelect = function()
                     ns:CloseFlyoutWheel()
                     if ns.OpenEmotesTab then
@@ -1204,13 +1322,20 @@ end
 
 local function SyncPageDots()
     local total = #pageList
-    if total > 12 then
+    if total > 12 or subViewMode ~= nil then
         for _, dot in ipairs(pageDotTextures) do
             dot:Hide()
         end
         if pageCountFS then
-            if subViewMode ~= nil then
-                pageCountFS:SetText("|cff9aa0a6Sub-Menu|r")
+            if subViewMode == "CUSTOM_EMOTE" or subViewMode == "CUSTOM_SAY" or subViewMode == "CUSTOM_YELL" then
+                local db = ns:EnsureFlyoutDB()
+                local bucket = (subViewMode == "CUSTOM_SAY" and db.customSays)
+                    or (subViewMode == "CUSTOM_YELL" and db.customYells)
+                    or db.customEmotes
+                local subTotal = math.max(1, math.ceil(#bucket / SLICES_PER_PAGE))
+                pageCountFS:SetText(string.format("|cfffdd663Page %d / %d  (B: Back)|r", subPageIndex, subTotal))
+            elseif subViewMode ~= nil then
+                pageCountFS:SetText("|cffb8ad96Sub-Menu  (B: Back)|r")
             else
                 pageCountFS:SetText(string.format("|cfffdd663Page %d / %d|r", activePageIndex, total))
             end
@@ -1228,16 +1353,16 @@ local function SyncPageDots()
             pageDotTextures[i] = dot
         end
         if i <= total then
-            local spacing = math.min(16, math.floor(140 / math.max(1, total)))
+            local spacing = math.min(18, math.floor(140 / math.max(1, total)))
             local offsetX = (i - ((total + 1) / 2)) * spacing
             dot:ClearAllPoints()
-            dot:SetPoint("CENTER", wheelFrame, "CENTER", offsetX, OUTER_R + 20)
+            dot:SetPoint("CENTER", wheelFrame, "CENTER", offsetX, OUTER_R + 22)
             if subViewMode == nil and activePageIndex == i then
-                dot:SetVertexColor(0.98, 0.80, 0.22, 1.0)
-                dot:SetSize(9, 9)
+                dot:SetVertexColor(0.96, 0.78, 0.24, 1.0)
+                dot:SetSize(10, 10)
             else
-                dot:SetVertexColor(0.42, 0.38, 0.32, 0.75)
-                dot:SetSize(6, 6)
+                dot:SetVertexColor(0.22, 0.20, 0.18, 0.90)
+                dot:SetSize(8, 8)
             end
             dot:Show()
         else
@@ -1256,16 +1381,6 @@ local function UpdateActiveSliceVisuals()
     local aStart = centerAngle + halfStep
     local aEnd = centerAngle - halfStep
 
-    if activeGlowTex then
-        if activeItem and not activeItem.disabled then
-            activeGlowTex:ClearAllPoints()
-            activeGlowTex:SetPoint("CENTER", wheelFrame, "CENTER", math.cos(centerAngle) * CONTENT_R, math.sin(centerAngle) * CONTENT_R)
-            activeGlowTex:Show()
-        else
-            activeGlowTex:Hide()
-        end
-    end
-
     local arcSegs = #activeArcOuter
     for i = 1, arcSegs do
         local t1 = (i - 1) / arcSegs
@@ -1274,24 +1389,24 @@ local function UpdateActiveSliceVisuals()
         local ang2 = aStart + (aEnd - aStart) * t2
 
         local lo = activeArcOuter[i]
-        lo:SetStartPoint("CENTER", wheelFrame, math.cos(ang1) * (OUTER_R + 1), math.sin(ang1) * (OUTER_R + 1))
-        lo:SetEndPoint("CENTER", wheelFrame, math.cos(ang2) * (OUTER_R + 1), math.sin(ang2) * (OUTER_R + 1))
+        lo:SetStartPoint("CENTER", wheelFrame, math.cos(ang1) * (OUTER_R + 3), math.sin(ang1) * (OUTER_R + 3))
+        lo:SetEndPoint("CENTER", wheelFrame, math.cos(ang2) * (OUTER_R + 3), math.sin(ang2) * (OUTER_R + 3))
         lo:SetShown(activeItem and not activeItem.disabled)
 
         local li = activeArcInner[i]
-        li:SetStartPoint("CENTER", wheelFrame, math.cos(ang1) * (INNER_R + 1), math.sin(ang1) * (INNER_R + 1))
-        li:SetEndPoint("CENTER", wheelFrame, math.cos(ang2) * (INNER_R + 1), math.sin(ang2) * (INNER_R + 1))
+        li:SetStartPoint("CENTER", wheelFrame, math.cos(ang1) * INNER_R, math.sin(ang1) * INNER_R)
+        li:SetEndPoint("CENTER", wheelFrame, math.cos(ang2) * INNER_R, math.sin(ang2) * INNER_R)
         li:SetShown(activeItem and not activeItem.disabled)
     end
 
     if activeSpokeLeft and activeSpokeRight then
         local showSpokes = activeItem and not activeItem.disabled
-        activeSpokeLeft:SetStartPoint("CENTER", wheelFrame, math.cos(aStart) * (INNER_R + 1), math.sin(aStart) * (INNER_R + 1))
-        activeSpokeLeft:SetEndPoint("CENTER", wheelFrame, math.cos(aStart) * (OUTER_R - 1), math.sin(aStart) * (OUTER_R - 1))
+        activeSpokeLeft:SetStartPoint("CENTER", wheelFrame, math.cos(aStart) * INNER_R, math.sin(aStart) * INNER_R)
+        activeSpokeLeft:SetEndPoint("CENTER", wheelFrame, math.cos(aStart) * (OUTER_R + 3), math.sin(aStart) * (OUTER_R + 3))
         activeSpokeLeft:SetShown(showSpokes)
 
-        activeSpokeRight:SetStartPoint("CENTER", wheelFrame, math.cos(aEnd) * (INNER_R + 1), math.sin(aEnd) * (INNER_R + 1))
-        activeSpokeRight:SetEndPoint("CENTER", wheelFrame, math.cos(aEnd) * (OUTER_R - 1), math.sin(aEnd) * (OUTER_R - 1))
+        activeSpokeRight:SetStartPoint("CENTER", wheelFrame, math.cos(aEnd) * INNER_R, math.sin(aEnd) * INNER_R)
+        activeSpokeRight:SetEndPoint("CENTER", wheelFrame, math.cos(aEnd) * (OUTER_R + 3), math.sin(aEnd) * (OUTER_R + 3))
         activeSpokeRight:SetShown(showSpokes)
     end
 
@@ -1299,23 +1414,20 @@ local function UpdateActiveSliceVisuals()
         if btn:IsShown() then
             local isSel = (i == selectedIdx)
             if btn._disabled then
-                btn.iconFrame:SetSize(32, 32)
+                btn.icon:SetSize(38, 38)
                 btn.icon:SetDesaturated(true)
-                btn.icon:SetAlpha(0.42)
-                btn.iconBorder:SetColorTexture(0.28, 0.25, 0.20, 0.55)
-                btn.labelFS:SetTextColor(0.50, 0.50, 0.50)
+                btn.icon:SetAlpha(0.38)
+                btn.labelFS:SetTextColor(0.48, 0.48, 0.48)
             elseif isSel then
-                btn.iconFrame:SetSize(42, 42)
+                btn.icon:SetSize(44, 44)
                 btn.icon:SetDesaturated(false)
                 btn.icon:SetAlpha(1.0)
-                btn.iconBorder:SetColorTexture(1.00, 0.84, 0.28, 1.00)
-                btn.labelFS:SetTextColor(1.00, 0.90, 0.40)
+                btn.labelFS:SetTextColor(1.00, 0.90, 0.48)
             else
-                btn.iconFrame:SetSize(34, 34)
+                btn.icon:SetSize(40, 40)
                 btn.icon:SetDesaturated(false)
-                btn.icon:SetAlpha(0.90)
-                btn.iconBorder:SetColorTexture(0.55, 0.45, 0.26, 0.85)
-                btn.labelFS:SetTextColor(0.92, 0.78, 0.36)
+                btn.icon:SetAlpha(0.88)
+                btn.labelFS:SetTextColor(0.88, 0.84, 0.76)
             end
         end
     end
@@ -1331,10 +1443,12 @@ local function UpdateActiveSliceVisuals()
     SyncPageDots()
 end
 
+-- Double-wall bevelled radial divider spokes matching the carved compartment ring
 local function RebuildSpokes(count)
-    for _, pair in ipairs(spokeLines) do
-        pair.shadow:Hide()
-        pair.core:Hide()
+    for _, seg in ipairs(spokeLines) do
+        seg.outer:Hide()
+        seg.bevel:Hide()
+        seg.groove:Hide()
     end
     if not wheelFrame.CreateLine or count <= 1 then return end
 
@@ -1342,25 +1456,37 @@ local function RebuildSpokes(count)
     local halfStep = step / 2
     for i = 1, count do
         local ang = (math.pi / 2) - ((i - 1) * step) + halfStep
-        local pair = spokeLines[i]
-        if not pair then
-            local sh = wheelFrame:CreateLine(nil, "BORDER", nil, 1)
-            sh:SetThickness(5)
-            sh:SetColorTexture(0.05, 0.04, 0.03, 0.95)
-            local co = wheelFrame:CreateLine(nil, "BORDER", nil, 2)
-            co:SetThickness(2)
-            co:SetColorTexture(0.52, 0.43, 0.26, 0.88)
-            pair = { shadow = sh, core = co }
-            spokeLines[i] = pair
+        local seg = spokeLines[i]
+        if not seg then
+            local outer = wheelFrame:CreateLine(nil, "BORDER", nil, 1)
+            outer:SetThickness(11)
+            outer:SetColorTexture(0.03, 0.03, 0.03, 0.98)
+
+            local bevel = wheelFrame:CreateLine(nil, "BORDER", nil, 2)
+            bevel:SetThickness(7)
+            bevel:SetColorTexture(0.36, 0.34, 0.30, 0.95)
+
+            local groove = wheelFrame:CreateLine(nil, "BORDER", nil, 3)
+            groove:SetThickness(2.5)
+            groove:SetColorTexture(0.06, 0.05, 0.05, 0.96)
+
+            seg = { outer = outer, bevel = bevel, groove = groove }
+            spokeLines[i] = seg
         end
         local x1, y1 = math.cos(ang) * INNER_R, math.sin(ang) * INNER_R
         local x2, y2 = math.cos(ang) * OUTER_R, math.sin(ang) * OUTER_R
-        pair.shadow:SetStartPoint("CENTER", wheelFrame, x1, y1)
-        pair.shadow:SetEndPoint("CENTER", wheelFrame, x2, y2)
-        pair.shadow:Show()
-        pair.core:SetStartPoint("CENTER", wheelFrame, x1, y1)
-        pair.core:SetEndPoint("CENTER", wheelFrame, x2, y2)
-        pair.core:Show()
+
+        seg.outer:SetStartPoint("CENTER", wheelFrame, x1, y1)
+        seg.outer:SetEndPoint("CENTER", wheelFrame, x2, y2)
+        seg.outer:Show()
+
+        seg.bevel:SetStartPoint("CENTER", wheelFrame, x1, y1)
+        seg.bevel:SetEndPoint("CENTER", wheelFrame, x2, y2)
+        seg.bevel:Show()
+
+        seg.groove:SetStartPoint("CENTER", wheelFrame, x1, y1)
+        seg.groove:SetEndPoint("CENTER", wheelFrame, x2, y2)
+        seg.groove:Show()
     end
 end
 
@@ -1369,31 +1495,23 @@ local function GetOrCreateSliceButton(index)
     if btn then return btn end
 
     btn = CreateFrame("Button", nil, wheelFrame)
-    btn:SetSize(88, 74)
+    btn:SetSize(92, 76)
     btn:SetFrameLevel(wheelFrame:GetFrameLevel() + 5)
 
-    btn.iconFrame = CreateFrame("Frame", nil, btn)
-    btn.iconFrame:SetSize(34, 34)
-    btn.iconFrame:SetPoint("CENTER", btn, "CENTER", 0, 8)
-
-    btn.iconBorder = btn.iconFrame:CreateTexture(nil, "BACKGROUND")
-    btn.iconBorder:SetAllPoints(btn.iconFrame)
-    btn.iconBorder:SetColorTexture(0.55, 0.45, 0.26, 0.85)
-
-    btn.icon = btn.iconFrame:CreateTexture(nil, "ARTWORK")
-    btn.icon:SetPoint("TOPLEFT", 2, -2)
-    btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
-    btn.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    btn.icon = btn:CreateTexture(nil, "ARTWORK")
+    btn.icon:SetSize(40, 40)
+    btn.icon:SetPoint("CENTER", btn, "CENTER", 0, 10)
+    btn.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
     btn.labelFS = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    btn.labelFS:SetPoint("TOP", btn.iconFrame, "BOTTOM", 0, -4)
-    btn.labelFS:SetWidth(88)
+    btn.labelFS:SetPoint("TOP", btn.icon, "BOTTOM", 0, -4)
+    btn.labelFS:SetWidth(94)
     btn.labelFS:SetJustifyH("CENTER")
     btn.labelFS:SetWordWrap(false)
 
     btn.subFS = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     btn.subFS:SetPoint("TOP", btn.labelFS, "BOTTOM", 0, -1)
-    btn.subFS:SetWidth(88)
+    btn.subFS:SetWidth(94)
     btn.subFS:SetJustifyH("CENTER")
     btn.subFS:SetWordWrap(false)
 
@@ -1439,7 +1557,11 @@ function ns:RefreshFlyoutWheel()
         btn._idx = i
         btn._item = item
         btn._disabled = item.disabled and true or false
-        btn.icon:SetTexture(item.icon or DEFAULT_BASE_FALLBACK_ICON)
+        if ns.UI and ns.UI.SetIconTextureSafe then
+            ns.UI:SetIconTextureSafe(btn.icon, item.icon or DEFAULT_BASE_FALLBACK_ICON, "Interface\\Icons\\INV_Misc_QuestionMark")
+        else
+            btn.icon:SetTexture(item.icon or DEFAULT_BASE_FALLBACK_ICON)
+        end
         btn.labelFS:SetText(item.label or "")
         btn.subFS:SetText(item.sub or "")
         btn:Show()
@@ -1449,8 +1571,23 @@ function ns:RefreshFlyoutWheel()
 end
 
 local function StepWheelPage(delta)
-    subViewMode = nil
     selectedIdx = 1
+    stickArmed = false
+    if subViewMode == "CUSTOM_EMOTE" or subViewMode == "CUSTOM_SAY" or subViewMode == "CUSTOM_YELL" then
+        local db = ns:EnsureFlyoutDB()
+        local bucket = (subViewMode == "CUSTOM_SAY" and db.customSays)
+            or (subViewMode == "CUSTOM_YELL" and db.customYells)
+            or db.customEmotes
+        local totalPages = math.max(1, math.ceil(#bucket / SLICES_PER_PAGE))
+        if totalPages > 1 then
+            subPageIndex = ((subPageIndex - 1 + delta) % totalPages) + 1
+            ns:RefreshFlyoutWheel()
+            if ns.PlayUISound then pcall(ns.PlayUISound, ns) end
+        end
+        return
+    end
+
+    subViewMode = nil
     if #pageList > 0 then
         activePageIndex = ((activePageIndex - 1 + delta) % #pageList) + 1
         ns:RefreshFlyoutWheel()
@@ -1468,6 +1605,23 @@ local function AimSliceByStick(vx, vy)
     if idx ~= selectedIdx then
         selectedIdx = idx
         UpdateActiveSliceVisuals()
+    end
+end
+
+local function ProcessRightStickVector(vx, vy, mag)
+    local now = (GetTime and GetTime()) or 0
+    if mag >= STICK_DEADZONE then
+        AimSliceByStick(vx, vy)
+        if (now - lastStickSelectTime) >= STICK_FLICK_COOLDOWN then
+            stickArmed = true
+        end
+    elseif stickArmed and mag <= STICK_RELEASE_DEADZONE then
+        stickArmed = false
+        lastStickSelectTime = now
+        local item = currentSlices[selectedIdx]
+        if item and not item.disabled and type(item.onSelect) == "function" then
+            item.onSelect(item)
+        end
     end
 end
 
@@ -1543,14 +1697,15 @@ local function PollWheelStick()
         return
     end
     local vx, vy = ReadRightStick()
-    if math.sqrt((vx * vx) + (vy * vy)) >= STICK_DEADZONE then
-        AimSliceByStick(vx, vy)
-    end
+    local mag = math.sqrt((vx * vx) + (vy * vy))
+    ProcessRightStickVector(vx, vy, mag)
 end
 
 function ns:CloseFlyoutWheel()
     UnlockRightStickCamera(false)
     subViewMode = nil
+    subPageIndex = 1
+    stickArmed = false
     if wheelFrame then
         wheelFrame:UnregisterEvent("PLAYER_TARGET_CHANGED")
         wheelFrame:EnableGamePadButton(false)
@@ -1571,7 +1726,10 @@ function ns:ToggleFlyoutWheel()
     activePageIndex = 1
     selectedIdx = 1
     subViewMode = nil
+    subPageIndex = 1
+    stickArmed = false
     lastStickEventTime = 0
+    lastStickSelectTime = (GetTime and GetTime()) or 0
     ns:RefreshFlyoutWheel()
     LockRightStickToWheel()
     wheelFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
@@ -1677,97 +1835,93 @@ function ns:InitFlyoutWheel()
     end
 
     wheelFrame = CreateFrame("Frame", "PadRP_FlyoutWheel", UIParent)
-    wheelFrame:SetSize((OUTER_R * 2) + 32, (OUTER_R * 2) + 110)
-    wheelFrame:SetPoint("LEFT", UIParent, "LEFT", 56, 40)
+    wheelFrame:SetSize((OUTER_R * 2) + 40, (OUTER_R * 2) + 120)
+    wheelFrame:SetPoint("LEFT", UIParent, "LEFT", 64, 30)
     wheelFrame:SetFrameStrata("DIALOG")
     wheelFrame:Hide()
     ns.flyoutWheelFrame = wheelFrame
 
     headerTitleFS = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    headerTitleFS:SetPoint("BOTTOM", wheelFrame, "CENTER", 0, OUTER_R + 36)
+    headerTitleFS:SetPoint("BOTTOM", wheelFrame, "CENTER", 0, OUTER_R + 38)
     headerTitleFS:SetText("RP Wheel")
-    headerTitleFS:SetTextColor(0.98, 0.93, 0.80)
+    headerTitleFS:SetTextColor(0.96, 0.94, 0.88)
 
     local lbText = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    lbText:SetPoint("BOTTOM", wheelFrame, "CENTER", -86, OUTER_R + 15)
+    lbText:SetPoint("RIGHT", wheelFrame, "CENTER", -46, OUTER_R + 22)
     lbText:SetText("|cffd6c49a[LB]|r")
 
     local rbText = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    rbText:SetPoint("BOTTOM", wheelFrame, "CENTER", 86, OUTER_R + 15)
+    rbText:SetPoint("LEFT", wheelFrame, "CENTER", 46, OUTER_R + 22)
     rbText:SetText("|cffd6c49a[RB]|r")
 
     pageCountFS = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    pageCountFS:SetPoint("CENTER", wheelFrame, "CENTER", 0, OUTER_R + 20)
+    pageCountFS:SetPoint("CENTER", wheelFrame, "CENTER", 0, OUTER_R + 22)
     pageCountFS:SetJustifyH("CENTER")
     pageCountFS:Hide()
 
+    -- Outer carved stone ring & dark compartment backdrop
     local outerDisc = wheelFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
     outerDisc:SetSize(OUTER_R * 2, OUTER_R * 2)
     outerDisc:SetPoint("CENTER", wheelFrame, "CENTER", 0, 0)
     outerDisc:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-    outerDisc:SetVertexColor(0.05, 0.04, 0.03, 0.84)
+    outerDisc:SetVertexColor(0.04, 0.04, 0.04, 0.90)
 
-    activeGlowTex = wheelFrame:CreateTexture(nil, "ARTWORK", nil, 0)
-    activeGlowTex:SetSize(102, 102)
-    activeGlowTex:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-    activeGlowTex:SetBlendMode("ADD")
-    activeGlowTex:SetVertexColor(0.95, 0.72, 0.18, 0.22)
-    activeGlowTex:Hide()
+    DrawCircleRing(wheelFrame, OUTER_R + 7, 72, 6, 0.02, 0.02, 0.02, 0.98, "BORDER", 1)
+    DrawCircleRing(wheelFrame, OUTER_R + 3, 72, 5, 0.36, 0.34, 0.30, 0.96, "BORDER", 2)
+    DrawCircleRing(wheelFrame, OUTER_R - 1, 72, 2.5, 0.06, 0.05, 0.05, 0.96, "BORDER", 3)
 
-    DrawCircleRing(wheelFrame, OUTER_R + 5, 64, 5, 0.06, 0.05, 0.04, 0.96, "BORDER", 2)
-    DrawCircleRing(wheelFrame, OUTER_R + 2, 64, 3, 0.56, 0.46, 0.28, 0.95, "BORDER", 3)
-    DrawCircleRing(wheelFrame, OUTER_R - 2, 64, 2, 0.12, 0.10, 0.07, 0.92, "BORDER", 3)
-
+    -- Center hub cutout
     local innerDisc = wheelFrame:CreateTexture(nil, "ARTWORK", nil, 1)
     innerDisc:SetSize(INNER_R * 2, INNER_R * 2)
     innerDisc:SetPoint("CENTER", wheelFrame, "CENTER", 0, 0)
     innerDisc:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-    innerDisc:SetVertexColor(0.03, 0.02, 0.02, 0.90)
+    innerDisc:SetVertexColor(0.03, 0.03, 0.03, 0.94)
 
-    DrawCircleRing(wheelFrame, INNER_R + 3, 48, 4, 0.06, 0.05, 0.04, 0.96, "ARTWORK", 2)
-    DrawCircleRing(wheelFrame, INNER_R,     48, 2.5, 0.58, 0.48, 0.30, 0.95, "ARTWORK", 3)
+    DrawCircleRing(wheelFrame, INNER_R + 4, 56, 5, 0.02, 0.02, 0.02, 0.98, "ARTWORK", 2)
+    DrawCircleRing(wheelFrame, INNER_R + 1, 56, 4, 0.36, 0.34, 0.30, 0.96, "ARTWORK", 3)
+    DrawCircleRing(wheelFrame, INNER_R - 2, 56, 2, 0.06, 0.05, 0.05, 0.96, "ARTWORK", 4)
 
     if wheelFrame.CreateLine then
         for i = 1, 8 do
             local lo = wheelFrame:CreateLine(nil, "OVERLAY", nil, 4)
-            lo:SetThickness(4)
-            lo:SetColorTexture(1.00, 0.82, 0.26, 0.98)
+            lo:SetThickness(3.5)
+            lo:SetColorTexture(1.00, 0.84, 0.32, 0.96)
             lo:Hide()
             activeArcOuter[i] = lo
 
             local li = wheelFrame:CreateLine(nil, "OVERLAY", nil, 4)
             li:SetThickness(3)
-            li:SetColorTexture(1.00, 0.82, 0.26, 0.92)
+            li:SetColorTexture(1.00, 0.84, 0.32, 0.90)
             li:Hide()
             activeArcInner[i] = li
         end
 
         activeSpokeLeft = wheelFrame:CreateLine(nil, "OVERLAY", nil, 4)
         activeSpokeLeft:SetThickness(2.5)
-        activeSpokeLeft:SetColorTexture(1.00, 0.82, 0.26, 0.95)
+        activeSpokeLeft:SetColorTexture(1.00, 0.84, 0.32, 0.94)
         activeSpokeLeft:Hide()
 
         activeSpokeRight = wheelFrame:CreateLine(nil, "OVERLAY", nil, 4)
         activeSpokeRight:SetThickness(2.5)
-        activeSpokeRight:SetColorTexture(1.00, 0.82, 0.26, 0.95)
+        activeSpokeRight:SetColorTexture(1.00, 0.84, 0.32, 0.94)
         activeSpokeRight:Hide()
     end
 
     hubTitleFS = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hubTitleFS:SetPoint("CENTER", wheelFrame, "CENTER", 0, 7)
-    hubTitleFS:SetWidth((INNER_R * 2) - 12)
+    hubTitleFS:SetPoint("CENTER", wheelFrame, "CENTER", 0, 6)
+    hubTitleFS:SetWidth((INNER_R * 2) - 14)
     hubTitleFS:SetJustifyH("CENTER")
     hubTitleFS:SetWordWrap(false)
 
     hubSubFS = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    hubSubFS:SetPoint("TOP", hubTitleFS, "BOTTOM", 0, -3)
-    hubSubFS:SetWidth((INNER_R * 2) - 10)
+    hubSubFS:SetPoint("TOP", hubTitleFS, "BOTTOM", 0, -2)
+    hubSubFS:SetWidth((INNER_R * 2) - 12)
     hubSubFS:SetJustifyH("CENTER")
     hubSubFS:SetWordWrap(false)
 
     footerHintFS = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     footerHintFS:SetPoint("TOP", wheelFrame, "CENTER", 0, -(OUTER_R + 16))
-    footerHintFS:SetText("|cff81c995[R-Stick/D-Pad]|r Aim  |cff81c995[A]|r Select  |cfff28b82[B]|r Back  |cfffdd663[LB/RB]|r Page  |cfffdd663[LT/RT]|r Skip")
+    footerHintFS:SetText("|cffb8ad96[R-Stick Flick]|r Select   |cffb8ad96[B]|r Back")
 
     wheelFrame:SetScript("OnEvent", function(self, event)
         if event == "PLAYER_TARGET_CHANGED" and self:IsShown() then
@@ -1778,6 +1932,8 @@ function ns:InitFlyoutWheel()
     wheelFrame:SetScript("OnHide", function(self)
         UnlockRightStickCamera(false)
         subViewMode = nil
+        subPageIndex = 1
+        stickArmed = false
         self:UnregisterEvent("PLAYER_TARGET_CHANGED")
         self:EnableGamePadButton(false)
         SetWheelStickCapture(self, false)
@@ -1785,6 +1941,9 @@ function ns:InitFlyoutWheel()
     end)
 
     wheelFrame:SetScript("OnGamePadButtonDown", function(self, button)
+        if _G.PadRP_DebugGamePad then
+            print("|cff8ab4f8[PadRP btn]|r", tostring(button))
+        end
         local handled = true
         if button == "PADLSHOULDER" then
             StepWheelPage(-1)
@@ -1807,11 +1966,19 @@ function ns:InitFlyoutWheel()
         elseif button == "PAD1" then
             local item = currentSlices[selectedIdx]
             if item and not item.disabled and type(item.onSelect) == "function" then
+                stickArmed = false
                 item.onSelect(item)
             end
         elseif button == "PAD2" then
-            if subViewMode ~= nil then
+            stickArmed = false
+            if subViewMode == "CUSTOM_EMOTE" or subViewMode == "CUSTOM_SAY" or subViewMode == "CUSTOM_YELL" then
+                subViewMode = "CUSTOM_MENU"
+                subPageIndex = 1
+                selectedIdx = 1
+                ns:RefreshFlyoutWheel()
+            elseif subViewMode ~= nil then
                 subViewMode = nil
+                subPageIndex = 1
                 selectedIdx = 1
                 ns:RefreshFlyoutWheel()
             elseif activePageIndex ~= 1 then
@@ -1839,9 +2006,7 @@ function ns:InitFlyoutWheel()
             lastStickEventTime = (GetTime and GetTime()) or 0
             local vx, vy = tonumber(x) or 0, tonumber(y) or 0
             local mag = tonumber(len) or math.sqrt((vx * vx) + (vy * vy))
-            if mag >= STICK_DEADZONE then
-                AimSliceByStick(vx, vy)
-            end
+            ProcessRightStickVector(vx, vy, mag)
         end
         if not InCombatLockdown() and self.SetPropagateKeyboardInput then
             self:SetPropagateKeyboardInput(not isRight)

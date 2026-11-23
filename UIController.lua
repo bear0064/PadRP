@@ -187,7 +187,7 @@ end
 
 function ns:GetTabDisplayOrder()
     local showDev = (ns.db and ns.db.ui and ns.db.ui.devMode) and true or false
-    local order = { 1, 2, 3, 4, 5, 6, 7, 9 }
+    local order = { 1, 2, 3, 4, 5, 6, 9, 7 }
     if showDev then order[#order + 1] = 8 end
     return order
 end

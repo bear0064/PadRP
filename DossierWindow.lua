@@ -37,6 +37,15 @@ local function GetStandingAccentRGB(standingName)
     return ns.M3.primary[1], ns.M3.primary[2], ns.M3.primary[3]
 end
 
+local function GetActiveCharKey()
+    if ns.GetPlayerCharKey then
+        return ns:GetPlayerCharKey() or "Default"
+    end
+    local name = (UnitName and UnitName("player")) or "Player"
+    local realm = (GetRealmName and GetRealmName()) or "Realm"
+    return name .. "-" .. realm
+end
+
 local function NormalizeKey(k)
     return string.lower(strtrim(tostring(k or "")))
 end
@@ -86,8 +95,17 @@ local function SanitizeStandingsData()
     end
     if type(ns.db.notes) == "table" then
         for _, rec in pairs(ns.db.notes) do
-            if type(rec) == "table" and rec.standing and string.lower(tostring(rec.standing)) == "fool" then
-                rec.standing = "None"
+            if type(rec) == "table" then
+                if rec.standing and string.lower(tostring(rec.standing)) == "fool" then
+                    rec.standing = "None"
+                end
+                if type(rec.charStandings) == "table" then
+                    for ck, st in pairs(rec.charStandings) do
+                        if st and string.lower(tostring(st)) == "fool" then
+                            rec.charStandings[ck] = "None"
+                        end
+                    end
+                end
             end
         end
     end
@@ -165,10 +183,18 @@ local function EnsureNoteRecord(key)
     ns.db.notes = ns.db.notes or {}
     local rec = ns.db.notes[key]
     if type(rec) ~= "table" then
-        rec = { standing = "None", accountNote = "", charNotes = {}, charRelationships = {}, customRelationship = "" }
+        rec = {
+            standing = "None",
+            charStandings = {},
+            accountNote = "",
+            charNotes = {},
+            charRelationships = {},
+            customRelationship = "",
+        }
         ns.db.notes[key] = rec
     end
     rec.standing = rec.standing or "None"
+    rec.charStandings = rec.charStandings or {}
     rec.charNotes = rec.charNotes or {}
     rec.charRelationships = rec.charRelationships or {}
     rec.customRelationship = rec.customRelationship or ""
@@ -182,6 +208,13 @@ local function IsNoteRecordEmpty(rec)
     if type(rec) ~= "table" then return true end
     if rec.standing and rec.standing ~= "" and rec.standing ~= "None" then
         return false
+    end
+    if type(rec.charStandings) == "table" then
+        for _, st in pairs(rec.charStandings) do
+            if st and st ~= "" and st ~= "None" then
+                return false
+            end
+        end
     end
     if strtrim(tostring(rec.accountNote or "")) ~= "" or strtrim(tostring(rec.note or "")) ~= "" then
         return false
@@ -204,6 +237,32 @@ local function IsNoteRecordEmpty(rec)
         end
     end
     return true
+end
+
+function ns:GetNoteInfo(key)
+    local charKey = GetActiveCharKey()
+    local rec = key and ns.db and ns.db.notes and ns.db.notes[key]
+    if type(rec) ~= "table" then
+        return "None", "", "", false, false, false
+    end
+
+    local charStanding = "None"
+    if type(rec.charStandings) == "table" and rec.charStandings[charKey] and rec.charStandings[charKey] ~= "" then
+        charStanding = rec.charStandings[charKey]
+    end
+
+    local charNote = (type(rec.charNotes) == "table" and rec.charNotes[charKey]) or ""
+    local acctNote = rec.accountNote
+    if acctNote == nil then
+        acctNote = rec.note or ""
+    end
+
+    local hasCharNote = strtrim(tostring(charNote or "")) ~= ""
+    local hasAcctNote = strtrim(tostring(acctNote or "")) ~= ""
+    local hasCharStanding = (charStanding ~= nil and charStanding ~= "" and charStanding ~= "None")
+    local hasAnyNote = hasCharNote or hasAcctNote
+
+    return charStanding, charNote, acctNote, hasAnyNote, hasAcctNote, hasCharStanding
 end
 
 local function SyncNoteWidgetsToKey(key)
@@ -229,7 +288,7 @@ function ns:GetAssignedRelationship(key)
     if not key or not ns.db or not ns.db.notes then return "" end
     local rec = ns.db.notes[key]
     if type(rec) ~= "table" then return "" end
-    local charKey = ns.GetPlayerCharKey and ns:GetPlayerCharKey() or "Default"
+    local charKey = GetActiveCharKey()
     local cRel = type(rec.charRelationships) == "table" and strtrim(tostring(rec.charRelationships[charKey] or "")) or ""
     if cRel ~= "" then return cRel end
     return strtrim(tostring(rec.customRelationship or ""))
@@ -247,7 +306,7 @@ local function SaveCurrentNotes()
         return
     end
 
-    local charKey = ns:GetPlayerCharKey()
+    local charKey = GetActiveCharKey()
     local charTxt = dossierFrame.charNoteBox:GetText() or ""
     local acctTxt = dossierFrame.acctNoteBox:GetText() or ""
     local relTxt = strtrim(dossierFrame.relEditBox and dossierFrame.relEditBox:GetText() or "")
@@ -287,6 +346,7 @@ end
 local function ApplyStandingSelection(standingName)
     if not dossierFrame or not selectedDossierKey then return end
     local newStanding = standingName or "None"
+    local charKey = GetActiveCharKey()
     local existing = ns.db and ns.db.notes and ns.db.notes[selectedDossierKey]
     if newStanding == "None" and not existing then
         if dossierFrame.standingDropdown then
@@ -297,7 +357,12 @@ local function ApplyStandingSelection(standingName)
     end
 
     local rec = EnsureNoteRecord(selectedDossierKey)
-    rec.standing = newStanding
+    if rec.standing and rec.standing ~= "None" and next(rec.charStandings) == nil then
+        rec.charStandings[charKey] = rec.standing
+    end
+    rec.standing = "None"
+    rec.charStandings[charKey] = newStanding
+
     if IsNoteRecordEmpty(rec) then
         ns.db.notes[selectedDossierKey] = nil
     end
@@ -1188,7 +1253,7 @@ function ns:InitDossierWindow()
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
         if not delta or delta == 0 then return end
         local cur = self:GetVerticalScroll() or 0
-        local maxS = (self.GetVerticalScrollRange and self:GetVerticalScrollRange()) or 0
+        local maxS = (self.GetVerticalScrollRange and self.GetVerticalScrollRange()) or 0
         local step = (delta > 0) and -56 or 56
         self:SetVerticalScroll(math.max(0, math.min(maxS, cur + step)))
     end)
@@ -1229,7 +1294,7 @@ function ns:InitDossierWindow()
             r:Hide()
         end
         local options = GetAllStandingsList()
-        local curStanding = (selectedDossierKey and EnsureNoteRecord(selectedDossierKey).standing) or "None"
+        local curStanding = (selectedDossierKey and select(1, ns:GetNoteInfo(selectedDossierKey))) or "None"
         self:SetHeight(#options * 27 + 12)
         for idx, optName in ipairs(options) do
             local btn = self.rows[idx]

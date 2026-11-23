@@ -38,7 +38,7 @@ local defaultSettings = {
         },
     },
     gratitude = {
-        mode = "SMART",
+        mode = "DEFAULT_NO_WHISPER",
         cooldown = 60,
         oncePerSession = false,
         thankBuffs = true,
@@ -130,17 +130,21 @@ local function SanitizeList(list)
     end
 end
 
-local function CopyTableShallow(src)
+local function CopyTableDeep(src)
     if type(src) ~= "table" then return src end
     local copy = {}
     for k, v in pairs(src) do
         if type(v) == "table" then
-            copy[k] = CopyTableShallow(v)
+            copy[k] = CopyTableDeep(v)
         else
             copy[k] = v
         end
     end
     return copy
+end
+
+local function CopyTableShallow(src)
+    return CopyTableDeep(src)
 end
 
 function ns:GetPlayerCharKey()
@@ -155,15 +159,31 @@ function ns:GetPlayerCharKey()
     return name .. "-" .. realm
 end
 
+local function GetCharProfileBucket(charKey)
+    ns.db = ns.db or {}
+    ns.db.charProfiles = ns.db.charProfiles or {}
+    local key = charKey or ns:GetPlayerCharKey()
+
+    if type(ns.db.charProfiles[key]) ~= "table" then
+        ns.db.charProfiles[key] = {
+            profiles = {},
+            activeProfileId = nil,
+            profileBackups = {},
+        }
+    end
+
+    local bucket = ns.db.charProfiles[key]
+    bucket.profiles = bucket.profiles or {}
+    bucket.profileBackups = bucket.profileBackups or {}
+    return bucket
+end
+
 local function SyncProfileFields(p)
     if type(p) ~= "table" then return p end
 
     local function CleanText(val)
         local str = tostring(val or "")
-        if type(SanitizeFontText) == "function" then
-            return SanitizeFontText(str)
-        end
-        return str
+        return SanitizeFontText(str)
     end
 
     if p.oocNotes == nil and p.oocInfo ~= nil then
@@ -186,6 +206,26 @@ local function SyncProfileFields(p)
     p.facialFeatures = tostring(p.facialFeatures or "")
     p.tattoos        = tostring(p.tattoos or "")
     p.voiceReference = tostring(p.voiceReference or "")
+
+    if p.lgbtqFriendly == nil then p.lgbtqFriendly = true end
+    if p.erpFriendly   == nil then p.erpFriendly = false end
+    if p.mdni          == nil then p.mdni = false end
+    if type(p.rpStyleTopics) ~= "table" then
+        p.rpStyleTopics = {}
+    end
+
+    if type(p.gratitude) ~= "table" then
+        p.gratitude = CopyTableDeep(defaultSettings.gratitude)
+    end
+    SanitizeList(p.gratitude.icPhrases)
+    SanitizeList(p.gratitude.oocPhrases)
+    SanitizeList(p.gratitude.resPhrases)
+    SanitizeList(p.gratitude.summonPhrases)
+    SanitizeList(p.gratitude.specialPhrases)
+
+    if type(p.flyout) ~= "table" then
+        p.flyout = {}
+    end
 
     return p
 end
@@ -224,6 +264,10 @@ function ns:CreateBlankProfile(profileName)
         oocInfo = "",
         description = "",
         history = "",
+        rpStyleTopics = {},
+        lgbtqFriendly = true,
+        erpFriendly = false,
+        mdni = false,
         glances = {
             { icon = DEFAULT_GLANCE_ICONS[1], title = "", detail = "" },
             { icon = DEFAULT_GLANCE_ICONS[2], title = "", detail = "" },
@@ -231,6 +275,8 @@ function ns:CreateBlankProfile(profileName)
             { icon = DEFAULT_GLANCE_ICONS[4], title = "", detail = "" },
             { icon = DEFAULT_GLANCE_ICONS[5], title = "", detail = "" },
         },
+        gratitude = CopyTableDeep(defaultSettings.gratitude),
+        flyout = {},
         isIC = true,
         walkUp = "WELCOME",
         presetIndex = 1,
@@ -277,6 +323,13 @@ local function EnsureProfileStructure(p)
     return SyncProfileFields(p)
 end
 
+local function BindProfileSettings(p)
+    if not ns.db or type(p) ~= "table" then return end
+    SyncProfileFields(p)
+    ns.db.gratitude = p.gratitude
+    ns.db.flyout = p.flyout
+end
+
 local function ProfileHasContent(p)
     if type(p) ~= "table" then return false end
     if (p.lastName and p.lastName ~= "")
@@ -307,9 +360,10 @@ end
 function ns:SnapshotActiveProfile()
     if not ns.db or not ns.profile or not ns.activeProfileId then return end
     SyncProfileFields(ns.profile)
-    ns.db.profileBackups = ns.db.profileBackups or {}
+    BindProfileSettings(ns.profile)
+    local bucket = GetCharProfileBucket()
     if ProfileHasContent(ns.profile) then
-        ns.db.profileBackups[ns.activeProfileId] = CopyTableShallow(ns.profile)
+        bucket.profileBackups[ns.activeProfileId] = CopyTableShallow(ns.profile)
     end
 end
 
@@ -535,19 +589,25 @@ function ns:ImportProfileString(raw)
     end
 
     EnsureProfileStructure(np)
-    ns.db.profiles[id] = np
+    local bucket = GetCharProfileBucket()
+    bucket.profiles[id] = np
+    ns.db.profiles = bucket.profiles
     ns:SwitchProfile(id)
     ns:SnapshotActiveProfile()
     return true, np.profileName
 end
 
 function ns:SwitchProfile(profileId)
-    if not ns.db.profiles[profileId] then return end
     local charKey = ns:GetPlayerCharKey()
-    ns.db.activeProfileByChar[charKey] = profileId
+    local bucket = GetCharProfileBucket(charKey)
+    if not bucket.profiles[profileId] then return end
+    bucket.activeProfileId = profileId
+    ns.db.profiles = bucket.profiles
+    ns.db.profileBackups = bucket.profileBackups
     ns.activeProfileId = profileId
-    ns.profile = ns.db.profiles[profileId]
+    ns.profile = bucket.profiles[profileId]
     EnsureProfileStructure(ns.profile)
+    BindProfileSettings(ns.profile)
     if ns.LoadProfileIntoUI then ns:LoadProfileIntoUI() end
     if ns.SyncMSP then ns:SyncMSP() end
     if ns.RefreshControllerUI then ns:RefreshControllerUI() end
@@ -555,17 +615,20 @@ function ns:SwitchProfile(profileId)
 end
 
 function ns:CreateNewProfile()
+    local bucket = GetCharProfileBucket()
     local id = "prof_" .. time() .. "_" .. math.random(100, 999)
     local count = 1
-    for _ in pairs(ns.db.profiles) do count = count + 1 end
-    ns.db.profiles[id] = ns:CreateBlankProfile("Profile #" .. count)
+    for _ in pairs(bucket.profiles) do count = count + 1 end
+    bucket.profiles[id] = ns:CreateBlankProfile("Profile #" .. count)
+    ns.db.profiles = bucket.profiles
     ns:SwitchProfile(id)
     print("|cff8ab4f8[PadRP]|r Created and switched to |cfffdd663" .. ns.profile.profileName .. "|r.")
 end
 
 function ns:CycleProfile(delta)
+    local bucket = GetCharProfileBucket()
     local ids = {}
-    for id in pairs(ns.db.profiles) do table.insert(ids, id) end
+    for id in pairs(bucket.profiles) do table.insert(ids, id) end
     table.sort(ids)
     if #ids <= 1 then return end
 
@@ -579,15 +642,17 @@ function ns:CycleProfile(delta)
 end
 
 function ns:DeleteCurrentProfile()
+    local bucket = GetCharProfileBucket()
     local ids = {}
-    for id in pairs(ns.db.profiles) do table.insert(ids, id) end
+    for id in pairs(bucket.profiles) do table.insert(ids, id) end
     if #ids <= 1 then
         print("|cfff28b82[PadRP]|r Cannot delete your only profile.")
         return
     end
     local oldId = ns.activeProfileId
     ns:CycleProfile(1)
-    ns.db.profiles[oldId] = nil
+    bucket.profiles[oldId] = nil
+    ns.db.profiles = bucket.profiles
     ns:RefreshControllerUI()
 end
 
@@ -750,6 +815,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         PadRPDB.profiles = PadRPDB.profiles or {}
         PadRPDB.profileBackups = PadRPDB.profileBackups or {}
         PadRPDB.activeProfileByChar = PadRPDB.activeProfileByChar or {}
+        PadRPDB.charProfiles = PadRPDB.charProfiles or {}
         PadRPDB.notes = PadRPDB.notes or {}
         PadRPDB.mspCache = PadRPDB.mspCache or {}
         ns.db = PadRPDB
@@ -764,34 +830,55 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         if ns.ApplyTheme then ns:ApplyTheme() end
     elseif event == "PLAYER_LOGIN" then
         local charKey = ns:GetPlayerCharKey()
-        local profId = ns.db.activeProfileByChar[charKey]
+        local bucket = GetCharProfileBucket(charKey)
 
-        if not profId or not ns.db.profiles[profId] then
-            local playerName = UnitName("player") or "Player"
-            for savedCharKey, savedProfId in pairs(ns.db.activeProfileByChar) do
-                if string.find(savedCharKey, "^" .. playerName .. "%-") and ns.db.profiles[savedProfId] then
-                    profId = savedProfId
-                    ns.db.activeProfileByChar[charKey] = profId
-                    break
+        -- One-time migration if this character bucket has no profiles yet
+        if next(bucket.profiles) == nil and type(ns.db.profiles) == "table" then
+            local legacyId = bucket.activeProfileId or (ns.db.activeProfileByChar and ns.db.activeProfileByChar[charKey])
+            if not legacyId and type(ns.db.activeProfileByChar) == "table" then
+                local shortName = strsplit("-", charKey)
+                for savedCharKey, savedProfId in pairs(ns.db.activeProfileByChar) do
+                    if string.find(savedCharKey, "^" .. shortName .. "%-") and ns.db.profiles[savedProfId] then
+                        legacyId = savedProfId
+                        break
+                    end
+                end
+            end
+            if legacyId and ns.db.profiles[legacyId] then
+                bucket.profiles[legacyId] = CopyTableDeep(ns.db.profiles[legacyId])
+                bucket.activeProfileId = legacyId
+                if ns.db.profileBackups and ns.db.profileBackups[legacyId] then
+                    bucket.profileBackups[legacyId] = CopyTableDeep(ns.db.profileBackups[legacyId])
                 end
             end
         end
 
-        if not profId or not ns.db.profiles[profId] then
+        ns.db.profiles = bucket.profiles
+        ns.db.profileBackups = bucket.profileBackups
+
+        local profId = bucket.activeProfileId
+        if not profId or not bucket.profiles[profId] then
+            for id in pairs(bucket.profiles) do
+                profId = id
+                break
+            end
+        end
+        if not profId or not bucket.profiles[profId] then
             profId = "default_" .. charKey
             local initialProfile = ns:CreateBlankProfile(UnitName("player") or "Main Character")
             initialProfile.firstName = UnitName("player") or ""
-            ns.db.profiles[profId] = initialProfile
-            ns.db.activeProfileByChar[charKey] = profId
+            bucket.profiles[profId] = initialProfile
         end
 
-        if not ProfileHasContent(ns.db.profiles[profId]) and ns.db.profileBackups[profId] then
-            ns.db.profiles[profId] = CopyTableShallow(ns.db.profileBackups[profId])
+        if not ProfileHasContent(bucket.profiles[profId]) and bucket.profileBackups[profId] then
+            bucket.profiles[profId] = CopyTableShallow(bucket.profileBackups[profId])
         end
 
+        bucket.activeProfileId = profId
         ns.activeProfileId = profId
-        ns.profile = ns.db.profiles[profId]
+        ns.profile = bucket.profiles[profId]
         EnsureProfileStructure(ns.profile)
+        BindProfileSettings(ns.profile)
         ns:SnapshotActiveProfile()
 
         if ns.ApplyTheme then ns:ApplyTheme() end
@@ -834,7 +921,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         end)
 
         local loadedLabel = (ns.profile.firstName and ns.profile.firstName ~= "") and ns.profile.firstName or (ns.profile.profileName or UnitName("player"))
-        print("|cff8ab4f8[PadRP]|r PadRP Suite v1.2.0 loaded. Profile: |cfffdd663" .. loadedLabel .. "|r.")
+        print("|cff8ab4f8[PadRP]|r PadRP Suite v1.3.0 loaded. Profile: |cfffdd663" .. loadedLabel .. "|r.")
     elseif event == "PLAYER_LOGOUT" then
         ns:SnapshotActiveProfile()
     elseif event == "PLAYER_FLAGS_CHANGED" and arg1 == "player" then

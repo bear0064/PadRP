@@ -6,6 +6,49 @@ UI.tabs[9] = mod
 
 local EMOTE_ROWS = 7
 
+local VIEW_META = {
+    custom = {
+        shortLabel = "/e Emotes",
+        singular = "Custom Emote",
+        subTag = "/e custom",
+        addPlaceholder = "New emote name...",
+        labelPlaceholder = "e.g. Look Around",
+        textCaption = "Emote text (appears after your name)",
+        textPlaceholder = "e.g. looks around attentively.",
+        toastAdded = "Custom emote added - write its text on the right",
+        toastSaved = "Custom emote saved",
+        defaultNewLabel = "New Emote",
+    },
+    say = {
+        shortLabel = "/s Says",
+        singular = "Custom Say",
+        subTag = "/s custom",
+        addPlaceholder = "New /say line name...",
+        labelPlaceholder = "e.g. Warm Greeting",
+        textCaption = "Spoken /say text",
+        textPlaceholder = "e.g. Well met, travelers.",
+        toastAdded = "Custom /say added - write its text on the right",
+        toastSaved = "Custom /say saved",
+        defaultNewLabel = "New Say",
+    },
+    yell = {
+        shortLabel = "/y Yells",
+        singular = "Custom Yell",
+        subTag = "/y custom",
+        addPlaceholder = "New /yell line name...",
+        labelPlaceholder = "e.g. Look Out!",
+        textCaption = "Shouted /yell text",
+        textPlaceholder = "e.g. Watch your flanks!",
+        toastAdded = "Custom /yell added - write its text on the right",
+        toastSaved = "Custom /yell saved",
+        defaultNewLabel = "New Yell",
+    },
+    base = {
+        shortLabel = "Base",
+        singular = "Base Emote",
+    },
+}
+
 function mod.Build(p, picker)
     if not ns.GetFlyoutEmoteList then
         local msg = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -22,6 +65,7 @@ function mod.Build(p, picker)
     local RefreshList, LoadEditor, ApplyView, UpdateRemoveButton, UpdateResetButton, UpdateFilterButton
 
     local function CurList() return ns:GetFlyoutEmoteList(view) end
+    local function IsCustomView() return view ~= "base" end
 
     local function RebuildFilteredIndices()
         wipe(filteredIndices)
@@ -106,8 +150,9 @@ function mod.Build(p, picker)
         if not item or not p.labelBox then return end
         local lbl = strtrim(p.labelBox:GetText() or "")
         if lbl ~= "" then item.label = string.sub(lbl, 1, 40) end
-        if view == "custom" then
-            local txt = strtrim(p.textBox:GetText() or "")
+        if IsCustomView() then
+            local rawTxt = p.textBox:GetText() or ""
+            local txt = ns.SanitizeCustomLineText and ns:SanitizeCustomLineText(rawTxt) or strtrim(rawTxt)
             if txt ~= "" then item.text = string.sub(txt, 1, 240) end
         end
     end
@@ -154,17 +199,18 @@ function mod.Build(p, picker)
         return false
     end
 
-    -- Left column: view switch + search/filter + rows
-    p.viewCustomBtn = ns:CreateMaterialButton(p, "Custom /e", 142, 26, 16, -12, "PRIMARY", function()
+    -- Left column: 4-way view switch + search/filter + rows
+    local function SwitchView(newView)
         CommitEditor(); DisarmAll()
-        view, selIdx, page = "custom", 1, 1
+        view, selIdx, page = newView, 1, 1
         ApplyView()
-    end)
-    p.viewBaseBtn = ns:CreateMaterialButton(p, "Base Emotes", 142, 26, 164, -12, nil, function()
-        CommitEditor(); DisarmAll()
-        view, selIdx, page = "base", 1, 1
-        ApplyView()
-    end)
+    end
+
+    p.viewCustomBtn = ns:CreateMaterialButton(p, "/e Emotes", 70, 26, 16, -12, "PRIMARY", function() SwitchView("custom") end)
+    p.viewSayBtn    = ns:CreateMaterialButton(p, "/s Says",   70, 26, 89, -12, nil,       function() SwitchView("say") end)
+    p.viewYellBtn   = ns:CreateMaterialButton(p, "/y Yells",  70, 26, 162, -12, nil,      function() SwitchView("yell") end)
+    p.viewBaseBtn   = ns:CreateMaterialButton(p, "Base",      68, 26, 235, -12, nil,      function() SwitchView("base") end)
+
     p.countFS = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     p.countFS:SetPoint("TOPRIGHT", p, "TOPRIGHT", -16, -18)
     p.countFS:SetJustifyH("RIGHT")
@@ -245,21 +291,22 @@ function mod.Build(p, picker)
     UI:AttachWheelScroller(p.nextBtn, function(delta) StepPage(delta, nil) end)
     UI:AttachWheelScroller(p, function(delta) StepPage(delta, nil) end)
 
-    p.addBoxCustom = ns:CreateMaterialEditBox(p, nil, "New emote name...", 16, -316, 206, 26)
+    p.addBoxCustom = ns:CreateMaterialEditBox(p, nil, "New line name...", 16, -316, 206, 26)
     local function DoAdd()
-        if view ~= "custom" then return end
+        if not IsCustomView() then return end
         CommitEditor()
-        local idx, err = ns:AddFlyoutEmote("custom", { label = p.addBoxCustom:GetText() })
+        local meta = VIEW_META[view] or VIEW_META.custom
+        local idx, err = ns:AddFlyoutEmote(view, { label = p.addBoxCustom:GetText() })
         if idx then p.addBoxCustom:SetCleanText("") end
         if not idx then
-            ns:ShowStatusToast((err == "limit" and "Emote limit reached - remove one first")
-                or "Enter a name for the custom emote")
+            ns:ShowStatusToast((err == "limit" and "Line limit reached - remove one first")
+                or "Enter a name for the new line")
             return
         end
         DisarmAll()
         GoToIndex(idx)
         RefreshList(); LoadEditor()
-        ns:ShowStatusToast("Custom emote added - write its text on the right")
+        ns:ShowStatusToast(meta.toastAdded)
     end
     p.addBtn = ns:CreateMaterialButton(p, "+ Add", 78, 26, 228, -316, "MINT", DoAdd)
 
@@ -292,7 +339,7 @@ function mod.Build(p, picker)
     p.tipFS:SetPoint("TOPLEFT", 16, -348)
     p.tipFS:SetWidth(290)
     p.tipFS:SetJustifyH("LEFT")
-    p.tipFS:SetText("|cff9aa0a6On the wheel: LB/RB to reach Custom and Base pages.|r")
+    p.tipFS:SetText("|cff9aa0a6On the wheel: Select 'Custom RP' to pick /e, /s, or /y.|r")
 
     -- Right column: editor
     p.editorHeader = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -327,8 +374,8 @@ function mod.Build(p, picker)
     p.hintFS:SetJustifyH("LEFT")
     p.hintFS:SetText("|cff9aa0a6%name = your RP name   %target = your target's name|r")
     p.textBox:HookScript("OnTextChanged", function(self)
-        if view == "custom" and CurItem() then
-            p.previewFS:SetText("|cff9aa0a6Preview:|r " .. ns:PreviewFlyoutEmoteText(self:GetText()))
+        if IsCustomView() and CurItem() then
+            p.previewFS:SetText("|cff9aa0a6Preview:|r " .. ns:PreviewFlyoutEmoteText(self:GetText(), view))
         end
     end)
 
@@ -360,7 +407,7 @@ function mod.Build(p, picker)
         CommitEditor()
         local currentActive = ns:GetFlyoutEmoteDisplayIcon(view, item)
         if picker then
-            picker:OpenForCallback("SELECT CUSTOM EMOTE ICON", currentActive, function(iconVal)
+            picker:OpenForCallback("SELECT CUSTOM ICON", currentActive, function(iconVal)
                 local current = CurItem()
                 if current then
                     ns:SetFlyoutEmoteCustomIcon(view, selIdx, iconVal)
@@ -424,7 +471,7 @@ function mod.Build(p, picker)
             return
         end
         removeArmed = false
-        local name = item.label or "Emote"
+        local name = item.label or "Line"
         if ns:RemoveFlyoutEmote(view, selIdx) then
             ns:ShowStatusToast("Removed: " .. name)
         end
@@ -432,11 +479,12 @@ function mod.Build(p, picker)
     end)
     p.saveBtn = ns:CreateMaterialButton(p, "Save Changes", 290, 28, 320, -290, "PRIMARY", function()
         CommitEditor()
+        local meta = VIEW_META[view] or VIEW_META.custom
         if ns.RefreshFlyoutWheel and ns.flyoutWheelFrame and ns.flyoutWheelFrame:IsShown() then
             ns:RefreshFlyoutWheel()
         end
-        RefreshList()
-        ns:ShowStatusToast("Emote saved")
+        RefreshList(); LoadEditor()
+        ns:ShowStatusToast(meta.toastSaved or "Saved")
     end)
 
     p.commonWidgets = { p.labelBox, p.iconFrame, p.iconBtn, p.defaultIconBtn, p.moveUpBtn, p.moveDownBtn, p.removeBtn, p.saveBtn, capLabel }
@@ -454,6 +502,7 @@ function mod.Build(p, picker)
         ClampSelection()
         local list = CurList()
         local pages = math.max(1, math.ceil(#filteredIndices / EMOTE_ROWS))
+        local meta = VIEW_META[view] or VIEW_META.custom
         for i = 1, EMOTE_ROWS do
             local row = p.rows[i]
             local actualIdx = filteredIndices[(page - 1) * EMOTE_ROWS + i]
@@ -469,7 +518,7 @@ function mod.Build(p, picker)
                         .. customMark .. " |cff9aa0a6/" .. string.lower(tostring(item.token or "")) .. "|r")
                 else
                     local customMark = (ns:GetFlyoutEmoteCustomIcon(item) ~= nil) and " *" or ""
-                    row:SetText(UI:TruncText((item.label or ("Emote " .. actualIdx)) .. customMark, 16)
+                    row:SetText(UI:TruncText((item.label or (meta.defaultNewLabel .. " " .. actualIdx)) .. customMark, 16)
                         .. "  |cff9aa0a6" .. UI:TruncText(item.text, 18) .. "|r")
                 end
                 row:SetTone(actualIdx == selIdx and "PRIMARY" or nil)
@@ -486,19 +535,25 @@ function mod.Build(p, picker)
         for _, e in ipairs(baseList) do
             if e.enabled == true then enabledCount = enabledCount + 1 end
         end
-        p.countFS:SetText(string.format("|cff8ab4f8Custom:|r %d   |cff8ab4f8Base:|r %d (%d on)",
-            #ns:GetFlyoutEmoteList("custom"), #baseList, enabledCount))
+        p.countFS:SetText(string.format("|cff8ab4f8/e:|r %d  |cff8ab4f8/s:|r %d  |cff8ab4f8/y:|r %d  |cff8ab4f8Base:|r %d/%d",
+            #ns:GetFlyoutEmoteList("custom"),
+            #ns:GetFlyoutEmoteList("say"),
+            #ns:GetFlyoutEmoteList("yell"),
+            enabledCount, #baseList))
     end
 
     LoadEditor = function()
         local item = CurItem()
         local has = item ~= nil
+        local isCustom = IsCustomView()
+        local meta = VIEW_META[view] or VIEW_META.custom
+
         p.editorHeader:SetText(has
-            and string.format("|cff8ab4f8EDITING|r  %s #%d", (view == "base") and "Base Emote" or "Custom Emote", selIdx)
-            or "|cff9aa0a6No matching emote - adjust search/filter or add one|r")
+            and string.format("|cff8ab4f8EDITING|r  %s #%d", meta.singular, selIdx)
+            or "|cff9aa0a6No matching entry - adjust search/filter or add one|r")
         for _, w in ipairs(p.commonWidgets) do w:SetShown(has) end
-        for _, w in ipairs(p.customWidgets) do w:SetShown(has and view == "custom") end
-        for _, w in ipairs(p.baseWidgets) do w:SetShown(has and view == "base") end
+        for _, w in ipairs(p.customWidgets) do w:SetShown(has and isCustom) end
+        for _, w in ipairs(p.baseWidgets) do w:SetShown(has and not isCustom) end
         if not has then return end
 
         p.labelBox:SetCleanText(item.label or "")
@@ -506,9 +561,13 @@ function mod.Build(p, picker)
         UI:SetIconTextureSafe(p.iconTex, ns:ResolveWheelIconTexture(displayIcon, view, item), UI:GetDefaultIconFallback())
         p.defaultIconBtn:SetText(ns:GetFlyoutEmoteCustomIcon(item) and "Reset Icon" or "Original Icon")
 
-        if view == "custom" then
+        if isCustom then
+            p.capText:SetText(meta.textCaption or "Text")
+            if p.textBox.SetPlaceholderText then
+                p.textBox:SetPlaceholderText(meta.textPlaceholder or "")
+            end
             p.textBox:SetCleanText(item.text or "")
-            p.previewFS:SetText("|cff9aa0a6Preview:|r " .. ns:PreviewFlyoutEmoteText(item.text))
+            p.previewFS:SetText("|cff9aa0a6Preview:|r " .. ns:PreviewFlyoutEmoteText(item.text, view))
         else
             p.tokenFS:SetText("|cff9aa0a6Command:|r /" .. string.lower(tostring(item.token or "")))
             local on = item.enabled == true
@@ -519,12 +578,19 @@ function mod.Build(p, picker)
     end
 
     ApplyView = function()
-        local isCustom = (view == "custom")
-        p.viewCustomBtn:SetTone(isCustom and "PRIMARY" or nil)
-        p.viewBaseBtn:SetTone(isCustom and nil or "PRIMARY")
+        local isCustom = IsCustomView()
+        local meta = VIEW_META[view] or VIEW_META.custom
+        p.viewCustomBtn:SetTone(view == "custom" and "PRIMARY" or nil)
+        p.viewSayBtn:SetTone(view == "say" and "PRIMARY" or nil)
+        p.viewYellBtn:SetTone(view == "yell" and "PRIMARY" or nil)
+        p.viewBaseBtn:SetTone(view == "base" and "PRIMARY" or nil)
+
         p.searchBox:SetShown(not isCustom)
         p.clearSearchBtn:SetShown(not isCustom)
         p.addBoxCustom:SetShown(isCustom)
+        if isCustom and p.addBoxCustom.SetPlaceholderText and meta.addPlaceholder then
+            p.addBoxCustom:SetPlaceholderText(meta.addPlaceholder)
+        end
         p.addBtn:SetShown(isCustom)
         p.tipFS:SetShown(isCustom)
         p.resetBtn:SetShown(not isCustom)
@@ -554,16 +620,15 @@ function mod.Layout(p9)
     local leftX = pad
     local rightX = pad + colW + gap
 
-    local subTabW = math.floor((colW - 6) / 2)
-    if p9.viewCustomBtn then
-        p9.viewCustomBtn:ClearAllPoints()
-        p9.viewCustomBtn:SetSize(subTabW, 26)
-        p9.viewCustomBtn:SetPoint("TOPLEFT", p9, "TOPLEFT", leftX, -12)
-    end
-    if p9.viewBaseBtn then
-        p9.viewBaseBtn:ClearAllPoints()
-        p9.viewBaseBtn:SetSize(subTabW, 26)
-        p9.viewBaseBtn:SetPoint("TOPLEFT", p9, "TOPLEFT", leftX + subTabW + 6, -12)
+    local subGap = 4
+    local subTabW = math.floor((colW - (subGap * 3)) / 4)
+    local subBtns = { p9.viewCustomBtn, p9.viewSayBtn, p9.viewYellBtn, p9.viewBaseBtn }
+    for idx, btn in ipairs(subBtns) do
+        if btn then
+            btn:ClearAllPoints()
+            btn:SetSize(subTabW, 26)
+            btn:SetPoint("TOPLEFT", p9, "TOPLEFT", leftX + (idx - 1) * (subTabW + subGap), -12)
+        end
     end
 
     if p9.searchBox and p9.wheelFilterBtn and p9.clearSearchBtn then
