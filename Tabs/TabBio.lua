@@ -30,7 +30,11 @@ function mod.Build(p3)
             self:SetText("Clear Text")
             p3.bioEditor:SetCleanText("")
             if ns.profile then
-                if UI.activeBioMode == "APPEARANCE" then ns.profile.description = "" else ns.profile.history = "" end
+                if UI.activeBioMode == "APPEARANCE" then
+                    ns.profile.description = ""
+                else
+                    ns.profile.history = ""
+                end
             end
             if ns.SnapshotActiveProfile then ns:SnapshotActiveProfile() end
             if ns.SyncMSP then ns:SyncMSP() end

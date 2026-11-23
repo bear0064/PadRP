@@ -20,6 +20,8 @@ local defaultSettings = {
         nameplateClassColors = true,
         nameplateStatusTags = true,
         nameplateStandingCircle = true,
+        nameplateStandingStyle = "CIRCLE",
+        nameplateStandingColorMode = "7COLOR",
         nameplateRPNames = true,
         devMode = false,
         hudOnlyRP = false,
@@ -647,6 +649,90 @@ local function InitRPChatFilter()
     end
 end
 
+local function IsSafeNonEmptyString(val)
+    if type(val) ~= "string" then return false end
+    if type(issecretvalue) == "function" and issecretvalue(val) then return false end
+    return val ~= ""
+end
+
+local function ResolveContextMenuTargetKey(contextData)
+    if type(contextData) ~= "table" then return nil end
+
+    local unit = contextData.unit
+    if IsSafeNonEmptyString(unit) and UnitExists(unit) then
+        if not UnitIsPlayer(unit) then
+            return nil
+        end
+        if ns.GetUnitKey then
+            local ok, k = pcall(ns.GetUnitKey, ns, unit)
+            if ok and IsSafeNonEmptyString(k) then
+                return k
+            end
+        end
+        local uName, uRealm = UnitName(unit)
+        if IsSafeNonEmptyString(uName) then
+            if IsSafeNonEmptyString(uRealm) then
+                return uName .. "-" .. uRealm
+            end
+            return uName
+        end
+    end
+
+    local rawName = contextData.name
+    if IsSafeNonEmptyString(rawName) then
+        if string.find(rawName, "-", 1, true) then
+            return rawName
+        end
+        local server = contextData.server
+        if IsSafeNonEmptyString(server) then
+            return rawName .. "-" .. server
+        end
+        return rawName
+    end
+
+    return nil
+end
+
+local function InitRPContextMenu()
+    if ns._rpContextMenuInstalled then return end
+    if not Menu or type(Menu.ModifyMenu) ~= "function" then return end
+    ns._rpContextMenuInstalled = true
+
+    local menuTags = {
+        "MENU_UNIT_PLAYER",
+        "MENU_UNIT_SELF",
+        "MENU_UNIT_PARTY",
+        "MENU_UNIT_RAID_PLAYER",
+        "MENU_UNIT_FRIEND",
+        "MENU_UNIT_TARGET",
+        "MENU_UNIT_FOCUS",
+        "MENU_UNIT_GUILD",
+        "MENU_UNIT_COMMUNITIES_GUILD_MEMBER",
+        "MENU_UNIT_COMMUNITIES_MEMBER",
+    }
+
+    for _, tag in ipairs(menuTags) do
+        pcall(Menu.ModifyMenu, tag, function(_, rootDescription, contextData)
+            if not rootDescription or type(rootDescription.CreateButton) ~= "function" then
+                return
+            end
+
+            local targetKey = ResolveContextMenuTargetKey(contextData)
+            if not targetKey then return end
+
+            rootDescription:CreateDivider()
+            rootDescription:CreateButton("|cff8ab4f8View RP Profile|r", function()
+                if ns.RequestUnitMSP then
+                    pcall(ns.RequestUnitMSP, ns, targetKey, true, true)
+                end
+                if ns.OpenTargetDossier then
+                    ns:OpenTargetDossier(targetKey)
+                end
+            end)
+        end)
+    end
+end
+
 local wasICBeforeAFK = false
 
 local eventFrame = CreateFrame("Frame")
@@ -712,6 +798,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         if ns.InitDossierWindow then ns:InitDossierWindow() end
         if ns.InitFlyoutWheel then ns:InitFlyoutWheel() end
         InitRPChatFilter()
+        pcall(InitRPContextMenu)
 
         ns:CreateBindButton("PadRP_ToggleICButton", function()
             local isIC = ns:ToggleICOOC()
@@ -741,7 +828,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         end)
 
         local loadedLabel = (ns.profile.firstName and ns.profile.firstName ~= "") and ns.profile.firstName or (ns.profile.profileName or UnitName("player"))
-        print("|cff8ab4f8[PadRP]|r PadRP Suite v1.0.0 loaded. Profile: |cfffdd663" .. loadedLabel .. "|r.")
+        print("|cff8ab4f8[PadRP]|r PadRP Suite v1.1.0 loaded. Profile: |cfffdd663" .. loadedLabel .. "|r.")
     elseif event == "PLAYER_LOGOUT" then
         ns:SnapshotActiveProfile()
     elseif event == "PLAYER_FLAGS_CHANGED" and arg1 == "player" then

@@ -100,9 +100,22 @@ local function IsSentinelOrInvalidID(numId)
     return false
 end
 
-local function FormatInlineTexture(texVal)
+local function TruncateTooltipBlock(text, maxChars)
+    if type(text) ~= "string" then return "" end
+    local clean = strtrim(text)
+    if #clean <= maxChars then return clean end
+    local cut = string.sub(clean, 1, maxChars)
+    local lastSpace = string.match(cut, "^(.*)%s+%S*$")
+    if lastSpace and #lastSpace > math.floor(maxChars * 0.6) then
+        cut = lastSpace
+    end
+    return cut .. "... |cff8ab4f8(Dossier for full)|r"
+end
+
+local function FormatInlineTexture(texVal, size)
+    local px = size or 16
     if type(texVal) == "number" and not IsSentinelOrInvalidID(texVal) then
-        return string.format("|T%.0f:16:16:0:0:64:64:4:60:4:60|t ", texVal)
+        return string.format("|T%.0f:%d:%d:0:0:64:64:4:60:4:60|t ", texVal, px, px)
     elseif type(texVal) == "string" then
         local clean = strtrim(texVal)
         local numId = tonumber(clean)
@@ -110,16 +123,16 @@ local function FormatInlineTexture(texVal)
             if IsSentinelOrInvalidID(numId) then
                 return ""
             end
-            return string.format("|T%.0f:16:16:0:0:64:64:4:60:4:60|t ", numId)
+            return string.format("|T%.0f:%d:%d:0:0:64:64:4:60:4:60|t ", numId, px, px)
         end
         if clean ~= "" then
-            return string.format("|T%s:16:16:0:0:64:64:4:60:4:60|t ", clean)
+            return string.format("|T%s:%d:%d:0:0:64:64:4:60:4:60|t ", clean, px, px)
         end
     end
     return ""
 end
 
-local function ResolveCustomPortraitTag(iconVal)
+local function ResolveCustomPortraitTag(iconVal, size)
     if iconVal == nil or iconVal == false then
         return ""
     end
@@ -173,11 +186,61 @@ local function ResolveCustomPortraitTag(iconVal)
         end
     end
 
-    return FormatInlineTexture(resolved)
+    return FormatInlineTexture(resolved, size)
+end
+
+local function FormatGlanceTooltipLine(rawGlance)
+    if type(rawGlance) ~= "string" then return "" end
+    local trimmed = strtrim(rawGlance)
+    if trimmed == "" then return "" end
+
+    local iconSpec, rest = string.match(trimmed, "^|T([^:|]+):[^|]*|t%s*(.*)$")
+    local iconTag
+    if iconSpec then
+        iconTag = ResolveCustomPortraitTag(iconSpec, 14)
+        if iconTag == "" then
+            iconTag = "|T134400:14:14:0:0:64:64:4:60:4:60|t "
+        end
+    else
+        iconTag = "|T134400:14:14:0:0:64:64:4:60:4:60|t "
+        rest = trimmed
+    end
+
+    local cleanRest = strtrim(rest or "")
+    local titleOnly = string.match(cleanRest, "^(.-)%s+%-%s+")
+    if titleOnly and strtrim(titleOnly) ~= "" then
+        return iconTag .. "|cfffdd663" .. strtrim(titleOnly) .. "|r"
+    end
+
+    local shortBody = TruncateTooltipBlock(cleanRest, 60)
+    return iconTag .. shortBody
+end
+
+local function BuildSelfGlanceTooltipLines()
+    local lines = {}
+    local list = ns.profile and ns.profile.glances
+    if type(list) ~= "table" then return lines end
+
+    for idx = 1, math.min(5, #list) do
+        local g = list[idx]
+        if type(g) == "table" then
+            local title = strtrim(StripColorCodes(g.title or ""))
+            local detail = strtrim(StripColorCodes(g.text or g.detail or ""))
+            if title ~= "" or detail ~= "" then
+                local iconTag = ResolveCustomPortraitTag(g.icon, 14)
+                if iconTag == "" then
+                    iconTag = "|T134400:14:14:0:0:64:64:4:60:4:60|t "
+                end
+                local label = (title ~= "") and ("|cfffdd663" .. title .. "|r") or TruncateTooltipBlock(detail, 60)
+                table.insert(lines, iconTag .. label)
+            end
+        end
+    end
+    return lines
 end
 
 local function BuildTooltipPortraitTag(iconVal, unit, hasProfile)
-    local customTag = ResolveCustomPortraitTag(iconVal)
+    local customTag = ResolveCustomPortraitTag(iconVal, 16)
     if customTag ~= "" then
         return customTag
     end
@@ -198,9 +261,23 @@ local function BuildTooltipPortraitTag(iconVal, unit, hasProfile)
     return ""
 end
 
-local function BuildProfileSignature(data, standing, hasNote, portraitTag)
+local function BuildProfileSignature(data, standing, hasNote, portraitTag, isSelf)
+    local selfGlanceSig = ""
+    if isSelf and ns.profile and type(ns.profile.glances) == "table" then
+        local parts = {}
+        for i = 1, 5 do
+            local g = ns.profile.glances[i]
+            if type(g) == "table" then
+                parts[i] = tostring(g.icon or "") .. ":" .. tostring(g.title or "")
+            else
+                parts[i] = ""
+            end
+        end
+        selfGlanceSig = table.concat(parts, ";")
+    end
+
     if not data then
-        return "NONE|" .. tostring(standing or "") .. "|" .. tostring(hasNote and 1 or 0) .. "|" .. tostring(portraitTag or "")
+        return "NONE|" .. tostring(standing or "") .. "|" .. tostring(hasNote and 1 or 0) .. "|" .. tostring(portraitTag or "") .. "|" .. selfGlanceSig
     end
     return table.concat({
         tostring(data.NA or ""),
@@ -212,6 +289,7 @@ local function BuildProfileSignature(data, standing, hasNote, portraitTag)
         tostring(standing or ""),
         tostring(hasNote and 1 or 0),
         tostring(portraitTag or ""),
+        selfGlanceSig,
     }, "|")
 end
 
@@ -400,7 +478,7 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
 
     local customIcon = isSelf and (ns.profile and ns.profile.icon) or (data and data.IC)
     local portraitTag = BuildTooltipPortraitTag(customIcon, unit, hasProfile)
-    local signature = BuildProfileSignature(data, standing, hasNote, portraitTag)
+    local signature = BuildProfileSignature(data, standing, hasNote, portraitTag, isSelf)
 
     local state = tooltipState[tooltip]
     if state and state.taggedKey == key and state.portraitTag == portraitTag and state.signature == signature then
@@ -458,11 +536,11 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         if cuVal and strtrim(StripColorCodes(cuVal)) ~= "" then
             tooltip:AddLine(" ")
             tooltip:AddLine("Currently", 1.0, 1.0, 1.0, false)
-            tooltip:AddLine(strtrim(StripColorCodes(cuVal)), 0.99, 0.84, 0.39, true)
+            tooltip:AddLine(TruncateTooltipBlock(StripColorCodes(cuVal), 160), 0.99, 0.84, 0.39, true)
         end
 
         local oocRaw = (isSelf and ns.profile and (ns.profile.oocNotes or ns.profile.oocInfo)) or data.CO
-        local oocClean = CleanOOCTooltipText(oocRaw)
+        local oocClean = TruncateTooltipBlock(CleanOOCTooltipText(oocRaw), 220)
         local oocBlock = {}
         if oocClean ~= "" then
             table.insert(oocBlock, oocClean)
@@ -481,12 +559,21 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
             tooltip:AddLine(table.concat(oocBlock, "\n"), 0.99, 0.84, 0.39, true)
         end
 
-        local glances = ns:ParseGlances(data.PE)
-        if #glances > 0 then
+        local glanceLines = isSelf and BuildSelfGlanceTooltipLines() or {}
+        if #glanceLines == 0 then
+            local glances = ns:ParseGlances(data.PE)
+            for idx = 1, math.min(5, #glances) do
+                local glanceLine = FormatGlanceTooltipLine(glances[idx])
+                if glanceLine ~= "" then
+                    table.insert(glanceLines, glanceLine)
+                end
+            end
+        end
+        if #glanceLines > 0 then
             tooltip:AddLine(" ")
             tooltip:AddLine("At First Glance", 0.54, 0.71, 0.97, false)
-            for idx = 1, math.min(5, #glances) do
-                tooltip:AddLine(glances[idx], 0.85, 0.88, 0.92, true)
+            for _, gLine in ipairs(glanceLines) do
+                tooltip:AddLine(gLine, 0.85, 0.88, 0.92, false)
             end
         end
     elseif line1 then
@@ -505,6 +592,9 @@ local function DecorateUnitTooltipInternal(tooltip, tooltipData, skipRequest)
         tooltip:AddLine("|TInterface\\Icons\\INV_Misc_Note_01:13:13:0:0:64:64:4:60:4:60|t |cff81c995Note:|r " .. preview, 0.85, 0.90, 0.86, true)
     end
 
+    if tooltip.SetClampedToScreen then
+        tooltip:SetClampedToScreen(true)
+    end
     tooltipState[tooltip] = { taggedKey = key, portraitTag = portraitTag, signature = signature }
     tooltip:Show()
 end

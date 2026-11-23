@@ -158,6 +158,53 @@ local function EnsureNoteRecord(key)
     return rec
 end
 
+local function IsNoteRecordEmpty(rec)
+    if type(rec) ~= "table" then return true end
+    if rec.standing and rec.standing ~= "" and rec.standing ~= "None" then
+        return false
+    end
+    if strtrim(tostring(rec.accountNote or "")) ~= "" or strtrim(tostring(rec.note or "")) ~= "" then
+        return false
+    end
+    if strtrim(tostring(rec.customRelationship or "")) ~= "" then
+        return false
+    end
+    if type(rec.charNotes) == "table" then
+        for _, v in pairs(rec.charNotes) do
+            if strtrim(tostring(v or "")) ~= "" then
+                return false
+            end
+        end
+    end
+    if type(rec.charRelationships) == "table" then
+        for _, v in pairs(rec.charRelationships) do
+            if strtrim(tostring(v or "")) ~= "" then
+                return false
+            end
+        end
+    end
+    return true
+end
+
+local function SyncNoteWidgetsToKey(key)
+    if not dossierFrame then return end
+    local _, charNote, acctNote = ns:GetNoteInfo(key)
+    local assignedRel = ns:GetAssignedRelationship(key)
+
+    if dossierFrame.relEditBox then
+        dossierFrame.relEditBox:SetCleanText(assignedRel)
+        dossierFrame.relEditBox.isDirty = false
+    end
+    if dossierFrame.charNoteBox then
+        dossierFrame.charNoteBox:SetCleanText(charNote)
+        dossierFrame.charNoteBox.isDirty = false
+    end
+    if dossierFrame.acctNoteBox then
+        dossierFrame.acctNoteBox:SetCleanText(acctNote)
+        dossierFrame.acctNoteBox.isDirty = false
+    end
+end
+
 function ns:GetAssignedRelationship(key)
     if not key or not ns.db or not ns.db.notes then return "" end
     local rec = ns.db.notes[key]
@@ -170,17 +217,39 @@ end
 
 local function SaveCurrentNotes()
     if not dossierFrame or not selectedDossierKey then return end
-    local rec = EnsureNoteRecord(selectedDossierKey)
+    if dossierFrame._isLoadingNotes then return end
+    if activeSubView ~= "NOTES" then return end
+
+    local charDirty = dossierFrame.charNoteBox and dossierFrame.charNoteBox.isDirty
+    local acctDirty = dossierFrame.acctNoteBox and dossierFrame.acctNoteBox.isDirty
+    local relDirty = dossierFrame.relEditBox and dossierFrame.relEditBox.isDirty
+    if not (charDirty or acctDirty or relDirty) then
+        return
+    end
+
     local charKey = ns:GetPlayerCharKey()
     local charTxt = dossierFrame.charNoteBox:GetText() or ""
     local acctTxt = dossierFrame.acctNoteBox:GetText() or ""
     local relTxt = strtrim(dossierFrame.relEditBox and dossierFrame.relEditBox:GetText() or "")
 
+    local existing = ns.db and ns.db.notes and ns.db.notes[selectedDossierKey]
+    if not existing and strtrim(charTxt) == "" and strtrim(acctTxt) == "" and relTxt == "" then
+        dossierFrame.charNoteBox.isDirty = false
+        dossierFrame.acctNoteBox.isDirty = false
+        if dossierFrame.relEditBox then dossierFrame.relEditBox.isDirty = false end
+        return
+    end
+
+    local rec = EnsureNoteRecord(selectedDossierKey)
     rec.charNotes[charKey] = charTxt
     rec.accountNote = acctTxt
     rec.note = acctTxt
     rec.charRelationships[charKey] = relTxt
     rec.customRelationship = relTxt
+
+    if IsNoteRecordEmpty(rec) then
+        ns.db.notes[selectedDossierKey] = nil
+    end
 
     dossierFrame.charNoteBox.isDirty = false
     dossierFrame.acctNoteBox.isDirty = false
@@ -197,8 +266,21 @@ end
 
 local function ApplyStandingSelection(standingName)
     if not dossierFrame or not selectedDossierKey then return end
+    local newStanding = standingName or "None"
+    local existing = ns.db and ns.db.notes and ns.db.notes[selectedDossierKey]
+    if newStanding == "None" and not existing then
+        if dossierFrame.standingDropdown then
+            dossierFrame.standingDropdown:Hide()
+        end
+        ns:RefreshDossierWindow()
+        return
+    end
+
     local rec = EnsureNoteRecord(selectedDossierKey)
-    rec.standing = standingName or "None"
+    rec.standing = newStanding
+    if IsNoteRecordEmpty(rec) then
+        ns.db.notes[selectedDossierKey] = nil
+    end
     if dossierFrame.standingDropdown then
         dossierFrame.standingDropdown:Hide()
     end
@@ -691,10 +773,17 @@ function ns:RefreshDossierWindow()
         return
     end
 
-    local viewChanged = (key ~= lastRenderedKey) or (activeSubView ~= lastRenderedSubView)
+    local keyChanged = (key ~= lastRenderedKey)
+    local viewChanged = keyChanged or (activeSubView ~= lastRenderedSubView)
     selectedDossierKey = key
     lastRenderedKey = key
     lastRenderedSubView = activeSubView
+
+    if keyChanged then
+        dossierFrame._isLoadingNotes = true
+        SyncNoteWidgetsToKey(key)
+        dossierFrame._isLoadingNotes = false
+    end
 
     local isSelf = IsPlayerSelfKey(key)
     local realCharName = GetRealCharacterName(key, isSelf)
@@ -781,22 +870,26 @@ function ns:RefreshDossierWindow()
         dossierFrame.standingBtn:SetText("Standing: |c" .. sHex .. standing .. "|r")
         dossierFrame.standingBtn:SetTone(ns:GetStandingTone(standing))
 
-        if dossierFrame.relEditBox and not dossierFrame.relEditBox:HasFocus() and not dossierFrame.relEditBox.isDirty then
-            dossierFrame.relEditBox:SetCleanText(assignedRel)
-        end
-
         local myCharDisplay = (ns.profile and ns.profile.firstName and ns.profile.firstName ~= "") and ns.profile.firstName or (UnitName("player") or "Character")
         if ns.profile and ns.profile.lastName and strtrim(ns.profile.lastName) ~= "" then
             myCharDisplay = myCharDisplay .. " " .. strtrim(ns.profile.lastName)
         end
         dossierFrame.charNoteLabel:SetText("|cff81c995Notes from " .. myCharDisplay .. "|r  |cff9aa0a6(Character-Specific)|r")
 
-        if not dossierFrame.charNoteBox:HasFocus() then
+        dossierFrame._isLoadingNotes = true
+        if dossierFrame.relEditBox and not dossierFrame.relEditBox:HasFocus() and not dossierFrame.relEditBox.isDirty then
+            dossierFrame.relEditBox:SetCleanText(assignedRel)
+            dossierFrame.relEditBox.isDirty = false
+        end
+        if not dossierFrame.charNoteBox:HasFocus() and not dossierFrame.charNoteBox.isDirty then
             dossierFrame.charNoteBox:SetCleanText(charNote)
+            dossierFrame.charNoteBox.isDirty = false
         end
-        if not dossierFrame.acctNoteBox:HasFocus() then
+        if not dossierFrame.acctNoteBox:HasFocus() and not dossierFrame.acctNoteBox.isDirty then
             dossierFrame.acctNoteBox:SetCleanText(acctNote)
+            dossierFrame.acctNoteBox.isDirty = false
         end
+        dossierFrame._isLoadingNotes = false
     else
         if dossierFrame.standingDropdown then dossierFrame.standingDropdown:Hide() end
         dossierFrame.notesPanel:Hide()
@@ -832,6 +925,10 @@ end
 function ns:OpenTargetDossier(specificKey)
     if not dossierFrame then ns:InitDossierWindow() end
 
+    if dossierFrame:IsShown() and activeSubView == "NOTES" then
+        SaveCurrentNotes()
+    end
+
     local shouldScan = false
     if specificKey and specificKey ~= "" then
         selectedDossierKey = specificKey
@@ -858,6 +955,10 @@ function ns:OpenTargetDossier(specificKey)
     activeSubView = "CHAR"
     lastRenderedKey = nil
     lastRenderedSubView = nil
+    dossierFrame._isLoadingNotes = true
+    SyncNoteWidgetsToKey(selectedDossierKey)
+    dossierFrame._isLoadingNotes = false
+
     if dossierFrame.standingDropdown then dossierFrame.standingDropdown:Hide() end
     dossierFrame:SetScale((ns.db and ns.db.ui and ns.db.ui.scale) or 1.0)
     dossierFrame:Show()

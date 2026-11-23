@@ -67,6 +67,67 @@ local function ScrollFrameByDelta(scrollFrame, deltaPixels)
     return true
 end
 
+local function AttachBlinkingCaret(editBox, offsetX, offsetY)
+    local caret = editBox:CreateTexture(nil, "OVERLAY")
+    caret:SetWidth(2)
+    caret:SetHeight(14)
+    caret:SetColorTexture(0.95, 0.97, 1.0, 1.0)
+    caret:SetPoint("TOPLEFT", editBox, "TOPLEFT", offsetX or 0, offsetY or 0)
+    caret:Hide()
+
+    local elapsedAccum = 0
+    local visiblePhase = true
+    local lastX, lastY = nil, nil
+
+    local function ResetBlink()
+        elapsedAccum = 0
+        visiblePhase = true
+        if editBox:HasFocus() then
+            caret:Show()
+        else
+            caret:Hide()
+        end
+    end
+
+    editBox:HookScript("OnCursorChanged", function(_, cx, cy, _, ch)
+        local h = (ch and ch > 4) and ch or 14
+        caret:SetHeight(h)
+        caret:ClearAllPoints()
+        caret:SetPoint("TOPLEFT", editBox, "TOPLEFT", (cx or 0) + (offsetX or 0), (cy or 0) + (offsetY or 0))
+        if cx ~= lastX or cy ~= lastY then
+            lastX, lastY = cx, cy
+            ResetBlink()
+        elseif editBox:HasFocus() and not caret:IsShown() and visiblePhase then
+            caret:Show()
+        end
+    end)
+
+    editBox:HookScript("OnEditFocusGained", function()
+        lastX, lastY = nil, nil
+        ResetBlink()
+    end)
+
+    editBox:HookScript("OnEditFocusLost", function()
+        lastX, lastY = nil, nil
+        caret:Hide()
+    end)
+
+    editBox:HookScript("OnUpdate", function(_, elapsed)
+        if not editBox:HasFocus() then
+            if caret:IsShown() then caret:Hide() end
+            return
+        end
+        elapsedAccum = elapsedAccum + (elapsed or 0)
+        if elapsedAccum >= 0.5 then
+            elapsedAccum = 0
+            visiblePhase = not visiblePhase
+            caret:SetShown(visiblePhase)
+        end
+    end)
+
+    return caret
+end
+
 function ns:ApplySurface(frame, bgColor, borderColor)
     if not frame then return end
     frame:SetBackdrop(SOLID_BACKDROP)
@@ -80,9 +141,6 @@ function ns:EnableClipping(frame)
     end
 end
 
--- A short shared debounce protects actions from duplicate hardware events.
--- Directional movement remains responsive; binding buttons themselves should
--- normally fire on one click phase only (see CreateBindButton in the core file).
 function ns:CanProcessPadAction()
     local now = (GetTime and GetTime()) or 0
     if (now - lastPadInputTime) < 0.14 then return false end
@@ -123,9 +181,6 @@ function ns:RegisterFocusable(widget, activateFn, onFocusChange)
     table.insert(ns.focusables, widget)
 end
 
--- WoW Forever currently exposes this private manager to addons. It is not a
--- supported/public API, so every access is guarded and failure falls back to
--- PadRP's normal local navigation behaviour.
 local function GetNativeGamepadFocusFrame()
     local gamepadMode = _G.GamepadMode
     local manager = gamepadMode and gamepadMode.FrameControlsManager
@@ -174,8 +229,6 @@ local function GetOrCreateFocusRing()
             return
         end
 
-        -- Do not display PadRP's local ring while a Blizzard gamepad window
-        -- owns native focus. Keep the selected widget for the return handoff.
         if GetNativeGamepadFocusFrame() then
             HideFocusRingPreservingSelection()
         end
@@ -299,8 +352,6 @@ function ns:UpdateControllerBindings()
         ClearOverrideBindings(owner)
     end
 
-    -- Native Blizzard focus always wins. Do not claim the D-pad, shoulders,
-    -- A or B while a native gamepad frame is active.
     if nativeFrame then
         HideFocusRingPreservingSelection()
         pendingBindingSync = false
@@ -321,13 +372,10 @@ function ns:UpdateControllerBindings()
         BindPadClick(owner, "PAD1",         "PadRP_PadConfirmBtn")
         BindPadClick(owner, "PAD2",         "PadRP_PadCancelBtn")
     elseif hudFocused then
-        -- Keep D-pad and shoulders free for normal gameplay while only the
-        -- small target notifier is selected.
         BindPadClick(owner, "PAD1", "PadRP_PadConfirmBtn")
         BindPadClick(owner, "PAD2", "PadRP_PadCancelBtn")
     end
 
-    -- PADBACK is deliberately never bound: that is the native View button.
     pendingBindingSync = false
 end
 
@@ -381,7 +429,6 @@ function ns:SetControllerFocus(widget)
         return
     end
 
-    -- The native focus handoff has ended; re-enable PadRP's local focus visuals.
     focusVisualsSuspended = false
     if widget.OnFocusHighlight then
         widget:OnFocusHighlight(true)
@@ -632,7 +679,11 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
     padBtn:SetAllPoints(box)
     padBtn:SetFrameLevel(box:GetFrameLevel() + 2)
     padBtn:RegisterForClicks("LeftButtonUp")
-    padBtn:SetScript("OnEnter", function() ns:SetControllerFocus(box) end)
+    padBtn:SetScript("OnEnter", function()
+        if not box:HasFocus() then
+            ns:SetControllerFocus(box)
+        end
+    end)
     padBtn:SetScript("OnClick", function()
         ns:PlayUISound()
         ns:SetControllerFocus(box)
@@ -645,12 +696,11 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
     local function UpdatePlaceholder(self)
         if self:GetText() == "" and not self:HasFocus() then
             self.placeholder:Show()
-            padBtn:Show()
         else
             self.placeholder:Hide()
-            if not self:HasFocus() then
-                padBtn:Show()
-            end
+        end
+        if not self:HasFocus() then
+            padBtn:Show()
         end
     end
 
@@ -694,6 +744,9 @@ function ns:CreateMaterialEditBox(parent, labelText, placeholderText, x, y, widt
         if onCommit then onCommit(self:GetText()) end
     end)
     box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+    -- Must be called AFTER all SetScript calls so HookScript is not overwritten
+    AttachBlinkingCaret(box, 10, -6)
 
     ns:RegisterFocusable(box, function()
         ns:PlayUISound()
@@ -741,6 +794,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     editBox:SetWidth(math.max(200, width - 48))
     editBox:SetHeight(math.max(60, height - 34))
     editBox:SetAutoFocus(false)
+    editBox:EnableMouse(true)
     editBox:SetMaxLetters(2500)
     if editBox.SetWordWrap then editBox:SetWordWrap(true) end
     if editBox.SetNonSpaceWrap then editBox:SetNonSpaceWrap(true) end
@@ -760,12 +814,17 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     padBtn:SetAllPoints(container)
     padBtn:SetFrameLevel(container:GetFrameLevel() + 4)
     padBtn:RegisterForClicks("LeftButtonUp")
-    padBtn:SetScript("OnEnter", function() ns:SetControllerFocus(container) end)
+    padBtn:SetScript("OnEnter", function()
+        if not editBox:HasFocus() then
+            ns:SetControllerFocus(container)
+        end
+    end)
     padBtn:SetScript("OnClick", function()
         ns:PlayUISound()
         ns:SetControllerFocus(container)
         padBtn:Hide()
         editBox:SetFocus()
+        editBox:SetCursorPosition(#(editBox:GetText() or ""))
     end)
     container.padBtn = padBtn
 
@@ -831,6 +890,9 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
     end)
     editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
+    -- Must be called AFTER all SetScript calls so HookScript is not overwritten
+    AttachBlinkingCaret(editBox, 1, 0)
+
     container.editBox = editBox
     container.SetCleanText = function(self, txt)
         self.isDirty = false
@@ -855,6 +917,7 @@ function ns:CreateScrollableTextEditor(parent, placeholderText, x, y, width, hei
         ns:PlayUISound()
         padBtn:Hide()
         editBox:SetFocus()
+        editBox:SetCursorPosition(#(editBox:GetText() or ""))
     end, function(self, isFocused)
         if isFocused then
             self:SetBackdropColor(unpack(M3.surfaceHigh))

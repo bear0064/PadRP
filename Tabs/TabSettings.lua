@@ -4,6 +4,38 @@ local UI = ns.UI
 local mod = {}
 UI.tabs[7] = mod
 
+local STANDING_STYLE_ORDER = {
+    { key = "CIRCLE",  label = "Circle" },
+    { key = "STRIPE",  label = "Accent Stripe" },
+    { key = "CHEVRON", label = "Chevron" },
+    { key = "PILL",    label = "Pill Tag" },
+    { key = "OFF",     label = "Off" },
+}
+
+local function GetStandingStyleLabel(styleKey)
+    for _, item in ipairs(STANDING_STYLE_ORDER) do
+        if item.key == styleKey then
+            return item.label
+        end
+    end
+    return "Circle"
+end
+
+local function CycleStandingStyle()
+    local cur = (ns.GetNameplateStandingStyle and ns:GetNameplateStandingStyle()) or "CIRCLE"
+    local nextIdx = 1
+    for i, item in ipairs(STANDING_STYLE_ORDER) do
+        if item.key == cur then
+            nextIdx = (i % #STANDING_STYLE_ORDER) + 1
+            break
+        end
+    end
+    local chosen = STANDING_STYLE_ORDER[nextIdx]
+    ns.db.ui.nameplateStandingStyle = chosen.key
+    ns.db.ui.nameplateStandingCircle = (chosen.key ~= "OFF")
+    return chosen
+end
+
 function mod.Build(p7)
     local mf = UI.mainFrame
     local M3 = ns.M3
@@ -56,35 +88,45 @@ function mod.Build(p7)
         ns:RefreshControllerUI()
     end)
 
-    p7.npCircleBtn  = ns:CreateMaterialButton(p7, "", 280, 28, 16, -152, nil, function()
-        ns.db.ui.nameplateStandingCircle = not (ns.db.ui.nameplateStandingCircle ~= false)
+    p7.npStyleBtn   = ns:CreateMaterialButton(p7, "", 280, 28, 16, -152, "AMBER", function()
+        local chosen = CycleStandingStyle()
         if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
         ns:RefreshControllerUI()
+        ns:ShowStatusToast("Nameplate Standing Style: " .. chosen.label)
     end)
-    p7.combatBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 308, -152, nil, function()
+    p7.npColorsBtn  = ns:CreateMaterialButton(p7, "", 280, 28, 308, -152, "PRIMARY", function()
+        local cur = (ns.GetNameplateStandingColorMode and ns:GetNameplateStandingColorMode()) or "7COLOR"
+        ns.db.ui.nameplateStandingColorMode = (cur == "7COLOR") and "4BUCKET" or "7COLOR"
+        if ns.RefreshAllNameplates then ns:RefreshAllNameplates() end
+        ns:RefreshControllerUI()
+        ns:ShowStatusToast(ns.db.ui.nameplateStandingColorMode == "4BUCKET"
+            and "Standing Colors: 4-Bucket Grouping"
+            or "Standing Colors: All 7 Colors")
+    end)
+
+    p7.combatBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 16, -186, nil, function()
         ns.db.ui.hideInCombat = not ns.db.ui.hideInCombat
         ns:RefreshControllerUI()
     end)
-
-    p7.soundBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 16, -186, nil, function()
+    p7.soundBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 308, -186, nil, function()
         ns.db.ui.soundEffects = not ns.db.ui.soundEffects
         ns:RefreshControllerUI()
     end)
-    p7.partyBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 308, -186, nil, function()
+
+    p7.partyBtn     = ns:CreateMaterialButton(p7, "", 280, 28, 16, -220, nil, function()
         ns.db.gratitude.ignoreParty = not ns.db.gratitude.ignoreParty
         ns:RefreshControllerUI()
     end)
-
-    p7.rpNameBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 16, -220, nil, function()
+    p7.rpNameBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 308, -220, nil, function()
         ns.db.gratitude.useRPNames = not ns.db.gratitude.useRPNames
         ns:RefreshControllerUI()
     end)
-    p7.chatRPBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 308, -220, nil, function()
+
+    p7.chatRPBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 16, -254, nil, function()
         ns.db.ui.chatRPNames = not ns.db.ui.chatRPNames
         ns:RefreshControllerUI()
     end)
-
-    p7.afkOOCBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 16, -254, nil, function()
+    p7.afkOOCBtn    = ns:CreateMaterialButton(p7, "", 280, 28, 308, -254, nil, function()
         ns.db.ui.autoAFKOOC = not ns.db.ui.autoAFKOOC
         ns:RefreshControllerUI()
     end)
@@ -147,10 +189,10 @@ function mod.Layout(p7)
         { -50,  p7.minimapBtn, p7.hudBtn },
         { -84,  p7.hudRPBtn,   p7.npClassBtn },
         { -118, p7.npTagBtn,   p7.npRPNameBtn },
-        { -152, p7.npCircleBtn, p7.combatBtn },
-        { -186, p7.soundBtn,   p7.partyBtn },
-        { -220, p7.rpNameBtn,  p7.chatRPBtn },
-        { -254, p7.afkOOCBtn,  nil },
+        { -152, p7.npStyleBtn, p7.npColorsBtn },
+        { -186, p7.combatBtn,  p7.soundBtn },
+        { -220, p7.partyBtn,   p7.rpNameBtn },
+        { -254, p7.chatRPBtn,  p7.afkOOCBtn },
         { -294, p7.openExpBtn, p7.devModeBtn },
     }
     for _, row in ipairs(pairs7) do
@@ -181,9 +223,20 @@ function mod.Refresh(p7)
     p7.npClassBtn:SetText(UI:FormatCheckbox("Class-Color Nameplates", ui.nameplateClassColors, "ff8ab4f8"))
     p7.npTagBtn:SetText(UI:FormatCheckbox("Nameplate OOC | IC", ui.nameplateStatusTags ~= false, "ff81c995"))
     p7.npRPNameBtn:SetText(UI:FormatCheckbox("RP Names on Nameplates", ui.nameplateRPNames, "ff8ab4f8"))
-    if p7.npCircleBtn then
-        p7.npCircleBtn:SetText(UI:FormatCheckbox("Nameplate Standing Circle", ui.nameplateStandingCircle ~= false, "fffdd663"))
+
+    local styleKey = (ns.GetNameplateStandingStyle and ns:GetNameplateStandingStyle()) or "CIRCLE"
+    if p7.npStyleBtn then
+        p7.npStyleBtn:SetText("Standing Style: |cfffdd663" .. GetStandingStyleLabel(styleKey) .. "|r")
+        p7.npStyleBtn:SetTone(styleKey ~= "OFF" and "AMBER" or nil)
     end
+
+    local colorMode = (ns.GetNameplateStandingColorMode and ns:GetNameplateStandingColorMode()) or "7COLOR"
+    if p7.npColorsBtn then
+        local modeLabel = (colorMode == "4BUCKET") and "|cff81c9954-Bucket Grouping|r" or "|cff8ab4f8All 7 Colors|r"
+        p7.npColorsBtn:SetText("Standing Colors: " .. modeLabel)
+        p7.npColorsBtn:SetTone(colorMode == "4BUCKET" and "MINT" or "PRIMARY")
+    end
+
     p7.combatBtn:SetText(UI:FormatCheckbox("Auto-Hide in Combat", ui.hideInCombat, "ff81c995"))
     p7.soundBtn:SetText(UI:FormatCheckbox("UI Sound Effects", ui.soundEffects, "ff81c995"))
     p7.partyBtn:SetText(UI:FormatCheckbox("Ignore Party/Raid Buffs", grat.ignoreParty, "ff81c995"))

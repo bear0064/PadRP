@@ -112,10 +112,16 @@ function mod.Build(p1, picker)
 
     p1.oocNotesBox = ns:CreateScrollableTextEditor(
         pageCore,
-        "Other Information (OOC) - add spaced notes, paragraphs, or boundaries...",
-        16, -174, 572, 96,
+        "Add spaced notes, paragraphs, or RP boundaries...",
+        16, -188, 572, 84,
         AutoCommitTab1
     )
+
+    p1.oocNotesLabel = pageCore:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    p1.oocNotesLabel:SetPoint("BOTTOMLEFT", p1.oocNotesBox, "TOPLEFT", 0, 3)
+    p1.oocNotesLabel:SetJustifyH("LEFT")
+    p1.oocNotesLabel:SetWordWrap(false)
+    p1.oocNotesLabel:SetText("|cff9aa0a6Other Information (OOC)|r")
 
     local dropdown = CreateFrame("Frame", nil, pageCore, "BackdropTemplate")
     dropdown:SetSize(426, 194)
@@ -341,8 +347,8 @@ function mod.Layout(p1)
         }, 16, 16, 6)
 
         if p1.oocNotesBox then
-            local curH = p1.oocNotesBox:GetHeight() or 96
-            UI:LayoutRow(pc, -184, {
+            local curH = p1.oocNotesBox:GetHeight() or 84
+            UI:LayoutRow(pc, -192, {
                 { w = p1.oocNotesBox, weight = 1 },
             }, 16, 16, 0)
             p1.oocNotesBox:SetHeight(curH)

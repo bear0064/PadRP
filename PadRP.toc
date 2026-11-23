@@ -2,7 +2,7 @@
 ## Title: PadRP |cff8ab4f8(Controller RP)|r
 ## Notes: Controller-friendly Roleplay Sheet, Native LibMSP/Chomp Engine, Nameplate RP Tags & Gratitude
 ## Author: PadRP
-## Version: 1.0.0
+## Version: 1.1.0
 ## SavedVariables: PadRPDB
 ## OptionalDeps: totalRP3, ConsolePort
 
