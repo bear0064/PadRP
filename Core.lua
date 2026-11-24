@@ -921,7 +921,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         end)
 
         local loadedLabel = (ns.profile.firstName and ns.profile.firstName ~= "") and ns.profile.firstName or (ns.profile.profileName or UnitName("player"))
-        print("|cff8ab4f8[PadRP]|r PadRP Suite v1.3.1 loaded. Profile: |cfffdd663" .. loadedLabel .. "|r.")
+        print("|cff8ab4f8[PadRP]|r PadRP Suite v1.3.2 loaded. Profile: |cfffdd663" .. loadedLabel .. "|r.")
     elseif event == "PLAYER_LOGOUT" then
         ns:SnapshotActiveProfile()
     elseif event == "PLAYER_FLAGS_CHANGED" and arg1 == "player" then

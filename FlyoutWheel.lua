@@ -25,8 +25,8 @@ local activeSpokeRight
 local sliceButtons = {}
 
 -- Dynamic page list built on open:
--- MAIN -> STD (1..N) -> STANDING -> DICE
--- Sub-views (not in main LB/RB ring): WALKUP, CURRENTLY, CUSTOM_MENU, CUSTOM_EMOTE, CUSTOM_SAY, CUSTOM_YELL
+-- MAIN (Page 1: 8 RP actions) -> CUSTOM_PAGE (Page 2: Custom /e, /s, /y) -> STD (1..N) -> STANDING -> DICE
+-- Sub-views (not in main LB/RB ring): WALKUP, CURRENTLY, CUSTOM_EMOTE, CUSTOM_SAY, CUSTOM_YELL
 local pageList = {}
 local activePageIndex = 1
 local subViewMode = nil
@@ -48,6 +48,8 @@ local lastStickSelectTime = 0
 local stickArmed = false
 local initialized = false
 local cameraLocked = false
+
+local LANGUAGE_ICON = "Interface\\Icons\\INV_Misc_Book_11"
 
 local STANDING_ITEMS = {
     { name = "Ally",         icon = "Interface\\Icons\\Spell_Holy_GreaterHeal",         color = "|cff00e5ff" },
@@ -446,6 +448,94 @@ local function Notify(msg)
     end
 end
 
+local function GetAvailableLanguages()
+    local langs = {}
+    if type(GetNumLanguages) == "function" and type(GetLanguageByIndex) == "function" then
+        local okCount, count = pcall(GetNumLanguages)
+        if okCount and type(count) == "number" and count > 0 then
+            for i = 1, count do
+                local okLang, name, langId = pcall(GetLanguageByIndex, i)
+                if okLang and name and name ~= "" then
+                    table.insert(langs, {
+                        name = tostring(name),
+                        id = tonumber(langId) or i,
+                        index = i,
+                    })
+                end
+            end
+        end
+    end
+    if #langs == 0 then
+        table.insert(langs, { name = "Default", id = nil, index = 1 })
+    end
+    return langs
+end
+
+local function GetActiveLanguageInfo()
+    local langs = GetAvailableLanguages()
+    local db = ns.EnsureFlyoutDB and ns:EnsureFlyoutDB() or {}
+    local savedName = db.selectedLanguageName
+    local savedId = tonumber(db.selectedLanguageId)
+
+    if savedName and savedName ~= "" then
+        for _, l in ipairs(langs) do
+            if string.lower(l.name) == string.lower(savedName) then
+                return l, langs
+            end
+        end
+    end
+    if savedId then
+        for _, l in ipairs(langs) do
+            if l.id == savedId then
+                return l, langs
+            end
+        end
+    end
+
+    if _G.DEFAULT_CHAT_FRAME and _G.DEFAULT_CHAT_FRAME.language then
+        for _, l in ipairs(langs) do
+            if string.lower(l.name) == string.lower(tostring(_G.DEFAULT_CHAT_FRAME.language)) then
+                return l, langs
+            end
+        end
+    end
+
+    return langs[1], langs
+end
+
+local function CycleSpokenLanguage()
+    if not CanAct() then return end
+    local cur, langs = GetActiveLanguageInfo()
+    if #langs <= 1 then
+        Notify("Language: |cfffdd663" .. tostring(cur and cur.name or "Default") .. "|r")
+        if ns.RefreshFlyoutWheel then ns:RefreshFlyoutWheel() end
+        return
+    end
+
+    local curIdx = 1
+    for i, l in ipairs(langs) do
+        if cur and l.name == cur.name then
+            curIdx = i
+            break
+        end
+    end
+    local nextLang = langs[(curIdx % #langs) + 1]
+
+    local db = ns.EnsureFlyoutDB and ns:EnsureFlyoutDB() or {}
+    db.selectedLanguageName = nextLang.name
+    db.selectedLanguageId = nextLang.id
+
+    if _G.DEFAULT_CHAT_FRAME then
+        pcall(function() _G.DEFAULT_CHAT_FRAME.language = nextLang.name end)
+    end
+    if ChatEdit_SetLastLanguageUsed and _G.DEFAULT_CHAT_FRAME and _G.DEFAULT_CHAT_FRAME.editBox then
+        pcall(ChatEdit_SetLastLanguageUsed, _G.DEFAULT_CHAT_FRAME.editBox, nextLang.name)
+    end
+
+    Notify("Language: |cfffdd663" .. nextLang.name .. "|r")
+    if ns.RefreshFlyoutWheel then ns:RefreshFlyoutWheel() end
+end
+
 local function SanitizeBaseEmoteRecord(item, fallbackDef, forceNormalIconReset)
     if type(item) ~= "table" then return nil end
     local token = string.upper(strtrim(tostring(item.token or (fallbackDef and fallbackDef.token) or "")))
@@ -738,8 +828,13 @@ function ns:TriggerFlyoutCustomLine(rawText, channel)
     if chatType ~= "EMOTE" and chatType ~= "SAY" and chatType ~= "YELL" then
         chatType = "EMOTE"
     end
+    local langInfo = (chatType == "SAY" or chatType == "YELL") and GetActiveLanguageInfo() or nil
     if type(SendChatMessage) == "function" then
-        pcall(SendChatMessage, formatted, chatType)
+        if langInfo and langInfo.id then
+            pcall(SendChatMessage, formatted, chatType, langInfo.id)
+        else
+            pcall(SendChatMessage, formatted, chatType)
+        end
     end
     if ns.PlayUISound then pcall(ns.PlayUISound, ns) end
 end
@@ -748,7 +843,6 @@ function ns:TriggerFlyoutCustomEmote(rawText)
     ns:TriggerFlyoutCustomLine(rawText, "EMOTE")
 end
 
--- Line list management (used by the Emotes/RP Lines tab in Tabs/TabEmotes.lua)
 local MAX_CUSTOM_LINES = 64
 local MAX_BASE_EMOTES = 250
 local DEFAULT_BASE_TOKENS = {}
@@ -954,6 +1048,11 @@ local function GetEnabledBaseEmotes()
             table.insert(enabled, item)
         end
     end
+    if #enabled == 0 then
+        for i = 1, math.min(16, #DEFAULT_BASE_EMOTES) do
+            table.insert(enabled, SanitizeBaseEmoteRecord(DEFAULT_BASE_EMOTES[i], DEFAULT_BASE_EMOTES[i], false))
+        end
+    end
     return enabled
 end
 
@@ -962,7 +1061,8 @@ local function RebuildPageRing()
     local basePages = math.max(1, math.ceil(#baseEnabled / SLICES_PER_PAGE))
 
     pageList = {
-        { kind = "MAIN", title = "RP Wheel" },
+        { kind = "MAIN",        title = "RP Wheel (1/2)" },
+        { kind = "CUSTOM_PAGE", title = "Custom RP" },
     }
     for p = 1, basePages do
         table.insert(pageList, {
@@ -1061,46 +1161,7 @@ local function BuildCurrentSlices()
     local targetKey, targetName, targetHasRP = ResolveTargetKeyAndName()
     local curStanding = targetKey and GetTargetStandingValue(targetKey) or nil
 
-    if subViewMode == "CUSTOM_MENU" then
-        return "Custom RP Lines", {
-            {
-                label = "Custom /e",
-                sub = tostring(#db.customEmotes) .. " emotes",
-                icon = DEFAULT_CUSTOM_ICON,
-                onSelect = function()
-                    subViewMode = "CUSTOM_EMOTE"
-                    subPageIndex = 1
-                    selectedIdx = 1
-                    stickArmed = false
-                    ns:RefreshFlyoutWheel()
-                end,
-            },
-            {
-                label = "Custom /s",
-                sub = tostring(#db.customSays) .. " says",
-                icon = DEFAULT_SAY_ICON,
-                onSelect = function()
-                    subViewMode = "CUSTOM_SAY"
-                    subPageIndex = 1
-                    selectedIdx = 1
-                    stickArmed = false
-                    ns:RefreshFlyoutWheel()
-                end,
-            },
-            {
-                label = "Custom /y",
-                sub = tostring(#db.customYells) .. " yells",
-                icon = DEFAULT_YELL_ICON,
-                onSelect = function()
-                    subViewMode = "CUSTOM_YELL"
-                    subPageIndex = 1
-                    selectedIdx = 1
-                    stickArmed = false
-                    ns:RefreshFlyoutWheel()
-                end,
-            },
-        }
-    elseif subViewMode == "CUSTOM_EMOTE" then
+    if subViewMode == "CUSTOM_EMOTE" then
         return BuildCustomChannelSlices("custom", "EMOTE", db.customEmotes, "Custom Emotes", "/e custom")
     elseif subViewMode == "CUSTOM_SAY" then
         return BuildCustomChannelSlices("say", "SAY", db.customSays, "Custom Says", "/s custom")
@@ -1158,11 +1219,11 @@ local function BuildCurrentSlices()
         return "Currently Status", list
     end
 
-    local meta = pageList[activePageIndex] or { kind = "MAIN", title = "RP Wheel" }
+    local meta = pageList[activePageIndex] or { kind = "MAIN", title = "RP Wheel (1/2)" }
 
     if meta.kind == "MAIN" then
-        local baseEnabled = GetEnabledBaseEmotes()
-        local totalCustomCount = #db.customEmotes + #db.customSays + #db.customYells
+        local activeLang = GetActiveLanguageInfo()
+        local langLabel = ShortenLabel((activeLang and activeLang.name) or "Default", 13)
         local targetColor = targetHasRP and "|cff81c995" or "|cff8ab4f8"
         return meta.title, {
             {
@@ -1184,10 +1245,12 @@ local function BuildCurrentSlices()
                 onSelect = function() subViewMode = "CURRENTLY"; selectedIdx = 1; stickArmed = false; ns:RefreshFlyoutWheel() end,
             },
             {
-                label = "Sit / Rest",
-                sub = "/sit",
-                icon = "Interface\\Icons\\INV_Drink_05",
-                onSelect = function() ns:TriggerFlyoutStandardEmote("SIT"); ns:CloseFlyoutWheel() end,
+                label = "Language",
+                sub = "|cfffdd663" .. langLabel .. "|r",
+                icon = LANGUAGE_ICON,
+                onSelect = function()
+                    CycleSpokenLanguage()
+                end,
             },
             {
                 label = "PadRP Menu",
@@ -1199,7 +1262,7 @@ local function BuildCurrentSlices()
                 end,
             },
             {
-                label = "View Profile",
+                label = "Profile",
                 sub = targetKey and (targetColor .. ShortenLabel(targetName, 13) .. "|r") or "|cff888888No Target|r",
                 icon = "Interface\\Icons\\Ability_Spy",
                 disabled = (targetKey == nil),
@@ -1224,22 +1287,45 @@ local function BuildCurrentSlices()
                 end,
             },
             {
-                label = "Custom RP",
-                sub = tostring(totalCustomCount) .. " lines",
+                label = "Sit",
+                sub = "/sit",
+                icon = "Interface\\Icons\\INV_Drink_05",
+                onSelect = function() ns:TriggerFlyoutStandardEmote("SIT"); ns:CloseFlyoutWheel() end,
+            },
+        }
+    elseif meta.kind == "CUSTOM_PAGE" then
+        return meta.title, {
+            {
+                label = "Custom /e",
+                sub = tostring(#db.customEmotes) .. " emotes",
                 icon = DEFAULT_CUSTOM_ICON,
                 onSelect = function()
-                    subViewMode = "CUSTOM_MENU"
+                    subViewMode = "CUSTOM_EMOTE"
+                    subPageIndex = 1
                     selectedIdx = 1
                     stickArmed = false
                     ns:RefreshFlyoutWheel()
                 end,
             },
             {
-                label = "Base Emotes",
-                sub = tostring(#baseEnabled) .. " on wheel",
-                icon = DEFAULT_BASE_FALLBACK_ICON,
+                label = "Custom /s",
+                sub = tostring(#db.customSays) .. " says",
+                icon = DEFAULT_SAY_ICON,
                 onSelect = function()
-                    activePageIndex = FindFirstPageOfKind("STD")
+                    subViewMode = "CUSTOM_SAY"
+                    subPageIndex = 1
+                    selectedIdx = 1
+                    stickArmed = false
+                    ns:RefreshFlyoutWheel()
+                end,
+            },
+            {
+                label = "Custom /y",
+                sub = tostring(#db.customYells) .. " yells",
+                icon = DEFAULT_YELL_ICON,
+                onSelect = function()
+                    subViewMode = "CUSTOM_YELL"
+                    subPageIndex = 1
                     selectedIdx = 1
                     stickArmed = false
                     ns:RefreshFlyoutWheel()
@@ -1443,7 +1529,6 @@ local function UpdateActiveSliceVisuals()
     SyncPageDots()
 end
 
--- Double-wall bevelled radial divider spokes matching the carved compartment ring
 local function RebuildSpokes(count)
     for _, seg in ipairs(spokeLines) do
         seg.outer:Hide()
@@ -1583,16 +1668,24 @@ local function StepWheelPage(delta)
             subPageIndex = ((subPageIndex - 1 + delta) % totalPages) + 1
             ns:RefreshFlyoutWheel()
             if ns.PlayUISound then pcall(ns.PlayUISound, ns) end
+            return
         end
-        return
     end
 
     subViewMode = nil
+    subPageIndex = 1
+    RebuildPageRing()
     if #pageList > 0 then
         activePageIndex = ((activePageIndex - 1 + delta) % #pageList) + 1
         ns:RefreshFlyoutWheel()
     end
     if ns.PlayUISound then pcall(ns.PlayUISound, ns) end
+end
+
+function ns:StepFlyoutWheelPage(delta)
+    if wheelFrame and wheelFrame:IsShown() then
+        StepWheelPage(delta or 1)
+    end
 end
 
 local function AimSliceByStick(vx, vy)
@@ -1757,6 +1850,14 @@ local function HandleWheelSubcommand(cmd)
         _G.PadRP_DebugGamePad = (not _G.PadRP_DebugGamePad) or nil
         Notify("Gamepad debug: " .. (_G.PadRP_DebugGamePad and "ON" or "OFF"))
         return true
+    elseif cmd == "next" or cmd == "page" then
+        if wheelFrame and wheelFrame:IsShown() then
+            StepWheelPage(1)
+        else
+            ns:ToggleFlyoutWheel()
+            StepWheelPage(1)
+        end
+        return true
     end
     return false
 end
@@ -1838,12 +1939,19 @@ function ns:InitFlyoutWheel()
     wheelFrame:SetSize((OUTER_R * 2) + 40, (OUTER_R * 2) + 120)
     wheelFrame:SetPoint("LEFT", UIParent, "LEFT", 64, 30)
     wheelFrame:SetFrameStrata("DIALOG")
+    wheelFrame:EnableMouseWheel(true)
     wheelFrame:Hide()
     ns.flyoutWheelFrame = wheelFrame
 
+    wheelFrame:SetScript("OnMouseWheel", function(_, delta)
+        if delta and delta ~= 0 then
+            StepWheelPage(delta > 0 and -1 or 1)
+        end
+    end)
+
     headerTitleFS = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     headerTitleFS:SetPoint("BOTTOM", wheelFrame, "CENTER", 0, OUTER_R + 38)
-    headerTitleFS:SetText("RP Wheel")
+    headerTitleFS:SetText("RP Wheel (1/2)")
     headerTitleFS:SetTextColor(0.96, 0.94, 0.88)
 
     local lbText = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1859,7 +1967,6 @@ function ns:InitFlyoutWheel()
     pageCountFS:SetJustifyH("CENTER")
     pageCountFS:Hide()
 
-    -- Outer carved stone ring & dark compartment backdrop
     local outerDisc = wheelFrame:CreateTexture(nil, "BACKGROUND", nil, 0)
     outerDisc:SetSize(OUTER_R * 2, OUTER_R * 2)
     outerDisc:SetPoint("CENTER", wheelFrame, "CENTER", 0, 0)
@@ -1870,7 +1977,6 @@ function ns:InitFlyoutWheel()
     DrawCircleRing(wheelFrame, OUTER_R + 3, 72, 5, 0.36, 0.34, 0.30, 0.96, "BORDER", 2)
     DrawCircleRing(wheelFrame, OUTER_R - 1, 72, 2.5, 0.06, 0.05, 0.05, 0.96, "BORDER", 3)
 
-    -- Center hub cutout
     local innerDisc = wheelFrame:CreateTexture(nil, "ARTWORK", nil, 1)
     innerDisc:SetSize(INNER_R * 2, INNER_R * 2)
     innerDisc:SetPoint("CENTER", wheelFrame, "CENTER", 0, 0)
@@ -1921,7 +2027,7 @@ function ns:InitFlyoutWheel()
 
     footerHintFS = wheelFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     footerHintFS:SetPoint("TOP", wheelFrame, "CENTER", 0, -(OUTER_R + 16))
-    footerHintFS:SetText("|cffb8ad96[R-Stick Flick]|r Select   |cffb8ad96[B]|r Back")
+    footerHintFS:SetText("|cffb8ad96[R-Stick Flick]|r Select   |cffb8ad96[LB/RB]|r Page   |cffb8ad96[B]|r Back")
 
     wheelFrame:SetScript("OnEvent", function(self, event)
         if event == "PLAYER_TARGET_CHANGED" and self:IsShown() then
@@ -1972,7 +2078,8 @@ function ns:InitFlyoutWheel()
         elseif button == "PAD2" then
             stickArmed = false
             if subViewMode == "CUSTOM_EMOTE" or subViewMode == "CUSTOM_SAY" or subViewMode == "CUSTOM_YELL" then
-                subViewMode = "CUSTOM_MENU"
+                subViewMode = nil
+                activePageIndex = FindFirstPageOfKind("CUSTOM_PAGE")
                 subPageIndex = 1
                 selectedIdx = 1
                 ns:RefreshFlyoutWheel()
