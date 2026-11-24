@@ -957,6 +957,12 @@ function ns:HandleSlashCommand(msg)
         if ns.ToggleFlyoutWheel then
             ns:ToggleFlyoutWheel()
         end
+    elseif cmd == "lang" or cmd == "language" then
+        if ns.CycleSpokenLanguage then
+            ns:CycleSpokenLanguage()
+        elseif _G.PadRP_CycleLanguageButton and _G.PadRP_CycleLanguageButton.Click then
+            _G.PadRP_CycleLanguageButton:Click("LeftButton")
+        end
     elseif cmd == "resetcam" then
         if SlashCmdList["PADRPWHEEL"] then
             SlashCmdList["PADRPWHEEL"]("resetcam")

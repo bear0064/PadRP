@@ -17,6 +17,33 @@ local CORE_STANDINGS = {
     { key = "Marked",     tone = "AMBER",   colorHex = "fffdd663", rgb = { 1.00, 0.82, 0.10 } },
 }
 
+local function GetSubViewTabButton(viewName)
+    if not dossierFrame then return nil end
+    if viewName == "ABOUT" then return dossierFrame.tabAbout end
+    if viewName == "GLANCES" then return dossierFrame.tabGlances end
+    if viewName == "NOTES" then return dossierFrame.tabNotes end
+    return dossierFrame.tabChar
+end
+
+local function FocusActiveDossierTab()
+    if not dossierFrame or not dossierFrame:IsShown() then return end
+    local btn = GetSubViewTabButton(activeSubView)
+    if btn and btn:IsVisible() and ns.SetControllerFocus then
+        ns:SetControllerFocus(btn)
+    end
+end
+
+local function IsValidSubView(viewName)
+    if type(viewName) ~= "string" then return false end
+    local upper = string.upper(strtrim(viewName))
+    for _, v in ipairs(SUB_VIEWS) do
+        if v == upper then
+            return true, upper
+        end
+    end
+    return false
+end
+
 local function GetThemeAccentHex()
     return (ns.GetUITheme and ns:GetUITheme() == "NATIVE") and "fff5c73d" or "ff8ab4f8"
 end
@@ -844,7 +871,7 @@ local function BuildGlancesStatusText(data, isSelf)
         end
     end
 
-    if #gLines == 0 then
+    if #gLines == 0 and data and ns.ParseGlancesStructured then
         local structured = ns:ParseGlancesStructured(data.PE)
         for idx = 1, math.min(5, #structured) do
             local g = structured[idx]
@@ -861,7 +888,7 @@ local function BuildGlancesStatusText(data, isSelf)
         table.insert(lines, "|cfffdd663AT FIRST GLANCE|r\n" .. table.concat(gLines, "\n\n"))
     end
 
-    local cuVal = (isSelf and ns.profile and ns.profile.currently) or data.CU
+    local cuVal = (isSelf and ns.profile and ns.profile.currently) or (data and data.CU)
     if cuVal and strtrim(cuVal) ~= "" then
         table.insert(lines, "|c" .. accentHex .. "CURRENTLY|r\n" .. strtrim(cuVal))
     end
@@ -883,6 +910,7 @@ function ns:CycleDossierTab(delta)
     local nextIdx = ((curIdx - 1 + (delta or 1)) % #SUB_VIEWS) + 1
     activeSubView = SUB_VIEWS[nextIdx]
     ns:RefreshDossierWindow()
+    FocusActiveDossierTab()
 end
 
 function ns:RefreshDossierWindow()
@@ -891,7 +919,7 @@ function ns:RefreshDossierWindow()
     local accentHex = GetThemeAccentHex()
     if dossierFrame.footerText then
         dossierFrame.footerText:SetText(string.format(
-            "|c%s[LB]/[RB]|r Sections   |c%s[D-Pad]|r Scroll / Focus   |c%s[A]|r Edit / Select   |c%s[B]|r Close",
+            "|c%s[LB]/[RB] / [D-Pad L/R]|r Tabs   |c%s[D-Pad U/D]|r Scroll   |c%s[A]|r Edit / Select   |c%s[B]|r Close",
             accentHex, accentHex, accentHex, accentHex
         ))
     end
@@ -1052,12 +1080,12 @@ function ns:RefreshDossierWindow()
         dossierFrame.notesPanel:Hide()
         dossierFrame.readerBox:Show()
 
-        if not data or not data.NA then
+        if activeSubView == "GLANCES" then
+            dossierFrame.scrollText:SetText(BuildGlancesStatusText(data, isSelf))
+        elseif not data or not data.NA then
             dossierFrame.scrollText:SetText("|cff9aa0a6No RP profile loaded for this player. Switch to the Notes tab to keep private notes.|r")
         elseif activeSubView == "ABOUT" then
             dossierFrame.scrollText:SetText(BuildAboutText(data))
-        elseif activeSubView == "GLANCES" then
-            dossierFrame.scrollText:SetText(BuildGlancesStatusText(data, isSelf))
         else
             dossierFrame.scrollText:SetText(BuildCharacteristicsText(data, isSelf, key))
         end
@@ -1079,7 +1107,7 @@ function ns:RefreshDossierWindow()
     end
 end
 
-function ns:OpenTargetDossier(specificKey)
+function ns:OpenTargetDossier(specificKey, initialSubView)
     if not dossierFrame then ns:InitDossierWindow() end
 
     if dossierFrame:IsShown() and activeSubView == "NOTES" then
@@ -1109,7 +1137,8 @@ function ns:OpenTargetDossier(specificKey)
         ns:RequestUnitMSP(selectedDossierKey, true, true)
     end
 
-    activeSubView = "CHAR"
+    local isValid, normalizedView = IsValidSubView(initialSubView)
+    activeSubView = isValid and normalizedView or "CHAR"
     lastRenderedKey = nil
     lastRenderedSubView = nil
     dossierFrame._isLoadingNotes = true
@@ -1125,7 +1154,9 @@ function ns:OpenTargetDossier(specificKey)
     if ns.UpdateControllerBindings then
         ns:UpdateControllerBindings()
     end
-    if ns.FocusFirstInScope then
+    if activeSubView == "GLANCES" then
+        FocusActiveDossierTab()
+    elseif ns.FocusFirstInScope then
         ns:FocusFirstInScope()
     end
 end
@@ -1221,6 +1252,7 @@ function ns:InitDossierWindow()
         if dossierFrame.standingDropdown then dossierFrame.standingDropdown:Hide() end
         activeSubView = viewName
         ns:RefreshDossierWindow()
+        FocusActiveDossierTab()
     end
 
     dossierFrame.tabChar = ns:CreateMaterialButton(dossierFrame, "Characteristics", 154, 28, 14, -90, "PRIMARY", function()

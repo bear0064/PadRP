@@ -114,7 +114,7 @@ function ns:ControllerConfirmAction()
     if not scope or not ns:CanProcessPadAction() then return end
 
     if scope == ns.hudFrame and ns.OpenTargetDossier then
-        ns:OpenTargetDossier(ns.hudFrame.inspectedKey)
+        ns:OpenTargetDossier(ns.hudFrame.inspectedKey, "GLANCES")
         return
     end
 
@@ -485,8 +485,20 @@ function ns:InitControllerUI()
     ns:CreateBindButton("PadRP_NextTabBtn",     function() ns:CycleTab(1) end)
     ns:CreateBindButton("PadRP_PadUpBtn",       function() ns:MoveControllerFocus("UP") end)
     ns:CreateBindButton("PadRP_PadDownBtn",     function() ns:MoveControllerFocus("DOWN") end)
-    ns:CreateBindButton("PadRP_PadLeftBtn",     function() ns:MoveControllerFocus("LEFT") end)
-    ns:CreateBindButton("PadRP_PadRightBtn",    function() ns:MoveControllerFocus("RIGHT") end)
+    ns:CreateBindButton("PadRP_PadLeftBtn",     function()
+        if ns.dossierFrame and ns.dossierFrame:IsShown() and ns.CycleDossierTab and not (ns.activeEditBox and ns.activeEditBox:HasFocus()) then
+            ns:CycleDossierTab(-1)
+            return
+        end
+        ns:MoveControllerFocus("LEFT")
+    end)
+    ns:CreateBindButton("PadRP_PadRightBtn",    function()
+        if ns.dossierFrame and ns.dossierFrame:IsShown() and ns.CycleDossierTab and not (ns.activeEditBox and ns.activeEditBox:HasFocus()) then
+            ns:CycleDossierTab(1)
+            return
+        end
+        ns:MoveControllerFocus("RIGHT")
+    end)
     ns:CreateBindButton("PadRP_PadConfirmBtn",  function() ns:ControllerConfirmAction() end)
     ns:CreateBindButton("PadRP_PadCancelBtn",   function() ns:ControllerCancelAction() end)
 

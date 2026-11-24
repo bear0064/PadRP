@@ -363,6 +363,33 @@ local function IsHardTargetedOtherPlayer()
     return UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player")
 end
 
+local function OpenHUDTargetGlances(inspectedKey)
+    local key = inspectedKey
+    if (not key or key == "") and IsHardTargetedOtherPlayer() then
+        if ns.GetCachedMSP then
+            local _, activeKey = pcall(ns.GetCachedMSP, ns, "target")
+            if activeKey and activeKey ~= "" then
+                key = activeKey
+            end
+        end
+        if (not key or key == "") and ns.GetUnitKey then
+            local _, uKey = pcall(ns.GetUnitKey, ns, "target")
+            if uKey and uKey ~= "" then
+                key = uKey
+            end
+        end
+        if not key or key == "" then
+            local uName, uRealm = UnitName("target")
+            if uName and uName ~= "" then
+                key = (uRealm and uRealm ~= "") and (uName .. "-" .. uRealm) or uName
+            end
+        end
+    end
+    if ns.OpenTargetDossier then
+        ns:OpenTargetDossier(key, "GLANCES")
+    end
+end
+
 local function CancelHUDFadeOut()
     if not hudFrame then return end
     hudFrame._isFadingOut = false
@@ -953,15 +980,15 @@ function ns:RefreshTargetHUD()
         local icDot = isIC and "|cff81c995[IC]|r" or "|cfff28b82[OOC]|r"
         local wuBadge = ns:GetTargetWalkUpInfo(data)
         local prefixBadges = wuBadge and (icDot .. " " .. wuBadge) or icDot
-        local cuStr = (data.CU and data.CU ~= "") and StripColorCodes(data.CU) or "|cff9aa0a6Focus / Click to open Dossier|r"
+        local cuStr = (data.CU and data.CU ~= "") and StripColorCodes(data.CU) or "|cff9aa0a6Focus / Click to open Glances|r"
         hudFrame.subText:SetText(prefixBadges .. "  |cffe8eaed" .. cuStr .. "|r")
-        hudFrame.hintText:SetText("|c" .. accentHex .. "[A] / Click for Dossier|r")
+        hudFrame.hintText:SetText("|c" .. accentHex .. "[A] / Click for Glances|r")
         local barCol = isIC and ns.M3.mint or ns.M3.coral
         hudFrame.accentBar:SetColorTexture(barCol[1], barCol[2], barCol[3], 1)
     else
         hudFrame.nameText:SetText(standingTag .. "|c" .. tHex .. rawName .. "|r" .. relTag .. noteTag)
         hudFrame.subText:SetText("|cff9aa0a6Standard Player (No RP Profile Cached)|r")
-        hudFrame.hintText:SetText("|cff9aa0a6[A] / Click for Dossier|r")
+        hudFrame.hintText:SetText("|cff9aa0a6[A] / Click for Glances|r")
         local outCol = ns.M3.outline
         hudFrame.accentBar:SetColorTexture(outCol[1], outCol[2], outCol[3], 0.85)
     end
@@ -1049,16 +1076,12 @@ function ns:InitTargetHUD()
         end
     end)
     hudFrame:SetScript("OnClick", function(self)
-        if ns.OpenTargetDossier then
-            ns:OpenTargetDossier(self.inspectedKey)
-        end
+        OpenHUDTargetGlances(self.inspectedKey)
     end)
 
     if ns.RegisterFocusable then
         ns:RegisterFocusable(hudFrame, function(self)
-            if ns.OpenTargetDossier then
-                ns:OpenTargetDossier(self.inspectedKey)
-            end
+            OpenHUDTargetGlances(self.inspectedKey)
         end, function(self, isFocused)
             if isFocused then
                 self:SetBackdropBorderColor(unpack(ns.M3.primary))
@@ -1079,7 +1102,7 @@ function ns:InitTargetHUD()
 
     ns:CreateBindButton("PadRP_InspectTargetButton", function()
         if ns.OpenTargetDossier then
-            ns:OpenTargetDossier(hudFrame and hudFrame.inspectedKey or ns.lastInspectedKey)
+            ns:OpenTargetDossier(hudFrame and hudFrame.inspectedKey or ns.lastInspectedKey, "GLANCES")
         end
     end)
 end
