@@ -1099,10 +1099,10 @@ function ns:RefreshDossierWindow()
         local viewH = dossierFrame.scrollFrame:GetHeight() or 360
         dossierFrame.scrollChild:SetHeight(math.max(viewH, textH + 28))
         if viewChanged and dossierFrame.scrollFrame.SetVerticalScroll then
-            dossierFrame.scrollFrame:SetVerticalScroll(0)
+            pcall(dossierFrame.scrollFrame.SetVerticalScroll, dossierFrame.scrollFrame, 0)
         end
         if dossierFrame.scrollFrame.UpdateScrollChildRect then
-            dossierFrame.scrollFrame:UpdateScrollChildRect()
+            pcall(dossierFrame.scrollFrame.UpdateScrollChildRect, dossierFrame.scrollFrame)
         end
     end
 end
@@ -1282,18 +1282,33 @@ function ns:InitDossierWindow()
     ns:EnableClipping(scrollFrame)
     dossierFrame.scrollFrame = scrollFrame
 
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        if not delta or delta == 0 then return end
-        local cur = self:GetVerticalScroll() or 0
-        local maxS = (self.GetVerticalScrollRange and self.GetVerticalScrollRange()) or 0
-        local step = (delta > 0) and -56 or 56
-        self:SetVerticalScroll(math.max(0, math.min(maxS, cur + step)))
-    end)
-
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetSize(580, 180)
     scrollFrame:SetScrollChild(scrollChild)
     dossierFrame.scrollChild = scrollChild
+
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        if not delta or delta == 0 then return end
+        local cur = (self.GetVerticalScroll and self:GetVerticalScroll()) or 0
+        local maxS = 0
+        if self.ScrollBar and self.ScrollBar.GetMinMaxValues then
+            local _, sbMax = self.ScrollBar:GetMinMaxValues()
+            maxS = tonumber(sbMax) or 0
+        else
+            local ok, rng = pcall(self.GetVerticalScrollRange, self)
+            if ok and type(rng) == "number" then
+                maxS = rng
+            else
+                local childH = (scrollChild and scrollChild:GetHeight()) or 0
+                local frameH = (self.GetHeight and self:GetHeight()) or 0
+                maxS = math.max(0, childH - frameH)
+            end
+        end
+        local step = (delta > 0) and -56 or 56
+        if self.SetVerticalScroll then
+            pcall(self.SetVerticalScroll, self, math.max(0, math.min(maxS, cur + step)))
+        end
+    end)
 
     dossierFrame.scrollText = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     dossierFrame.scrollText:SetPoint("TOPLEFT", 0, 0)
